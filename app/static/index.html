@@ -72,7 +72,7 @@
             <div>
               <div class="flex items-center gap-2">
                 <h1 class="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">SensorScanner</h1>
-                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">v2026.11.07.3</span>
+                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">v2026.11.07.4</span>
               </div>
               <p class="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block leading-tight">RTL-SDR Blog V4 &amp; rtl_433 RF-signalanalysator</p>
             </div>
@@ -542,7 +542,7 @@
             <!-- MQTT Section -->
             <div class="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
               <div class="flex items-center justify-between">
-                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">MQTT Broker &amp; Home Assistant</span>
+                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">MQTT Broker (Rå JSON)</span>
                 <label class="inline-flex items-center gap-1.5 cursor-pointer">
                   <input type="checkbox" id="set_mqtt_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500" />
                   <span class="text-slate-700 dark:text-slate-300 font-medium">MQTT Aktiverad</span>
@@ -573,6 +573,28 @@
                   <label class="block text-slate-500 dark:text-slate-400 mb-1">Topic Prefix</label>
                   <input type="text" id="set_mqtt_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="sensor_scanner" />
                 </div>
+              </div>
+            </div>
+
+            <!-- Home Assistant Auto-Discovery Section (Optional, OFF by default) -->
+            <div class="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">
+                  <i class="mdi mdi-home-assistant mr-1"></i>Home Assistant MQTT Auto-Discovery (Valfritt)
+                </span>
+                <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" id="set_ha_discovery_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500" />
+                  <span class="text-slate-700 dark:text-slate-300 font-medium">Aktivera Home Assistant MQTT Auto-Discovery</span>
+                </label>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
+                <div>
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Discovery Prefix</label>
+                  <input type="text" id="set_ha_discovery_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="homeassistant" />
+                </div>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug pt-3">
+                  Avstängt som standard. När det är avstängt döljs alla HA Discovery-knappar i gränssnittet och ev. aktiva discovery-topics rensas.
+                </p>
               </div>
             </div>
 
@@ -640,55 +662,43 @@
       <!-- Modal Body -->
       <div class="p-4 overflow-y-auto space-y-4 text-xs">
         
-        <!-- 1. VISUAL TELEMETRY KPI GRID -->
-        <div>
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              <i class="mdi mdi-gauge mr-1 text-sky-500"></i>Analyserad Telemetri &amp; Radiodata
-            </span>
-            <span id="modalPacketTime" class="text-[11px] font-mono text-slate-400"></span>
-          </div>
-          <div id="modalKpiGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-            <!-- Populated via extractAndFormatMetrics() -->
-          </div>
-        </div>
-
-        <!-- 2. QUICK DEVICE CONFIGURATION BAR -->
+        <!-- 1. SNABBKONFIGURERA ENHET -->
         <div class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-2.5">
           <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            <i class="mdi mdi-cog-outline mr-1"></i>Enhetskonfiguration &amp; Home Assistant
+            <i class="mdi mdi-cog-outline mr-1"></i>Snabbkonfigurera Enhet
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
             <div class="sm:col-span-5">
               <label class="block text-slate-500 dark:text-slate-400 mb-1">Alias (Eget namn)</label>
-              <input type="text" id="modalAliasInput" placeholder="t.ex. Toyota Vänster Fram / Växthus" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100" />
+              <input type="text" id="modalAliasInput" placeholder="t.ex. Elmätare Sparsnäs / Toyota VF" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100" />
             </div>
-            <div class="sm:col-span-3">
+            <div class="sm:col-span-4">
               <label class="block text-slate-500 dark:text-slate-400 mb-1">Kategori</label>
               <select id="modalCategorySelect" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100">
+                <option value="Meter">Meter</option>
                 <option value="Weather">Weather</option>
                 <option value="TPMS">TPMS</option>
                 <option value="Switch">Switch</option>
-                <option value="Meter">Meter</option>
                 <option value="Security">Security</option>
                 <option value="Sensor">Sensor</option>
               </select>
             </div>
-            <div class="sm:col-span-4 flex items-center gap-2">
-              <button onclick="saveModalDevice()" class="flex-1 py-1.5 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold transition">
+            <div class="sm:col-span-3 flex items-center gap-2">
+              <button onclick="saveModalDevice()" class="w-full py-1.5 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold transition">
                 <i class="mdi mdi-check mr-1"></i>Spara
-              </button>
-              <button onclick="triggerHaDiscoveryFromModal()" class="py-1.5 px-2.5 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold transition" title="Skicka Home Assistant MQTT Auto-Discovery">
-                <i class="mdi mdi-home-assistant mr-1"></i>HA Discovery
               </button>
             </div>
           </div>
 
           <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800/80">
-            <div class="flex items-center gap-4">
+            <div class="flex flex-wrap items-center gap-4">
               <label class="inline-flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" id="modalMqttToggle" onchange="saveModalDevice()" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500" />
                 <span class="text-slate-700 dark:text-slate-300">Publicera till MQTT</span>
+              </label>
+              <label id="modalHaDiscoveryLabel" class="hidden inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" id="modalHaDiscoveryToggle" onchange="saveModalDevice()" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500" />
+                <span class="text-slate-700 dark:text-slate-300"><i class="mdi mdi-home-assistant text-sky-500 mr-0.5"></i>HA Auto-Discovery</span>
               </label>
               <label class="inline-flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" id="modalIgnoredToggle" onchange="saveModalDevice()" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-rose-500" />
@@ -699,7 +709,37 @@
           </div>
         </div>
 
-        <!-- 3. LAST 20 MEASUREMENTS TABLE (WITH FULL METRIC BADGES) -->
+        <!-- 2. AKTUELLA MÄTVÄRDEN & TELEMETRI (KPI-GRID) -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <i class="mdi mdi-gauge mr-1 text-sky-500"></i>Aktuella Mätvärden &amp; Telemetri
+            </span>
+            <span id="modalPacketTime" class="text-[11px] font-mono text-slate-400"></span>
+          </div>
+          <div id="modalKpiGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+            <!-- Populated via extractAndFormatMetrics() -->
+          </div>
+        </div>
+
+        <!-- 3. HOPFÄLLBAR RÅ JSON-PAYLOAD (STÄNGD SOM STANDARD) -->
+        <details class="group bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+          <summary class="cursor-pointer list-none px-3.5 py-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition">
+            <span class="flex items-center gap-1.5">
+              <i class="mdi mdi-code-json text-sm text-sky-500"></i>
+              <span>Rå JSON-payload</span>
+            </span>
+            <div class="flex items-center gap-3">
+              <button type="button" onclick="event.stopPropagation(); copyModalJson();" class="text-sky-600 dark:text-sky-400 hover:underline font-normal normal-case">
+                <i class="mdi mdi-content-copy mr-0.5"></i>Kopiera JSON
+              </button>
+              <i class="mdi mdi-chevron-down text-base transition-transform group-open:rotate-180"></i>
+            </div>
+          </summary>
+          <pre id="modalRawJson" class="p-3 bg-slate-950 border-t border-slate-800 font-mono text-[11px] leading-relaxed max-h-44 overflow-y-auto overflow-x-auto text-slate-200"></pre>
+        </details>
+
+        <!-- 4. DE 20 SENASTE MÄTVÄRDENA FÖR DENNA ENHET -->
         <div>
           <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
             <i class="mdi mdi-history mr-1"></i>De 20 senaste mätvärdena för denna enhet
@@ -711,7 +751,7 @@
                   <th class="py-1.5 px-3">Tidpunkt</th>
                   <th class="py-1.5 px-3">Frekvens &amp; Mod</th>
                   <th class="py-1.5 px-3">RSSI / SNR</th>
-                  <th class="py-1.5 px-3">Analyserade Mätvärden</th>
+                  <th class="py-1.5 px-3">Mätvärden</th>
                 </tr>
               </thead>
               <tbody id="modalHistoryBody" class="divide-y divide-slate-200 dark:divide-slate-800/70 font-mono text-[11px]">
@@ -720,23 +760,6 @@
             </table>
           </div>
         </div>
-
-        <!-- 4. COLLAPSIBLE SYNTAX-HIGHLIGHTED RAW JSON PAYLOAD -->
-        <details class="group bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-          <summary class="cursor-pointer list-none px-3.5 py-2.5 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition">
-            <span class="flex items-center gap-1.5">
-              <i class="mdi mdi-code-json text-sm text-sky-500"></i>
-              <span>Rå JSON-payload (Inspektera källdata)</span>
-            </span>
-            <div class="flex items-center gap-3">
-              <button type="button" onclick="event.stopPropagation(); copyModalJson();" class="text-sky-600 dark:text-sky-400 hover:underline font-normal normal-case">
-                <i class="mdi mdi-content-copy mr-0.5"></i>Kopiera JSON
-              </button>
-              <i class="mdi mdi-chevron-down text-base transition-transform group-open:rotate-180"></i>
-            </div>
-          </summary>
-          <pre id="modalRawJson" class="p-3.5 bg-slate-950 border-t border-slate-800 font-mono text-[11px] leading-relaxed overflow-x-auto text-slate-200"></pre>
-        </details>
 
       </div>
     </div>
@@ -754,6 +777,7 @@
     let viewMode = localStorage.getItem('ss_view_mode') || 'grid';
     let groupDevices = localStorage.getItem('ss_group_devices') !== 'false';
     let activeQuickPill = 'all';
+    let haDiscoveryEnabled = false;
 
     let rawSignalsList = [];
     let devicesList = [];
@@ -899,6 +923,12 @@
       return dirs[idx];
     }
 
+    function formatNumberSpaces(num) {
+      const n = Number(num);
+      if (Number.isNaN(n)) return String(num);
+      return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    }
+
     function extractAndFormatMetrics(payload, sig = null) {
       const p = payload && typeof payload === 'object' ? payload : {};
       const consumed = new Set();
@@ -933,7 +963,88 @@
         });
       }
 
-      // 1. Tire Pressure / TPMS (pressure_PSI, pressure_kPa, pressure_bar) -> ALWAYS Bar primary
+      // 1. Energy / Cumulative Consumption (cumulative_kwh, energy_kWh, total_kWh, energy_mWh)
+      let kwhVal = null;
+      if (p.cumulative_kwh !== undefined && p.cumulative_kwh !== null) {
+        consumed.add('cumulative_kwh');
+        kwhVal = Number(p.cumulative_kwh);
+      } else if (p.energy_kWh !== undefined && p.energy_kWh !== null) {
+        consumed.add('energy_kWh');
+        kwhVal = Number(p.energy_kWh);
+      } else if (p.total_kWh !== undefined && p.total_kWh !== null) {
+        consumed.add('total_kWh');
+        kwhVal = Number(p.total_kWh);
+      } else if (p.energy_mWh !== undefined && p.energy_mWh !== null) {
+        consumed.add('energy_mWh');
+        kwhVal = Number(p.energy_mWh) / 1000000.0;
+      }
+      if (kwhVal !== null && !Number.isNaN(kwhVal)) {
+        addMetric(
+          'mdi-lightning-bolt',
+          `${kwhVal.toFixed(2)} kWh`,
+          'emerald',
+          'Total Energi',
+          `${kwhVal.toFixed(3)} kWh`
+        );
+      }
+
+      // 2. Power / Effect (IKEA Sparsnäs 'effect', calculated_power_W, power_W, power_kW)
+      consumed.add('calculated_power_W');
+      consumed.add('pulses_per_kwh');
+      if (p.effect !== undefined && p.effect !== null && Number(p.effect) > 0) {
+        consumed.add('effect');
+        const pulsesPerKwh = Number(p.pulses_per_kwh) || 1000;
+        const watts = Math.round(((3600000 / pulsesPerKwh) * 1024) / Number(p.effect));
+        addMetric(
+          'mdi-flash',
+          `${watts} W (Rå: ${p.effect})`,
+          'amber',
+          'Aktuell Effekt',
+          `${watts} W`,
+          `Rå: ${p.effect}`
+        );
+      } else if (p.power_W !== undefined && p.power_W !== null) {
+        consumed.add('power_W');
+        const w = Number(p.power_W);
+        addMetric('mdi-flash', `${w.toFixed(0)} W`, 'amber', 'Aktuell Effekt', `${w.toFixed(0)} W`);
+      } else if (p.power_kW !== undefined && p.power_kW !== null) {
+        consumed.add('power_kW');
+        const kw = Number(p.power_kW);
+        addMetric('mdi-flash', `${kw.toFixed(2)} kW`, 'amber', 'Aktuell Effekt', `${kw.toFixed(2)} kW`);
+      }
+
+      // Current & Voltage if present
+      const elExtras = [];
+      if (p.current_A !== undefined && p.current_A !== null) {
+        consumed.add('current_A');
+        elExtras.push(`${Number(p.current_A).toFixed(1)} A`);
+      }
+      if (p.voltage_V !== undefined && p.voltage_V !== null) {
+        consumed.add('voltage_V');
+        elExtras.push(`${Number(p.voltage_V).toFixed(0)} V`);
+      }
+      if (elExtras.length > 0) {
+        addMetric('mdi-flash-outline', elExtras.join(' / '), 'emerald', 'Ström / Spänning', elExtras.join(' / '));
+      }
+
+      // 3. Pulses (pulses, pulse_count)
+      const rawPulses = p.pulses ?? p.pulse_count;
+      if (rawPulses !== undefined && rawPulses !== null) {
+        consumed.add('pulses');
+        consumed.add('pulse_count');
+        const formattedPulses = formatNumberSpaces(rawPulses);
+        const ppkText = p.pulses_per_kwh ? `${p.pulses_per_kwh} imp/kWh` : '';
+        addMetric(
+          'mdi-pulse',
+          `${formattedPulses} pulser${ppkText ? ' (' + ppkText + ')' : ''}`,
+          'sky',
+          'Pulser',
+          `${formattedPulses}`,
+          ppkText ? `${p.pulses_per_kwh}/kWh` : ''
+        );
+      }
+
+      // 4. Tire Pressure / TPMS (pressure_PSI, pressure_kPa, pressure_bar) -> ALWAYS Bar primary
       if (p.pressure_PSI !== undefined && p.pressure_PSI !== null) {
         consumed.add('pressure_PSI');
         const psi = Number(p.pressure_PSI);
@@ -961,7 +1072,7 @@
         consumed.add('status');
         const stVal = p.status;
         const hexSuffix = typeof stVal === 'number' ? ` (0x${stVal.toString(16).toUpperCase()})` : '';
-        addMetric('mdi-information-outline', `Status: ${stVal}${hexSuffix}`, 'neutral', 'Statuskod', `${stVal}`, hexSuffix.replace(/[()]/g, '').trim());
+        addMetric('mdi-information-outline', `Status: ${stVal}${hexSuffix}`, 'neutral', 'Status', `${stVal}`, hexSuffix.replace(/[()]/g, '').trim());
       }
       if (p.wheel !== undefined && p.wheel !== null) {
         consumed.add('wheel');
@@ -977,7 +1088,7 @@
         addMetric('mdi-alert-outline', `Alert: ${p.alert}`, isAlert ? 'rose' : 'neutral', 'TPMS Larm', String(p.alert));
       }
 
-      // 2. Temperature (temperature_C, temperature_F, temp_C)
+      // 5. Temperature (temperature_C, temperature_F, temp_C)
       let tempC = null;
       let rawF = null;
       if (p.temperature_C !== undefined && p.temperature_C !== null) {
@@ -998,7 +1109,7 @@
         addMetric('mdi-thermometer', `${tempC.toFixed(1)} °C`, 'amber', 'Temperatur', `${tempC.toFixed(1)} °C`, subF);
       }
 
-      // 3. Wind (Oregon-WGR800 etc.)
+      // 6. Wind (Oregon-WGR800 etc.)
       let windMs = null;
       if (p.wind_avg_m_s !== undefined && p.wind_avg_m_s !== null) {
         consumed.add('wind_avg_m_s');
@@ -1060,7 +1171,7 @@
         }
       }
 
-      // 4. Rain (Oregon-PCR800 etc.)
+      // 7. Rain (Oregon-PCR800 etc.)
       let rainMm = null;
       if (p.rain_mm !== undefined && p.rain_mm !== null) {
         consumed.add('rain_mm');
@@ -1096,7 +1207,7 @@
         addMetric('mdi-weather-pouring', `${rainRateMmH.toFixed(1)} mm/h`, 'blue', 'Regnintensitet', `${rainRateMmH.toFixed(1)} mm/h`);
       }
 
-      // 5. Humidity & Atmospheric Pressure
+      // 8. Humidity & Atmospheric Pressure
       const humVal = p.humidity ?? (sig ? sig.humidity : null);
       if (humVal !== undefined && humVal !== null && !Number.isNaN(Number(humVal))) {
         consumed.add('humidity');
@@ -1108,28 +1219,7 @@
         addMetric('mdi-gauge', `${Number(p.pressure_hPa).toFixed(1)} hPa`, 'teal', 'Lufttryck', `${Number(p.pressure_hPa).toFixed(1)} hPa`);
       }
 
-      // 6. Electricity, Energy & Water
-      const elParts = [];
-      if (p.power_W !== undefined && p.power_W !== null) {
-        consumed.add('power_W');
-        elParts.push(`${Number(p.power_W).toFixed(0)} W`);
-      }
-      if (p.energy_kWh !== undefined && p.energy_kWh !== null) {
-        consumed.add('energy_kWh');
-        elParts.push(`${Number(p.energy_kWh).toFixed(2)} kWh`);
-      }
-      if (p.current_A !== undefined && p.current_A !== null) {
-        consumed.add('current_A');
-        elParts.push(`${Number(p.current_A).toFixed(1)} A`);
-      }
-      if (p.voltage_V !== undefined && p.voltage_V !== null) {
-        consumed.add('voltage_V');
-        elParts.push(`${Number(p.voltage_V).toFixed(0)} V`);
-      }
-      if (elParts.length > 0) {
-        addMetric('mdi-flash', elParts.join(' / '), 'emerald', 'El & Energi', elParts[0], elParts.slice(1).join(' • '));
-      }
-
+      // 9. Water / Volume
       const waterVal = p.volume_m3 ?? p.consumption ?? p.water;
       if (waterVal !== undefined && waterVal !== null) {
         consumed.add('volume_m3');
@@ -1139,7 +1229,7 @@
         addMetric('mdi-water-pump', `${waterVal}${unit}`, 'blue', 'Förbrukning / Vatten', `${waterVal}${unit}`);
       }
 
-      // 7. Switch / Door / Motion
+      // 10. Switch / Door / Motion
       if (p.motion !== undefined || p.contact_open !== undefined) {
         consumed.add('motion');
         consumed.add('contact_open');
@@ -1155,7 +1245,13 @@
         }
       }
 
-      // 8. Battery (battery_ok, battery_low, battery_mV, battery_V)
+      // 11. Sequence Number (sequence)
+      if (p.sequence !== undefined && p.sequence !== null) {
+        consumed.add('sequence');
+        addMetric('mdi-pound', `Seq: ${p.sequence}`, 'neutral', 'Sekvens', `#${p.sequence}`);
+      }
+
+      // 12. Battery (battery_ok, battery_low, battery_mV, battery_V)
       const batOk = p.battery_ok !== undefined ? p.battery_ok : (sig ? sig.battery_ok : undefined);
       const batLow = p.battery_low;
       let voltStr = '';
@@ -1173,9 +1269,9 @@
         const isLow = Number(batOk) === 0 || Number(batLow) === 1;
         const vSuffix = voltStr ? ` (${voltStr})` : '';
         if (isLow) {
-          addMetric('mdi-battery-alert-variant-outline', `Batteri LÅGT${vSuffix}`, 'rose', 'Batteristatus', 'LÅGT', voltStr);
+          addMetric('mdi-battery-alert-variant-outline', `Batteri LÅGT${vSuffix}`, 'rose', 'Batteri', 'LÅGT', voltStr);
         } else {
-          addMetric('mdi-battery-check', `Batteri OK${vSuffix}`, 'emerald', 'Batteristatus', 'OK', voltStr);
+          addMetric('mdi-battery-check', `Batteri OK${vSuffix}`, 'emerald', 'Batteri', 'OK', voltStr);
         }
       } else if (batLow !== undefined && batLow !== null) {
         consumed.add('battery_low');
@@ -1184,7 +1280,7 @@
           isLow ? 'mdi-battery-alert-variant-outline' : 'mdi-battery-check',
           isLow ? 'Batteri LÅGT' : 'Batteri OK',
           isLow ? 'rose' : 'emerald',
-          'Batteristatus',
+          'Batteri',
           isLow ? 'LÅGT' : 'OK',
           voltStr
         );
@@ -1192,7 +1288,7 @@
         addMetric('mdi-battery-outline', `Batteri: ${voltStr}`, 'emerald', 'Batterispänning', voltStr);
       }
 
-      // 9. SMART FALLBACK FOR ALL REMAINING PAYLOAD KEYS
+      // 13. SMART FALLBACK FOR ALL REMAINING PAYLOAD KEYS
       Object.keys(p).forEach((key) => {
         if (TECHNICAL_METADATA_KEYS.has(key) || consumed.has(key)) return;
         const val = p[key];
@@ -1210,16 +1306,24 @@
     function extractRadioMetadata(sig, payload) {
       const p = payload && typeof payload === 'object' ? payload : {};
       let freqMHz = sig && sig.freq ? Number(sig.freq) : null;
+      let freq1MHz = p.freq1 !== undefined ? Number(p.freq1) : null;
+      let freq2MHz = p.freq2 !== undefined ? Number(p.freq2) : null;
+      if (freq1MHz && freq1MHz > 1000000) freq1MHz = freq1MHz / 1000000;
+      if (freq2MHz && freq2MHz > 1000000) freq2MHz = freq2MHz / 1000000;
       if (!freqMHz && p.freq !== undefined) freqMHz = Number(p.freq);
-      if (!freqMHz && p.freq1 !== undefined) freqMHz = Number(p.freq1);
+      if (!freqMHz && freq1MHz) freqMHz = freq1MHz;
       if (freqMHz && freqMHz > 1000000) freqMHz = freqMHz / 1000000;
 
-      const mod = p.mod ? String(p.mod).toUpperCase() : (p.freq1 !== undefined && p.freq2 !== undefined ? 'FSK' : '');
+      const mod = p.mod ? String(p.mod).toUpperCase() : (freq1MHz && freq2MHz ? 'FSK' : '');
       const proto = p.protocol !== undefined ? `#${p.protocol}` : '';
       const mic = p.mic ? String(p.mic) : '';
 
       const freqLabel = freqMHz ? `${freqMHz.toFixed(2)} MHz${mod ? ' (' + mod + ')' : ''}` : (mod || '-');
-      return { freqMHz, mod, proto, mic, freqLabel };
+      const dualFreqLabel = freq1MHz && freq2MHz
+        ? `${freq1MHz.toFixed(2)} / ${freq2MHz.toFixed(2)} MHz`
+        : (freqMHz ? `${freqMHz.toFixed(2)} MHz` : '-');
+
+      return { freqMHz, freq1MHz, freq2MHz, mod, proto, mic, freqLabel, dualFreqLabel };
     }
 
     // -----------------------------------------------------------------------
@@ -1287,6 +1391,14 @@
       const rtl = status.rtl || {};
       const mqtt = status.mqtt || {};
       const counts = status.counts || {};
+
+      const prevHaEnabled = haDiscoveryEnabled;
+      haDiscoveryEnabled = Boolean(mqtt.ha_discovery_enabled);
+      syncHaDiscoveryUiVisibility();
+      if (prevHaEnabled !== haDiscoveryEnabled) {
+        if (activeTab === 'signals') renderSignalsView();
+        if (activeTab === 'devices') renderDevicesList();
+      }
 
       document.getElementById('navCountSignals').textContent = counts.signals_today ?? 0;
       document.getElementById('navCountDevices').textContent = counts.active_devices ?? 0;
@@ -1362,6 +1474,17 @@
       document.getElementById('statUptime').textContent = formatDuration(rtl.uptime_seconds || 0);
       document.getElementById('statMqttPublished').textContent = mqtt.published_count ?? 0;
       document.getElementById('statRestarts').textContent = rtl.restart_count ?? 0;
+    }
+
+    function syncHaDiscoveryUiVisibility() {
+      const modalLabel = document.getElementById('modalHaDiscoveryLabel');
+      if (modalLabel) {
+        if (haDiscoveryEnabled) {
+          modalLabel.classList.remove('hidden');
+        } else {
+          modalLabel.classList.add('hidden');
+        }
+      }
     }
 
     function appendStderrLine(line, lastError) {
@@ -1569,7 +1692,17 @@
         return cat === 'tpms' || p.pressure_kPa !== undefined || p.pressure_bar !== undefined || p.pressure_PSI !== undefined;
       }
       if (activeQuickPill === 'meter_switch') {
-        return cat === 'meter' || cat === 'switch' || cat === 'security' || p.power_W !== undefined || p.energy_kWh !== undefined || p.state !== undefined || p.cmd !== undefined;
+        return (
+          cat === 'meter' ||
+          cat === 'switch' ||
+          cat === 'security' ||
+          p.cumulative_kwh !== undefined ||
+          p.effect !== undefined ||
+          p.power_W !== undefined ||
+          p.energy_kWh !== undefined ||
+          p.state !== undefined ||
+          p.cmd !== undefined
+        );
       }
       if (activeQuickPill === 'low_battery') {
         return (bat !== null && bat !== undefined && Number(bat) === 0) || Number(p.battery_low) === 1;
@@ -1694,7 +1827,7 @@
       const c = (category || '').toLowerCase();
       if (c === 'weather') return 'mdi-weather-partly-cloudy text-sky-500';
       if (c === 'tpms') return 'mdi-car-tire-alert text-purple-500';
-      if (c === 'meter') return 'mdi-flash text-emerald-500';
+      if (c === 'meter') return 'mdi-lightning-bolt text-emerald-500';
       if (c === 'switch') return 'mdi-toggle-switch-outline text-indigo-500';
       if (c === 'security') return 'mdi-shield-alert-outline text-rose-500';
       return 'mdi-access-point text-slate-400';
@@ -1730,6 +1863,13 @@
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
       const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr);
       const hitCount = sig.hit_count || 1;
+      const isHaActive = Number(sig.ha_discovery) === 1;
+
+      const haButtonHtml = haDiscoveryEnabled
+        ? `<button onclick="quickHaDiscovery(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 ${isHaActive ? 'text-sky-500' : 'text-slate-400'} hover:text-sky-500 flex items-center justify-center transition" title="Home Assistant Auto-Discovery">
+            <i class="mdi mdi-home-assistant text-sm"></i>
+          </button>`
+        : '';
 
       return `
         <div
@@ -1748,9 +1888,7 @@
               <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias & Kategori">
                 <i class="mdi mdi-pencil-outline text-sm"></i>
               </button>
-              <button onclick="quickHaDiscovery(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-emerald-500 flex items-center justify-center transition" title="Skicka Home Assistant Auto-Discovery">
-                <i class="mdi mdi-home-assistant text-sm"></i>
-              </button>
+              ${haButtonHtml}
               <button onclick="quickIgnoreDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-rose-500 flex items-center justify-center transition" title="Ignorera / Svartlista enhet">
                 <i class="mdi mdi-eye-off-outline text-sm"></i>
               </button>
@@ -1801,6 +1939,13 @@
       const radio = extractRadioMetadata(sig, p);
       const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr);
       const hitCount = sig.hit_count || 1;
+      const isHaActive = Number(sig.ha_discovery) === 1;
+
+      const haButtonHtml = haDiscoveryEnabled
+        ? `<button onclick="quickHaDiscovery(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 ${isHaActive ? 'text-sky-500' : 'text-slate-400'} hover:text-sky-500 flex items-center justify-center" title="HA Discovery">
+            <i class="mdi mdi-home-assistant"></i>
+          </button>`
+        : '';
 
       return `
         <tr onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})" class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
@@ -1835,9 +1980,7 @@
               <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center" title="Redigera Alias">
                 <i class="mdi mdi-pencil-outline"></i>
               </button>
-              <button onclick="quickHaDiscovery(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-emerald-500 flex items-center justify-center" title="HA Discovery">
-                <i class="mdi mdi-home-assistant"></i>
-              </button>
+              ${haButtonHtml}
               <button onclick="quickIgnoreDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-rose-500 flex items-center justify-center" title="Ignorera enhet">
                 <i class="mdi mdi-eye-off-outline"></i>
               </button>
@@ -1912,7 +2055,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // Redesigned Detail Modal (Visual KPI Grid + Full History + Syntax JSON)
+    // Redesigned Detail Modal (Visual KPI Grid + Collapsible JSON + Full History)
     // -----------------------------------------------------------------------
     function syntaxHighlightJson(obj) {
       const jsonStr = JSON.stringify(obj, null, 2);
@@ -1962,56 +2105,58 @@
         document.getElementById('modalAliasInput').value = dev.alias || '';
         document.getElementById('modalCategorySelect').value = dev.category || 'Sensor';
         document.getElementById('modalMqttToggle').checked = Boolean(dev.mqtt_enabled);
+        document.getElementById('modalHaDiscoveryToggle').checked = Boolean(dev.ha_discovery);
         document.getElementById('modalIgnoredToggle').checked = Boolean(dev.ignored);
+        syncHaDiscoveryUiVisibility();
 
-        // 1. Build Visual KPI Cards Grid
+        // 1. Build Visual KPI Cards Grid ("AKTUELLA MÄTVÄRDEN & TELEMETRI")
         const analyzed = extractAndFormatMetrics(currentModalPayload, matchingSig);
         const radio = extractRadioMetadata(matchingSig, currentModalPayload);
         const kpiCardsHtml = analyzed.kpis.map((k) => `
-          <div class="p-3 rounded-xl border ${k.cls} flex flex-col justify-between">
-            <div class="flex items-center justify-between text-[11px] opacity-80">
+          <div class="p-2.5 rounded-xl border ${k.cls} flex flex-col justify-between">
+            <div class="flex items-center justify-between text-[11px] opacity-85">
               <span class="font-semibold uppercase tracking-wider truncate">${escapeHtml(k.label)}</span>
               <i class="mdi ${k.icon} text-base"></i>
             </div>
-            <div class="mt-1.5">
-              <div class="text-base sm:text-lg font-bold font-mono leading-tight">${escapeHtml(k.primary)}</div>
+            <div class="mt-1">
+              <div class="text-sm sm:text-base font-bold font-mono leading-tight">${escapeHtml(k.primary)}</div>
               ${k.secondary ? `<div class="text-[11px] font-mono opacity-80 mt-0.5">${escapeHtml(k.secondary)}</div>` : ''}
+            </div>
+          </div>
+        `);
+
+        // Add Radio / FSK KPI Card (shows dual freq1 / freq2 for FSK like 867.96 / 868.04 MHz)
+        const radioParts = [radio.mod ? `Mod: ${radio.mod}` : '', radio.proto ? `Protokoll ${radio.proto}` : '', radio.mic].filter(Boolean);
+        kpiCardsHtml.push(`
+          <div class="p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+              <span class="font-semibold uppercase tracking-wider">Radio${radio.mod ? ' / ' + escapeHtml(radio.mod) : ''}</span>
+              <i class="mdi mdi-sine-wave text-base text-sky-500"></i>
+            </div>
+            <div class="mt-1">
+              <div class="text-sm sm:text-base font-bold font-mono text-slate-900 dark:text-white leading-tight">${escapeHtml(radio.dualFreqLabel)}</div>
+              <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(radioParts.join(' • ') || 'Standard RF')}</div>
             </div>
           </div>
         `);
 
         // Add Signal Quality KPI Card
         if (currentModalPayload.rssi !== undefined) {
-          const rssiVal = Number(currentModalPayload.rssi).toFixed(1);
-          const snrVal = currentModalPayload.snr !== undefined ? `SNR: ${Number(currentModalPayload.snr).toFixed(1)} dB` : '';
+          const rssiVal = Number(currentModalPayload.rssi).toFixed(2);
+          const snrVal = currentModalPayload.snr !== undefined ? `${Number(currentModalPayload.snr).toFixed(1)} dB SNR` : '';
           kpiCardsHtml.push(`
-            <div class="p-3 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+            <div class="p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
               <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                <span class="font-semibold uppercase tracking-wider">Signalstyrka</span>
+                <span class="font-semibold uppercase tracking-wider">Signal</span>
                 <i class="mdi mdi-wifi-strength-4 text-base text-emerald-500"></i>
               </div>
-              <div class="mt-1.5">
-                <div class="text-base sm:text-lg font-bold font-mono text-slate-900 dark:text-white leading-tight">${rssiVal} dB RSSI</div>
+              <div class="mt-1">
+                <div class="text-sm sm:text-base font-bold font-mono text-slate-900 dark:text-white leading-tight">${rssiVal} dB RSSI</div>
                 <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(snrVal)}${currentModalPayload.noise !== undefined ? ` • Brus: ${Number(currentModalPayload.noise).toFixed(1)} dB` : ''}</div>
               </div>
             </div>
           `);
         }
-
-        // Add Radio & Protocol KPI Card
-        const radioParts = [radio.mod, radio.proto ? `Protokoll ${radio.proto}` : '', radio.mic].filter(Boolean);
-        kpiCardsHtml.push(`
-          <div class="p-3 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-            <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-              <span class="font-semibold uppercase tracking-wider">Radio &amp; Frekvens</span>
-              <i class="mdi mdi-sine-wave text-base text-sky-500"></i>
-            </div>
-            <div class="mt-1.5">
-              <div class="text-base sm:text-lg font-bold font-mono text-slate-900 dark:text-white leading-tight">${escapeHtml(radio.freqMHz ? radio.freqMHz.toFixed(2) + ' MHz' : '-')}</div>
-              <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(radioParts.join(' • ') || 'Standard RF')}</div>
-            </div>
-          </div>
-        `);
 
         document.getElementById('modalKpiGrid').innerHTML = kpiCardsHtml.join('');
 
@@ -2051,13 +2196,14 @@
       const alias = document.getElementById('modalAliasInput').value.trim();
       const category = document.getElementById('modalCategorySelect').value;
       const mqtt_enabled = document.getElementById('modalMqttToggle').checked ? 1 : 0;
+      const ha_discovery = document.getElementById('modalHaDiscoveryToggle').checked ? 1 : 0;
       const ignored = document.getElementById('modalIgnoredToggle').checked ? 1 : 0;
 
       try {
         const res = await fetch(`/api/devices/${encodeURIComponent(currentModalDeviceKey)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ alias, category, mqtt_enabled, ignored })
+          body: JSON.stringify({ alias, category, mqtt_enabled, ha_discovery, ignored })
         });
         if (res.ok) {
           const data = await res.json();
@@ -2071,11 +2217,6 @@
       } catch (e) {
         showToast('Kunde inte spara enhet', true);
       }
-    }
-
-    async function triggerHaDiscoveryFromModal() {
-      if (!currentModalDeviceKey) return;
-      await triggerHaDiscovery(currentModalDeviceKey);
     }
 
     function copyModalJson() {
@@ -2118,6 +2259,7 @@
             s.alias = dev.alias;
             s.category = dev.category;
             s.mqtt_enabled = dev.mqtt_enabled;
+            s.ha_discovery = dev.ha_discovery;
             s.ignored = dev.ignored;
           }
         });
@@ -2140,6 +2282,7 @@
       container.innerHTML = devicesList.map((dev) => {
         const isIgnored = Number(dev.ignored) === 1;
         const isMqtt = Number(dev.mqtt_enabled) === 1;
+        const isHa = Number(dev.ha_discovery) === 1;
         const catIcon = getCategoryIcon(dev.category);
         const lastPayload = dev.last_payload || {};
         const { badgesHtml } = extractAndFormatMetrics(lastPayload);
@@ -2149,6 +2292,18 @@
         const borderClass = isIgnored
           ? 'border-rose-300 dark:border-rose-900/60 opacity-75'
           : 'border-slate-200 dark:border-slate-800';
+
+        const haCheckboxHtml = haDiscoveryEnabled
+          ? `<label class="inline-flex items-center gap-1 cursor-pointer select-none" title="Publicera eller radera Home Assistant MQTT Auto-Discovery för enheten">
+              <input
+                type="checkbox"
+                ${isHa ? 'checked' : ''}
+                onchange="toggleDeviceFlag('${escapeHtml(dev.device_key)}', 'ha_discovery', this.checked ? 1 : 0)"
+                class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500"
+              />
+              <span class="text-slate-600 dark:text-slate-300"><i class="mdi mdi-home-assistant text-sky-500"></i> HA</span>
+            </label>`
+          : '';
 
         return `
           <div class="bg-white dark:bg-slate-900 border ${borderClass} rounded-xl p-3 shadow-sm flex flex-col justify-between gap-2">
@@ -2173,13 +2328,13 @@
             </div>
 
             <!-- Latest Telemetry Badges Row -->
-            <div onclick="openDeviceModalByKey('${escapeHtml(dev.device_key)}')" class="cursor-pointer py-1 px-2 rounded-lg bg-slate-50/80 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/70 space-y-1.5 hover:border-sky-500/40 transition">
+            <div onclick="openDeviceModalByKey('${escapeHtml(dev.device_key)}')" class="cursor-pointer py-1.5 px-2 rounded-lg bg-slate-50/80 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/70 space-y-1.5 hover:border-sky-500/40 transition">
               <div class="flex flex-wrap items-center gap-1">
                 ${badgesHtml || '<span class="text-[11px] text-slate-400">Inga mätvärden</span>'}
               </div>
               <div class="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
                 ${signalStrengthHtml}
-                <span class="text-sky-600 dark:text-sky-400 hover:underline">Öppna telemetri <i class="mdi mdi-arrow-right"></i></span>
+                <span class="text-sky-600 dark:text-sky-400 hover:underline">Detaljer <i class="mdi mdi-arrow-right"></i></span>
               </div>
             </div>
 
@@ -2199,7 +2354,7 @@
                   id="devCat_${escapeHtml(dev.device_key)}"
                   class="w-full px-1.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-800 dark:text-slate-200 text-xs"
                 >
-                  ${['Weather', 'TPMS', 'Switch', 'Meter', 'Security', 'Sensor'].map(
+                  ${['Meter', 'Weather', 'TPMS', 'Switch', 'Security', 'Sensor'].map(
                     (c) => `<option value="${c}" ${dev.category === c ? 'selected' : ''}>${c}</option>`
                   ).join('')}
                 </select>
@@ -2217,7 +2372,7 @@
 
             <!-- Action Switches & Buttons -->
             <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[11px]">
-              <div class="flex items-center gap-2.5">
+              <div class="flex items-center gap-2.5 flex-wrap">
                 <label class="inline-flex items-center gap-1 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -2227,6 +2382,8 @@
                   />
                   <span class="text-slate-600 dark:text-slate-300">MQTT</span>
                 </label>
+
+                ${haCheckboxHtml}
 
                 <label class="inline-flex items-center gap-1 cursor-pointer select-none">
                   <input
@@ -2243,16 +2400,9 @@
                 <button
                   onclick="openDeviceModalByKey('${escapeHtml(dev.device_key)}')"
                   class="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
-                  title="Visa detaljer och historik"
+                  title="Visa telemetri och historik"
                 >
                   <i class="mdi mdi-chart-box-outline"></i>
-                </button>
-                <button
-                  onclick="triggerHaDiscovery('${escapeHtml(dev.device_key)}')"
-                  class="px-2 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold"
-                  title="Skicka Home Assistant Auto-Discovery"
-                >
-                  <i class="mdi mdi-home-assistant"></i>
                 </button>
                 <button
                   onclick="deleteDevice('${escapeHtml(dev.device_key)}')"
@@ -2294,7 +2444,11 @@
           body: JSON.stringify({ [field]: val })
         });
         if (res.ok) {
-          showToast('Inställning uppdaterad för enhet');
+          if (field === 'ha_discovery') {
+            showToast(val ? 'HA Auto-Discovery publicerad' : 'HA Auto-Discovery raderad ur Home Assistant');
+          } else {
+            showToast('Inställning uppdaterad för enhet');
+          }
           loadDevices();
         }
       } catch (e) {
@@ -2421,6 +2575,12 @@
         document.getElementById('set_mqtt_user').value = s.mqtt_user ?? '';
         document.getElementById('set_mqtt_pass').value = s.mqtt_pass ?? '';
         document.getElementById('set_mqtt_prefix').value = s.mqtt_prefix ?? 'sensor_scanner';
+
+        const haEnabled = String(s.ha_discovery_enabled ?? '0') === '1';
+        document.getElementById('set_ha_discovery_enabled').checked = haEnabled;
+        document.getElementById('set_ha_discovery_prefix').value = s.ha_discovery_prefix ?? 'homeassistant';
+        haDiscoveryEnabled = haEnabled;
+        syncHaDiscoveryUiVisibility();
       } catch (e) {
         console.error(e);
       }
@@ -2443,7 +2603,9 @@
         mqtt_port: String(document.getElementById('set_mqtt_port').value || '1883'),
         mqtt_user: document.getElementById('set_mqtt_user').value.trim(),
         mqtt_pass: document.getElementById('set_mqtt_pass').value,
-        mqtt_prefix: document.getElementById('set_mqtt_prefix').value.trim() || 'sensor_scanner'
+        mqtt_prefix: document.getElementById('set_mqtt_prefix').value.trim() || 'sensor_scanner',
+        ha_discovery_enabled: document.getElementById('set_ha_discovery_enabled').checked ? '1' : '0',
+        ha_discovery_prefix: document.getElementById('set_ha_discovery_prefix').value.trim() || 'homeassistant'
       };
 
       try {
@@ -2453,6 +2615,9 @@
           body: JSON.stringify(payload)
         });
         if (res.ok) {
+          haDiscoveryEnabled = payload.ha_discovery_enabled === '1';
+          syncHaDiscoveryUiVisibility();
+          renderSignalsView();
           showToast('Systeminställningar sparade och tillämpade');
           const fb = document.getElementById('settingsSaveFeedback');
           fb.classList.remove('hidden');

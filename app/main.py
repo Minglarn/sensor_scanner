@@ -69,10 +69,9 @@ async def on_rtl_signal(payload: Dict[str, Any]) -> None:
     signal_rec, device_rec = await asyncio.to_thread(db.record_signal, payload)
 
     if signal_rec is None:
-        # Device is marked as ignored; do not publish to MQTT or live signal stream
         return
 
-    await asyncio.to_thread(mqtt_manager.publish_signal, device_rec, payload)
+    await asyncio.to_thread(mqtt_manager.publish_signal, device_rec, signal_rec["payload"])
 
     await ws_manager.broadcast(
         {
@@ -183,6 +182,7 @@ class DeviceUpdateRequest(BaseModel):
     alias: Optional[str] = None
     category: Optional[str] = None
     mqtt_enabled: Optional[int] = None
+    ha_discovery: Optional[int] = None
     ignored: Optional[int] = None
 
 
@@ -202,6 +202,8 @@ class SettingsUpdateRequest(BaseModel):
     mqtt_user: Optional[str] = None
     mqtt_pass: Optional[str] = None
     mqtt_prefix: Optional[str] = None
+    ha_discovery_enabled: Optional[str] = None
+    ha_discovery_prefix: Optional[str] = None
 
 
 # ==============================================================================
@@ -320,16 +322,28 @@ async def api_get_device_detail(device_key: str):
 
 @app.put("/api/devices/{device_key}")
 async def api_update_device(device_key: str, req: DeviceUpdateRequest):
+    prev_device = await asyncio.to_thread(db.get_device, device_key)
+    if not prev_device:
+        raise HTTPException(status_code=404, detail="Enheten hittades inte.")
+
     updated = await asyncio.to_thread(
         db.update_device,
         device_key=device_key,
         alias=req.alias,
         category=req.category,
         mqtt_enabled=req.mqtt_enabled,
+        ha_discovery=req.ha_discovery,
         ignored=req.ignored,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Enheten hittades inte.")
+
+    # Handle HA Auto-Discovery publish or removal when ha_discovery flag changes
+    if req.ha_discovery is not None:
+        if int(bool(req.ha_discovery)) == 1:
+            await asyncio.to_thread(mqtt_manager.publish_ha_discovery, updated)
+        elif int(prev_device.get("ha_discovery", 0)) == 1 and int(bool(req.ha_discovery)) == 0:
+            await asyncio.to_thread(mqtt_manager.clear_ha_discovery, updated)
 
     await ws_manager.broadcast({"type": "device_updated", "device": updated})
     await broadcast_full_status()
@@ -345,11 +359,19 @@ async def api_ha_discovery(device_key: str):
     result = await asyncio.to_thread(mqtt_manager.publish_ha_discovery, device)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Kunde inte skicka HA Discovery."))
+
+    updated = await asyncio.to_thread(db.update_device, device_key=device_key, ha_discovery=1)
+    if updated:
+        await ws_manager.broadcast({"type": "device_updated", "device": updated})
     return result
 
 
 @app.delete("/api/devices/{device_key}")
 async def api_delete_device(device_key: str):
+    device = await asyncio.to_thread(db.get_device, device_key)
+    if device and int(device.get("ha_discovery", 0)) == 1:
+        await asyncio.to_thread(mqtt_manager.clear_ha_discovery, device)
+
     deleted = await asyncio.to_thread(db.delete_device, device_key)
     if not deleted:
         raise HTTPException(status_code=404, detail="Enheten hittades inte.")
@@ -372,13 +394,28 @@ async def api_update_settings(req: SettingsUpdateRequest):
     new_settings = await asyncio.to_thread(db.update_settings, payload)
 
     sdr_keys = ("device_index", "mode", "custom_freqs", "custom_sample_rate", "hop_interval", "gain", "ppm")
-    mqtt_keys = ("mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_user", "mqtt_pass", "mqtt_prefix")
+    mqtt_broker_keys = ("mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_user", "mqtt_pass", "mqtt_prefix")
+    ha_keys = ("ha_discovery_enabled", "ha_discovery_prefix")
 
     sdr_changed = any(old_settings.get(k) != new_settings.get(k) for k in sdr_keys)
-    mqtt_changed = any(old_settings.get(k) != new_settings.get(k) for k in mqtt_keys)
+    mqtt_broker_changed = any(old_settings.get(k) != new_settings.get(k) for k in mqtt_broker_keys)
+    ha_changed = any(old_settings.get(k) != new_settings.get(k) for k in ha_keys)
 
-    if mqtt_changed:
-        await asyncio.to_thread(mqtt_manager.configure_and_connect, new_settings)
+    # If HA Discovery was turned OFF globally, clear retained discovery topics for all enabled devices
+    old_ha_en = str(old_settings.get("ha_discovery_enabled", "0")) in ("1", "true", "True")
+    new_ha_en = str(new_settings.get("ha_discovery_enabled", "0")) in ("1", "true", "True")
+    if old_ha_en and not new_ha_en:
+        all_devs = await asyncio.to_thread(db.get_devices, include_ignored=True)
+        for d in all_devs:
+            if int(d.get("ha_discovery", 0)) == 1:
+                await asyncio.to_thread(mqtt_manager.clear_ha_discovery, d)
+
+    if mqtt_broker_changed or ha_changed:
+        await asyncio.to_thread(
+            mqtt_manager.configure_and_connect,
+            new_settings,
+            reconnect_broker=mqtt_broker_changed,
+        )
 
     if sdr_changed:
         await rtl_manager.restart()
@@ -397,4 +434,3 @@ async def api_update_settings(req: SettingsUpdateRequest):
 @app.get("/api/stats")
 async def api_get_stats():
     return await asyncio.to_thread(db.get_stats)
-

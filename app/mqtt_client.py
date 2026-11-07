@@ -2,11 +2,12 @@ import json
 import logging
 import re
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import paho.mqtt.client as mqtt
 
 from app import __version__
+from app.database import enrich_sparsnas_payload
 
 logger = logging.getLogger("sensor_scanner.mqtt")
 
@@ -15,6 +16,173 @@ def sanitize_topic_segment(value: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9_\-]", "_", str(value or "").strip())
     cleaned = re.sub(r"_+", "_", cleaned).strip("_")
     return cleaned or "unknown"
+
+
+# Metric definitions: (json_key, metric_slug, friendly_suffix, unit, device_class, state_class, value_template)
+HA_METRIC_SPECS: List[Tuple[str, str, str, str, Optional[str], str, str]] = [
+    (
+        "temperature_C",
+        "temperature",
+        "Temperatur",
+        "°C",
+        "temperature",
+        "measurement",
+        "{{ value_json.temperature_C | float | round(1) }}",
+    ),
+    (
+        "temperature_F",
+        "temperature_f",
+        "Temperatur",
+        "°F",
+        "temperature",
+        "measurement",
+        "{{ value_json.temperature_F | float | round(1) }}",
+    ),
+    (
+        "humidity",
+        "humidity",
+        "Luftfuktighet",
+        "%",
+        "humidity",
+        "measurement",
+        "{{ value_json.humidity | float | round(1) }}",
+    ),
+    (
+        "battery_ok",
+        "battery",
+        "Batteri",
+        "%",
+        "battery",
+        "measurement",
+        "{{ 100 if value_json.battery_ok | int == 1 else 10 }}",
+    ),
+    (
+        "pressure_kPa",
+        "pressure_kpa",
+        "Däcktryck",
+        "bar",
+        "pressure",
+        "measurement",
+        "{{ (value_json.pressure_kPa | float / 100.0) | round(2) }}",
+    ),
+    (
+        "pressure_bar",
+        "pressure_bar",
+        "Däcktryck",
+        "bar",
+        "pressure",
+        "measurement",
+        "{{ value_json.pressure_bar | float | round(2) }}",
+    ),
+    (
+        "pressure_PSI",
+        "pressure_psi_bar",
+        "Däcktryck",
+        "bar",
+        "pressure",
+        "measurement",
+        "{{ (value_json.pressure_PSI | float * 0.0689476) | round(2) }}",
+    ),
+    (
+        "pressure_hPa",
+        "pressure_hpa",
+        "Lufttryck",
+        "hPa",
+        "atmospheric_pressure",
+        "measurement",
+        "{{ value_json.pressure_hPa | float | round(1) }}",
+    ),
+    (
+        "power_W",
+        "power",
+        "Effekt",
+        "W",
+        "power",
+        "measurement",
+        "{{ value_json.power_W | float | round(1) }}",
+    ),
+    (
+        "calculated_power_W",
+        "calculated_power",
+        "Aktuell Effekt",
+        "W",
+        "power",
+        "measurement",
+        "{{ value_json.calculated_power_W | int }}",
+    ),
+    (
+        "energy_kWh",
+        "energy",
+        "Energi",
+        "kWh",
+        "energy",
+        "total_increasing",
+        "{{ value_json.energy_kWh | float | round(3) }}",
+    ),
+    (
+        "cumulative_kwh",
+        "cumulative_energy",
+        "Total Energi",
+        "kWh",
+        "energy",
+        "total_increasing",
+        "{{ value_json.cumulative_kwh | float | round(3) }}",
+    ),
+    (
+        "pulses",
+        "pulses",
+        "Pulser",
+        "pulser",
+        None,
+        "total_increasing",
+        "{{ value_json.pulses | int }}",
+    ),
+    (
+        "wind_avg_km_h",
+        "wind_speed",
+        "Vindhastighet",
+        "m/s",
+        "wind_speed",
+        "measurement",
+        "{{ (value_json.wind_avg_km_h | float / 3.6) | round(1) }}",
+    ),
+    (
+        "wind_avg_m_s",
+        "wind_speed_ms",
+        "Vindhastighet",
+        "m/s",
+        "wind_speed",
+        "measurement",
+        "{{ value_json.wind_avg_m_s | float | round(1) }}",
+    ),
+    (
+        "rain_mm",
+        "rain",
+        "Nederbörd",
+        "mm",
+        "precipitation",
+        "total_increasing",
+        "{{ value_json.rain_mm | float | round(1) }}",
+    ),
+    (
+        "rssi",
+        "rssi",
+        "RSSI",
+        "dB",
+        "signal_strength",
+        "measurement",
+        "{{ value_json.rssi | float | round(1) }}",
+    ),
+    (
+        "snr",
+        "snr",
+        "SNR",
+        "dB",
+        "signal_strength",
+        "measurement",
+        "{{ value_json.snr | float | round(1) }}",
+    ),
+]
 
 
 class MQTTManager:
@@ -28,11 +196,13 @@ class MQTTManager:
         self._user: str = ""
         self._password: str = ""
         self._prefix: str = "sensor_scanner"
+        self._ha_discovery_enabled: bool = False
+        self._ha_discovery_prefix: str = "homeassistant"
         self._last_error: str = ""
         self._published_count: int = 0
         self._status_callback = status_callback
 
-    def configure_and_connect(self, settings: Dict[str, Any]) -> None:
+    def configure_and_connect(self, settings: Dict[str, Any], reconnect_broker: bool = True) -> None:
         with self._lock:
             self._enabled = str(settings.get("mqtt_enabled", "1")).strip() not in ("0", "false", "False", "")
             self._host = str(settings.get("mqtt_host", "192.168.1.121")).strip()
@@ -43,6 +213,14 @@ class MQTTManager:
             self._user = str(settings.get("mqtt_user", "")).strip()
             self._password = str(settings.get("mqtt_pass", ""))
             self._prefix = str(settings.get("mqtt_prefix", "sensor_scanner")).strip().strip("/") or "sensor_scanner"
+            self._ha_discovery_enabled = str(settings.get("ha_discovery_enabled", "0")).strip() in ("1", "true", "True")
+            self._ha_discovery_prefix = (
+                str(settings.get("ha_discovery_prefix", "homeassistant")).strip().strip("/") or "homeassistant"
+            )
+
+            if not reconnect_broker and self._client is not None:
+                self._notify_status()
+                return
 
             self.disconnect()
 
@@ -55,7 +233,7 @@ class MQTTManager:
             try:
                 client = mqtt.Client(
                     callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-                    client_id=f"sensor_scanner_{ sanitize_topic_segment(self._prefix) }",
+                    client_id=f"sensor_scanner_{sanitize_topic_segment(self._prefix)}",
                 )
                 if self._user:
                     client.username_pw_set(self._user, self._password)
@@ -130,6 +308,8 @@ class MQTTManager:
             "port": self._port,
             "prefix": self._prefix,
             "user": self._user,
+            "ha_discovery_enabled": self._ha_discovery_enabled,
+            "ha_discovery_prefix": self._ha_discovery_prefix,
             "last_error": self._last_error,
             "published_count": self._published_count,
         }
@@ -145,7 +325,7 @@ class MQTTManager:
         id_seg = sanitize_topic_segment(device.get("device_id", "unknown"))
         alias_raw = str(device.get("alias", "") or "").strip()
 
-        enriched_payload = dict(payload)
+        enriched_payload = enrich_sparsnas_payload(dict(payload))
         if alias_raw:
             enriched_payload["alias"] = alias_raw
         enriched_payload["device_key"] = device.get("device_key")
@@ -170,8 +350,15 @@ class MQTTManager:
         """
         Publishes Home Assistant MQTT Auto-Discovery configurations for all detected metrics
         in the device's last_payload.
-        Topic format: homeassistant/sensor/sensor_scanner_<device_key>_<metric>/config
+        Topic format: <ha_discovery_prefix>/sensor/sensor_scanner_<device_key>_<metric>/config
         """
+        if not self._ha_discovery_enabled:
+            return {
+                "ok": False,
+                "error": "Home Assistant Auto-Discovery är avstängt under System & Logg.",
+                "published_topics": [],
+            }
+
         if not self._enabled or not self._connected or self._client is None:
             return {
                 "ok": False,
@@ -195,136 +382,7 @@ class MQTTManager:
                 payload = json.loads(payload)
             except Exception:
                 payload = {}
-
-        # Metric definitions: (json_key, metric_slug, friendly_suffix, unit, device_class, state_class, value_template)
-        metric_specs = [
-            (
-                "temperature_C",
-                "temperature",
-                "Temperatur",
-                "°C",
-                "temperature",
-                "measurement",
-                "{{ value_json.temperature_C | float | round(1) }}",
-            ),
-            (
-                "temperature_F",
-                "temperature_f",
-                "Temperatur",
-                "°F",
-                "temperature",
-                "measurement",
-                "{{ value_json.temperature_F | float | round(1) }}",
-            ),
-            (
-                "humidity",
-                "humidity",
-                "Luftfuktighet",
-                "%",
-                "humidity",
-                "measurement",
-                "{{ value_json.humidity | float | round(1) }}",
-            ),
-            (
-                "battery_ok",
-                "battery",
-                "Batteri",
-                "%",
-                "battery",
-                "measurement",
-                "{{ 100 if value_json.battery_ok | int == 1 else 10 }}",
-            ),
-            (
-                "pressure_kPa",
-                "pressure_kpa",
-                "Tryck",
-                "kPa",
-                "pressure",
-                "measurement",
-                "{{ value_json.pressure_kPa | float | round(1) }}",
-            ),
-            (
-                "pressure_bar",
-                "pressure_bar",
-                "Tryck",
-                "bar",
-                "pressure",
-                "measurement",
-                "{{ value_json.pressure_bar | float | round(2) }}",
-            ),
-            (
-                "pressure_PSI",
-                "pressure_psi_bar",
-                "Däcktryck",
-                "bar",
-                "pressure",
-                "measurement",
-                "{{ (value_json.pressure_PSI | float * 0.0689476) | round(2) }}",
-            ),
-            (
-                "pressure_hPa",
-                "pressure_hpa",
-                "Lufttryck",
-                "hPa",
-                "atmospheric_pressure",
-                "measurement",
-                "{{ value_json.pressure_hPa | float | round(1) }}",
-            ),
-            (
-                "power_W",
-                "power",
-                "Effekt",
-                "W",
-                "power",
-                "measurement",
-                "{{ value_json.power_W | float | round(1) }}",
-            ),
-            (
-                "energy_kWh",
-                "energy",
-                "Energi",
-                "kWh",
-                "energy",
-                "total_increasing",
-                "{{ value_json.energy_kWh | float | round(3) }}",
-            ),
-            (
-                "wind_avg_km_h",
-                "wind_speed",
-                "Vindhastighet",
-                "km/h",
-                "wind_speed",
-                "measurement",
-                "{{ value_json.wind_avg_km_h | float | round(1) }}",
-            ),
-            (
-                "rain_mm",
-                "rain",
-                "Nederbörd",
-                "mm",
-                "precipitation",
-                "total_increasing",
-                "{{ value_json.rain_mm | float | round(1) }}",
-            ),
-            (
-                "rssi",
-                "rssi",
-                "RSSI",
-                "dB",
-                "signal_strength",
-                "measurement",
-                "{{ value_json.rssi | float | round(1) }}",
-            ),
-            (
-                "snr",
-                "snr",
-                "SNR",
-                "dB",
-                "signal_strength",
-                "measurement",
-                "{{ value_json.snr | float | round(1) }}",
-            ),
-        ]
+        payload = enrich_sparsnas_payload(dict(payload))
 
         ha_device_block = {
             "identifiers": [f"sensor_scanner_{device_key}"],
@@ -336,12 +394,12 @@ class MQTTManager:
 
         published_topics: List[str] = []
 
-        for json_key, metric_slug, suffix, unit, dev_class, state_class, val_tpl in metric_specs:
+        for json_key, metric_slug, suffix, unit, dev_class, state_class, val_tpl in HA_METRIC_SPECS:
             if json_key not in payload or payload[json_key] is None:
                 continue
 
             unique_id = f"sensor_scanner_{device_key}_{metric_slug}"
-            config_topic = f"homeassistant/sensor/{unique_id}/config"
+            config_topic = f"{self._ha_discovery_prefix}/sensor/{unique_id}/config"
 
             config_payload: Dict[str, Any] = {
                 "name": f"{display_name} {suffix}",
@@ -363,7 +421,6 @@ class MQTTManager:
             )
             published_topics.append(config_topic)
 
-        # Also publish current payload once so HA immediately gets state values
         self.publish_signal(device, payload)
 
         return {
@@ -371,4 +428,31 @@ class MQTTManager:
             "device_key": device_key,
             "published_count": len(published_topics),
             "published_topics": published_topics,
+        }
+
+    def clear_ha_discovery(self, device: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Clears Home Assistant MQTT Auto-Discovery configurations for a device by publishing
+        an empty payload ("") with retain=True to all discovery topics for that device.
+        """
+        if not self._enabled or not self._connected or self._client is None:
+            return {"ok": False, "cleared_topics": []}
+
+        device_key = sanitize_topic_segment(device.get("device_key", "unknown"))
+        cleared_topics: List[str] = []
+
+        for _, metric_slug, _, _, _, _, _ in HA_METRIC_SPECS:
+            unique_id = f"sensor_scanner_{device_key}_{metric_slug}"
+            config_topic = f"{self._ha_discovery_prefix}/sensor/{unique_id}/config"
+            try:
+                self._client.publish(config_topic, payload="", qos=1, retain=True)
+                cleared_topics.append(config_topic)
+            except Exception as exc:
+                logger.debug("Failed to clear discovery topic %s: %s", config_topic, exc)
+
+        return {
+            "ok": True,
+            "device_key": device_key,
+            "cleared_count": len(cleared_topics),
+            "cleared_topics": cleared_topics,
         }

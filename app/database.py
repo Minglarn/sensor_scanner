@@ -11,6 +11,15 @@ logger = logging.getLogger("sensor_scanner.database")
 DB_PATH = os.environ.get("DB_PATH", "/app/data/sensor_scanner.db")
 
 
+def _parse_bool_env(val: str, default: str = "0") -> str:
+    v = (val or "").strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return "1"
+    if v in ("0", "false", "no", "off"):
+        return "0"
+    return default
+
+
 def get_default_settings() -> Dict[str, str]:
     return {
         "device_index": os.environ.get("DEVICE_INDEX", "0"),
@@ -22,25 +31,72 @@ def get_default_settings() -> Dict[str, str]:
         "ppm": os.environ.get("RTL_PPM", "0"),
         "debounce_seconds": os.environ.get("DEBOUNCE_SECONDS", "2.0"),
         "retention_days": os.environ.get("RETENTION_DAYS", "30"),
-        "mqtt_enabled": os.environ.get("MQTT_ENABLED", "1"),
+        "mqtt_enabled": _parse_bool_env(os.environ.get("MQTT_ENABLED", "1"), "1"),
         "mqtt_host": os.environ.get("MQTT_HOST", "192.168.1.121"),
         "mqtt_port": os.environ.get("MQTT_PORT", "1883"),
         "mqtt_user": os.environ.get("MQTT_USER", ""),
         "mqtt_pass": os.environ.get("MQTT_PASS", ""),
         "mqtt_prefix": os.environ.get("MQTT_PREFIX", "sensor_scanner"),
+        "ha_discovery_enabled": _parse_bool_env(os.environ.get("HA_DISCOVERY_ENABLED", "false"), "0"),
+        "ha_discovery_prefix": os.environ.get("HA_DISCOVERY_PREFIX", "homeassistant") or "homeassistant",
     }
+
+
+def enrich_sparsnas_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    If payload is from Ikea-Sparsnas (or contains 'effect' > 0 with pulses_per_kwh),
+    computes 'calculated_power_W' and adds it to the payload.
+    """
+    model_lower = str(payload.get("model") or "").lower()
+    effect = payload.get("effect")
+    if effect is not None and ("sparsnas" in model_lower or "pulses_per_kwh" in payload or "cumulative_kwh" in payload):
+        try:
+            eff_num = float(effect)
+            if eff_num > 0:
+                ppk = float(payload.get("pulses_per_kwh") or 1000.0)
+                if ppk <= 0:
+                    ppk = 1000.0
+                watts = round((3600000.0 / ppk) * 1024.0 / eff_num)
+                payload["calculated_power_W"] = int(watts)
+        except (ValueError, TypeError, ZeroDivisionError):
+            pass
+    return payload
 
 
 def infer_category(model: str, payload: Dict[str, Any]) -> str:
     model_lower = (model or "").lower()
     keys = {k.lower() for k in payload.keys()}
+    ptype = str(payload.get("type") or "").strip().upper()
 
-    if "tpms" in model_lower or any(k in keys for k in ("pressure_kpa", "pressure_bar", "pressure_psi", "wheel")):
+    if (
+        ptype == "TPMS"
+        or "tpms" in model_lower
+        or any(k in keys for k in ("pressure_psi", "pressure_kpa", "pressure_bar", "wheel"))
+    ):
         return "TPMS"
-    if any(k in keys for k in ("energy_kwh", "power_w", "current_a", "voltage_v", "consumption", "volume_m3", "water")):
+
+    if any(
+        k in keys
+        for k in (
+            "cumulative_kwh",
+            "energy_kwh",
+            "total_kwh",
+            "energy_mwh",
+            "power_w",
+            "power_kw",
+            "calculated_power_w",
+            "effect",
+            "pulses",
+            "pulse_count",
+            "volume_m3",
+            "water",
+            "consumption",
+            "current_a",
+            "voltage_v",
+        )
+    ) or any(w in model_lower for w in ("sparsnas", "efergy", "owl", "cm180", "wmbus", "meter", "energy", "water", "emon", "gas")):
         return "Meter"
-    if any(w in model_lower for w in ("meter", "energy", "water", "owl", "emon", "gas")):
-        return "Meter"
+
     if any(
         k in keys
         for k in (
@@ -49,7 +105,9 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
             "temp_c",
             "humidity",
             "wind_avg_km_h",
+            "wind_max_km_h",
             "wind_avg_m_s",
+            "wind_max_m_s",
             "wind_speed_m_s",
             "wind_speed_km_h",
             "wind_dir_deg",
@@ -58,15 +116,21 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
             "rain_in",
             "rain_rate_mm_h",
             "rain_rate_in_h",
+            "pressure_hpa",
         )
     ) or any(w in model_lower for w in ("wgr800", "pcr800", "weather", "wind", "rain", "therm")):
         return "Weather"
-    if any(w in model_lower for w in ("smoke", "pir", "motion", "alarm", "security", "door", "contact", "dsc", "honeywell")):
+
+    if any(k in keys for k in ("motion", "contact_open")) or any(
+        w in model_lower for w in ("smoke", "pir", "motion", "alarm", "security", "door", "contact", "dsc", "honeywell")
+    ):
         return "Security"
+
     if any(k in keys for k in ("state", "cmd", "button", "switch", "unit", "group")) or any(
         w in model_lower for w in ("switch", "remote", "nexa", "proove", "intertechno", "kaku", "chuango", "kerui")
     ):
         return "Switch"
+
     return "Sensor"
 
 
@@ -180,6 +244,7 @@ class Database:
                             alias TEXT DEFAULT '',
                             category TEXT DEFAULT 'Sensor',
                             mqtt_enabled INTEGER DEFAULT 1,
+                            ha_discovery INTEGER DEFAULT 0,
                             ignored INTEGER DEFAULT 0,
                             first_seen TEXT NOT NULL,
                             last_seen TEXT NOT NULL,
@@ -190,6 +255,11 @@ class Database:
                     )
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_last_seen ON devices(last_seen DESC);")
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_model_id ON devices(model, device_id);")
+
+                    # Schema migration: add ha_discovery column if missing on older DB
+                    cols = [r["name"] for r in conn.execute("PRAGMA table_info(devices);").fetchall()]
+                    if "ha_discovery" not in cols:
+                        conn.execute("ALTER TABLE devices ADD COLUMN ha_discovery INTEGER DEFAULT 0;")
 
                     conn.execute(
                         """
@@ -206,6 +276,25 @@ class Database:
                             "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);",
                             (k, str(v)),
                         )
+
+                    # Auto-categorize existing devices that still have generic 'Sensor' or 'Unknown' category
+                    existing_Rows = conn.execute(
+                        "SELECT device_key, model, category, last_payload FROM devices;"
+                    ).fetchall()
+                    for r in existing_Rows:
+                        try:
+                            pl = json.loads(r["last_payload"] or "{}")
+                        except Exception:
+                            pl = {}
+                        enriched_pl = enrich_sparsnas_payload(dict(pl))
+                        new_cat = infer_category(r["model"], enriched_pl)
+                        cur_cat = r["category"] or "Sensor"
+                        new_pl_json = json.dumps(enriched_pl, ensure_ascii=False)
+                        if (cur_cat in ("Sensor", "Unknown", "") and new_cat != "Sensor") or new_pl_json != r["last_payload"]:
+                            conn.execute(
+                                "UPDATE devices SET category = ?, last_payload = ? WHERE device_key = ?;",
+                                (new_cat if cur_cat in ("Sensor", "Unknown", "") else cur_cat, new_pl_json, r["device_key"]),
+                            )
             finally:
                 conn.close()
 
@@ -245,6 +334,8 @@ class Database:
         Records a signal and updates the device registry.
         Returns (signal_record_or_None_if_ignored, device_record).
         """
+        enrich_sparsnas_payload(payload)
+
         now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
         timestamp = str(payload.get("time") or now_iso)
         model = str(payload.get("model") or "Unknown").strip()
@@ -292,21 +383,24 @@ class Database:
                             """
                             INSERT INTO devices (
                                 device_key, model, device_id, alias, category,
-                                mqtt_enabled, ignored, first_seen, last_seen, hit_count, last_payload
-                            ) VALUES (?, ?, ?, '', ?, 1, 0, ?, ?, 1, ?);
+                                mqtt_enabled, ha_discovery, ignored, first_seen, last_seen, hit_count, last_payload
+                            ) VALUES (?, ?, ?, '', ?, 1, 0, 0, ?, ?, 1, ?);
                             """,
                             (device_key, model, device_id, inferred_cat, timestamp, timestamp, raw_json),
                         )
                     else:
+                        cur_cat = existing_dev["category"] or "Sensor"
+                        updated_cat = inferred_cat if cur_cat in ("Sensor", "Unknown", "") and inferred_cat != "Sensor" else cur_cat
                         conn.execute(
                             """
                             UPDATE devices
-                            SET last_seen = ?,
+                            SET category = ?,
+                                last_seen = ?,
                                 hit_count = hit_count + 1,
                                 last_payload = ?
                             WHERE device_key = ?;
                             """,
-                            (timestamp, raw_json, device_key),
+                            (updated_cat, timestamp, raw_json, device_key),
                         )
 
                     dev_row = conn.execute(
@@ -351,6 +445,7 @@ class Database:
                         "alias": device_dict.get("alias", ""),
                         "category": device_dict.get("category", inferred_cat),
                         "mqtt_enabled": device_dict.get("mqtt_enabled", 1),
+                        "ha_discovery": device_dict.get("ha_discovery", 0),
                         "ignored": device_dict.get("ignored", 0),
                         "hit_count": int(device_dict.get("hit_count", 1)),
                         "channel": channel,
@@ -417,8 +512,8 @@ class Database:
                     s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
                     s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
                     d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.category, 'Sensor') AS category,
-                    COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ignored, 0) AS ignored,
-                    COALESCE(d.hit_count, 1) AS hit_count
+                    COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
+                    COALESCE(d.ignored, 0) AS ignored, COALESCE(d.hit_count, 1) AS hit_count
                 FROM signals s
                 INNER JOIN (
                     SELECT MAX(s2.id) AS max_id
@@ -443,8 +538,8 @@ class Database:
                     s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
                     s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
                     d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.category, 'Sensor') AS category,
-                    COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ignored, 0) AS ignored,
-                    COALESCE(d.hit_count, 1) AS hit_count
+                    COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
+                    COALESCE(d.ignored, 0) AS ignored, COALESCE(d.hit_count, 1) AS hit_count
                 FROM signals s
                 LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
                 WHERE {where_sql}
@@ -471,7 +566,8 @@ class Database:
                     if not item.get("device_key"):
                         item["device_key"] = f"{sanitize_key(item['model'])}_{sanitize_key(item['device_id'])}"
                     try:
-                        item["payload"] = json.loads(item["payload"])
+                        pl = json.loads(item["payload"])
+                        item["payload"] = enrich_sparsnas_payload(pl) if isinstance(pl, dict) else {"raw": item["payload"]}
                     except Exception:
                         item["payload"] = {"raw": item["payload"]}
                     items.append(item)
@@ -538,7 +634,8 @@ class Database:
                 for r in rows:
                     d = dict(r)
                     try:
-                        d["last_payload"] = json.loads(d["last_payload"])
+                        pl = json.loads(d["last_payload"])
+                        d["last_payload"] = enrich_sparsnas_payload(pl) if isinstance(pl, dict) else {}
                     except Exception:
                         d["last_payload"] = {}
                     result.append(d)
@@ -557,7 +654,8 @@ class Database:
                     return None
                 d = dict(row)
                 try:
-                    d["last_payload"] = json.loads(d["last_payload"])
+                    pl = json.loads(d["last_payload"])
+                    d["last_payload"] = enrich_sparsnas_payload(pl) if isinstance(pl, dict) else {}
                 except Exception:
                     d["last_payload"] = {}
                 return d
@@ -570,6 +668,7 @@ class Database:
         alias: Optional[str] = None,
         category: Optional[str] = None,
         mqtt_enabled: Optional[int] = None,
+        ha_discovery: Optional[int] = None,
         ignored: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         with self._lock:
@@ -584,16 +683,17 @@ class Database:
                 new_alias = alias.strip() if alias is not None else row["alias"]
                 new_cat = category.strip() if category is not None else row["category"]
                 new_mqtt = int(bool(mqtt_enabled)) if mqtt_enabled is not None else row["mqtt_enabled"]
+                new_ha = int(bool(ha_discovery)) if ha_discovery is not None else row["ha_discovery"]
                 new_ignored = int(bool(ignored)) if ignored is not None else row["ignored"]
 
                 with conn:
                     conn.execute(
                         """
                         UPDATE devices
-                        SET alias = ?, category = ?, mqtt_enabled = ?, ignored = ?
+                        SET alias = ?, category = ?, mqtt_enabled = ?, ha_discovery = ?, ignored = ?
                         WHERE device_key = ?;
                         """,
-                        (new_alias, new_cat, new_mqtt, new_ignored, device_key),
+                        (new_alias, new_cat, new_mqtt, new_ha, new_ignored, device_key),
                     )
             finally:
                 conn.close()
@@ -745,4 +845,3 @@ class Database:
                 return deleted
             finally:
                 conn.close()
-

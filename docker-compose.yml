@@ -21,5 +21,6 @@ services:
       - MQTT_USER=
       - MQTT_PASS=
       - MQTT_PREFIX=sensor_scanner
+      - HA_DISCOVERY_ENABLED=false
+      - HA_DISCOVERY_PREFIX=homeassistant
       - RETENTION_DAYS=30
-
