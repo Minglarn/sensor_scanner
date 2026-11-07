@@ -1,6 +1,6 @@
 # SensorScanner
 
-**Version:** `2026.11.07.12` (CalVer)  
+**Version:** `2026.11.07.13` (CalVer)  
 **Container Image:** `ghcr.io/minglarn/sensor_scanner:latest`  
 **GitHub Repository:** `https://github.com/Minglarn/sensor_scanner`
 

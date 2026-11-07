@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.12</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.13</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -307,17 +307,17 @@
       </div>
     </header>
 
-    <!-- MAIN SCROLLABLE WORKSPACE -->
-    <main class="flex-1 overflow-y-auto px-3 sm:px-6 py-3">
-      <div class="max-w-[1920px] w-full mx-auto">
+    <!-- MAIN WORKSPACE (FLEX-SPLIT WITH PINNED TOOLBARS & STICKY TABLE HEADER) -->
+    <main class="flex-1 min-w-0 flex flex-col overflow-hidden">
+      <div class="max-w-[1920px] w-full min-w-0 mx-auto flex-1 flex flex-col overflow-hidden">
 
         <!-- =================================================================== -->
         <!-- VIEW 1: SIGNALER (#view-signals)                                    -->
         <!-- =================================================================== -->
-        <section id="view-signals" class="space-y-2.5">
+        <section id="view-signals" class="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
       
-      <!-- Filter & View Controls Bar (Single Compact Row with Dynamic Multi-Select Dropdowns) -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm">
+      <!-- Pinned Filter & View Controls Bar (Never scrolls away) -->
+      <div class="shrink-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2.5 shadow-sm">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
           
           <!-- Free-text Search -->
@@ -353,7 +353,7 @@
             </button>
 
             <!-- Dropdown Panel -->
-            <div id="sigModelMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-30 flex flex-col overflow-hidden text-xs">
+            <div id="sigModelMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-40 flex flex-col overflow-hidden text-xs">
               <div class="p-2 border-b border-slate-100 dark:border-slate-800">
                 <div class="relative">
                   <i class="mdi mdi-magnify text-slate-400 absolute left-2 top-1/2 -translate-y-1/2"></i>
@@ -394,7 +394,7 @@
             </button>
 
             <!-- Dropdown Panel -->
-            <div id="sigFilterMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-30 flex flex-col overflow-hidden text-xs">
+            <div id="sigFilterMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-40 flex flex-col overflow-hidden text-xs">
               <div id="sigFilterOptionsList" class="p-2 overflow-y-auto space-y-2 max-h-72">
                 <!-- Populated dynamically with Section A (Status) and Section B (Categories) -->
               </div>
@@ -492,7 +492,7 @@
       </div>
 
       <!-- Paused Notice Banner -->
-      <div id="pausedBanner" class="hidden bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-200 px-3 py-1.5 rounded-lg text-xs flex items-center justify-between">
+      <div id="pausedBanner" class="hidden shrink-0 mx-3 sm:mx-6 mt-2 bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-200 px-3 py-1.5 rounded-lg text-xs flex items-center justify-between">
         <div class="flex items-center gap-1.5">
           <i class="mdi mdi-pause-circle-outline text-base"></i>
           <span>Live-flödet är pausat i gränssnittet. Inkommande signaler sparas fortfarande i databasen.</span>
@@ -500,141 +500,133 @@
         <button onclick="togglePause()" class="px-2.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 font-semibold">Återuppta nu</button>
       </div>
 
-      <!-- Signals Scroll / Hover-Lock Container -->
+      <!-- Dedicated Vertical Scroll Container for Signals Cards & Table -->
       <div
         id="signals-scroll-container"
-        onmouseenter="setSignalsHoverLock(true)"
-        onmouseleave="setSignalsHoverLock(false)"
+        class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-3 sm:px-6 pt-2.5 pb-6"
       >
         <!-- Signals Multi-Column Card Grid (3-5 Columns) -->
         <div
           id="signalsGridContainer"
-          onmouseenter="setSignalsHoverLock(true)"
-          onmouseleave="setSignalsHoverLock(false)"
           class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3"
         >
           <!-- Rendered by JS -->
         </div>
 
-        <!-- Signals Dense Table View -->
-        <div id="signalsTableContainer" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr class="bg-slate-50 dark:bg-slate-950/90 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider">
-                  <th
-                    id="sigTh_time"
-                    onclick="toggleSignalSort('time')"
-                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                    title="Klicka för att sortera på Tid"
-                  >
-                    <span class="inline-flex items-center gap-1">
-                      <span>Tid</span>
-                      <span id="sigSortIcon_time" class="inline-flex items-center"><i class="mdi mdi-arrow-down"></i></span>
+        <!-- Signals Dense Table View (Fixed/Constrained Columns + Sticky Thead) -->
+        <div id="signalsTableContainer" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
+          <table class="w-full table-fixed text-left border-collapse text-xs">
+            <thead class="sticky top-0 z-20 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-sm shadow-sm">
+              <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider">
+                <th
+                  id="sigTh_time"
+                  onclick="toggleSignalSort('time')"
+                  class="w-24 py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap"
+                  title="Klicka för att sortera på Tid"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    <span>Tid</span>
+                    <span id="sigSortIcon_time" class="inline-flex items-center"><i class="mdi mdi-arrow-down"></i></span>
+                  </span>
+                </th>
+                <th
+                  id="sigTh_name"
+                  onclick="toggleSignalSort('name')"
+                  class="w-48 max-w-[200px] py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap truncate"
+                  title="Klicka för att sortera alfabetiskt på Enhet / Alias"
+                >
+                  <div class="inline-flex items-center gap-1.5">
+                    <span id="sigThLabel_name" class="inline-flex items-center gap-1">
+                      <span>Enhet / Alias</span>
+                      <span id="sigSortIcon_name" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
                     </span>
-                  </th>
-                  <th
-                    id="sigTh_name"
-                    onclick="toggleSignalSort('name')"
-                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                    title="Klicka för att sortera alfabetiskt på Enhet / Alias"
-                  >
-                    <div class="inline-flex items-center gap-2">
-                      <span id="sigThLabel_name" class="inline-flex items-center gap-1">
-                        <span>Enhet / Alias</span>
-                        <span id="sigSortIcon_name" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
-                      </span>
-                      <button
-                        type="button"
-                        id="sigThBtn_hits"
-                        onclick="event.stopPropagation(); toggleSignalSort('hits')"
-                        title="Sortera på Antal träffar (paket)"
-                        class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900 hover:border-sky-500/60 text-[10px] font-mono normal-case transition"
-                      >
-                        <i class="mdi mdi-counter text-sky-500"></i>
-                        <span>Träffar</span>
-                        <span id="sigSortIcon_hits" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40"></i></span>
-                      </button>
-                    </div>
-                  </th>
-                  <th
-                    id="sigTh_category"
-                    onclick="toggleSignalSort('category')"
-                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                    title="Klicka för att sortera på Kategori"
-                  >
-                    <span class="inline-flex items-center gap-1">
-                      <span>Kategori</span>
-                      <span id="sigSortIcon_category" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
-                    </span>
-                  </th>
-                  <th
-                    id="sigTh_id"
-                    onclick="toggleSignalSort('id')"
-                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                    title="Klicka för att sortera på ID / Kanal"
-                  >
-                    <span class="inline-flex items-center gap-1">
-                      <span>ID / Kanal</span>
-                      <span id="sigSortIcon_id" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
-                    </span>
-                  </th>
-                  <th class="py-2 px-2.5 whitespace-nowrap">Mätvärden</th>
-                  <th
-                    id="sigTh_freq"
-                    onclick="toggleSignalSort('freq')"
-                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                    title="Klicka för att sortera på Radio &amp; Frekvens"
-                  >
-                    <span class="inline-flex items-center gap-1">
-                      <span>Radio &amp; Frekvens</span>
-                      <span id="sigSortIcon_freq" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
-                    </span>
-                  </th>
-                  <th
-                    id="sigTh_rssi"
-                    onclick="toggleSignalSort('rssi')"
-                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                    title="Klicka för att sortera på RSSI / Signalstyrka"
-                  >
-                    <span class="inline-flex items-center gap-1">
-                      <span>RSSI / SNR</span>
-                      <span id="sigSortIcon_rssi" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
-                    </span>
-                  </th>
-                  <th class="py-2 px-2.5 text-right whitespace-nowrap">Åtgärder</th>
-                </tr>
-              </thead>
-              <tbody
-                id="signalsTableBody"
-                onmouseenter="setSignalsHoverLock(true)"
-                onmouseleave="setSignalsHoverLock(false)"
-                class="divide-y divide-slate-200/70 dark:divide-slate-800/70"
-              >
-                <!-- Rendered by JS -->
-              </tbody>
-            </table>
-          </div>
+                    <button
+                      type="button"
+                      id="sigThBtn_hits"
+                      onclick="event.stopPropagation(); toggleSignalSort('hits')"
+                      title="Sortera på Antal träffar (paket)"
+                      class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900 hover:border-sky-500/60 text-[10px] font-mono normal-case transition"
+                    >
+                      <i class="mdi mdi-counter text-sky-500"></i>
+                      <span id="sigSortIcon_hits" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40"></i></span>
+                    </button>
+                  </div>
+                </th>
+                <th
+                  id="sigTh_category"
+                  onclick="toggleSignalSort('category')"
+                  class="w-24 py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap"
+                  title="Klicka för att sortera på Kategori"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    <span>Kategori</span>
+                    <span id="sigSortIcon_category" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                  </span>
+                </th>
+                <th
+                  id="sigTh_id"
+                  onclick="toggleSignalSort('id')"
+                  class="w-28 max-w-[120px] py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap truncate"
+                  title="Klicka för att sortera på ID / Kanal"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    <span>ID / Kanal</span>
+                    <span id="sigSortIcon_id" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                  </span>
+                </th>
+                <th class="min-w-[200px] py-2 px-2.5 whitespace-nowrap">Mätvärden</th>
+                <th
+                  id="sigTh_freq"
+                  onclick="toggleSignalSort('freq')"
+                  class="w-32 py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap"
+                  title="Klicka för att sortera på Radio &amp; Frekvens"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    <span>Radio &amp; Frekvens</span>
+                    <span id="sigSortIcon_freq" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                  </span>
+                </th>
+                <th
+                  id="sigTh_rssi"
+                  onclick="toggleSignalSort('rssi')"
+                  class="w-24 py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap text-right"
+                  title="Klicka för att sortera på RSSI / Signalstyrka"
+                >
+                  <span class="inline-flex items-center justify-end gap-1">
+                    <span>RSSI / SNR</span>
+                    <span id="sigSortIcon_rssi" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                  </span>
+                </th>
+                <th class="w-24 py-2 px-2.5 text-right whitespace-nowrap">Åtgärder</th>
+              </tr>
+            </thead>
+            <tbody
+              id="signalsTableBody"
+              class="divide-y divide-slate-200/70 dark:divide-slate-800/70"
+            >
+              <!-- Rendered by JS -->
+            </tbody>
+          </table>
         </div>
-      </div>
 
-      <!-- Empty State -->
-      <div id="signalsEmptyState" class="hidden bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center">
-        <div class="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 mx-auto flex items-center justify-center text-slate-400 mb-2.5">
-          <i class="mdi mdi-access-point-network-off text-2xl"></i>
+        <!-- Empty State -->
+        <div id="signalsEmptyState" class="hidden bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center">
+          <div class="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 mx-auto flex items-center justify-center text-slate-400 mb-2.5">
+            <i class="mdi mdi-access-point-network-off text-2xl"></i>
+          </div>
+          <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Inga signaler matchar filtret ännu</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+            Väntar på RF-paket från rtl_433 på valt frekvensband, eller prova att återställa snabbfiltret ovan.
+          </p>
         </div>
-        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Inga signaler matchar filtret ännu</h3>
-        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-          Väntar på RF-paket från rtl_433 på valt frekvensband, eller prova att återställa snabbfiltret ovan.
-        </p>
       </div>
     </section>
 
         <!-- =================================================================== -->
         <!-- VIEW 2: ENHETER (#view-devices)                                     -->
         <!-- =================================================================== -->
-        <section id="view-devices" class="hidden space-y-2.5 pb-16">
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm">
+        <section id="view-devices" class="hidden flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+      <div class="shrink-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2.5 shadow-sm">
         
         <!-- Single Compact Row: Search, Dynamic Categories & Filter Dropdown, Group By, Sort By, Ignored, Refresh & Reset -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
@@ -672,7 +664,7 @@
             </button>
 
             <!-- Dropdown Panel -->
-            <div id="devFilterMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-30 flex flex-col overflow-hidden text-xs">
+            <div id="devFilterMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-40 flex flex-col overflow-hidden text-xs">
               <div id="devFilterOptionsList" class="p-2 overflow-y-auto space-y-2 max-h-72">
                 <!-- Populated dynamically with Section A (Status) and Section B (Categories) -->
               </div>
@@ -747,13 +739,16 @@
         </div>
       </div>
 
-      <!-- Devices Container (Collapsible Group Sections or Flat Grid) -->
-      <div id="devicesContainer" class="space-y-3">
-        <!-- Rendered by JS -->
-      </div>
+      <!-- Dedicated Vertical Scroll Container for Devices -->
+      <div id="devices-scroll-container" class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-3 sm:px-6 pt-2.5 pb-20">
+        <!-- Devices Container (Collapsible Group Sections or Flat Grid) -->
+        <div id="devicesContainer" class="space-y-3">
+          <!-- Rendered by JS -->
+        </div>
 
-      <div id="devicesEmptyState" class="hidden bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center text-xs text-slate-500 dark:text-slate-400">
-        Inga enheter matchar filtret ännu.
+        <div id="devicesEmptyState" class="hidden bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center text-xs text-slate-500 dark:text-slate-400">
+          Inga enheter matchar filtret ännu.
+        </div>
       </div>
     </section>
 
@@ -816,7 +811,7 @@
         <!-- =================================================================== -->
         <!-- VIEW 3: STATISTIK (#view-stats) - DEDICATED VIEW                    -->
         <!-- =================================================================== -->
-        <section id="view-stats" class="hidden space-y-4">
+        <section id="view-stats" class="hidden flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-6 py-3 space-y-4">
           
           <!-- Overview KPI Cards -->
           <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -932,7 +927,7 @@
         <!-- =================================================================== -->
         <!-- VIEW 4: INSTÄLLNINGAR (#view-settings) - DEDICATED VIEW             -->
         <!-- =================================================================== -->
-        <section id="view-settings" class="hidden space-y-4">
+        <section id="view-settings" class="hidden flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-6 py-3 space-y-4">
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
             
             <!-- Left Column: RTL-SDR, MQTT & Home Assistant Settings Form -->
@@ -1188,7 +1183,7 @@
         <!-- =================================================================== -->
         <!-- VIEW 5: LOGGAR & DIAGNOSTIK (#view-logs) - DEDICATED VIEW           -->
         <!-- =================================================================== -->
-        <section id="view-logs" class="hidden space-y-3">
+        <section id="view-logs" class="hidden flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-6 py-3 space-y-3">
           
           <!-- Process Status & Active Command Card -->
           <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm space-y-3">
@@ -2223,10 +2218,11 @@
         neutral: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
       };
 
-      function addMetric(icon, text, colorVariant, kpiLabel, kpiPrimary, kpiSecondary = '') {
+      function addMetric(icon, text, colorVariant, kpiLabel, kpiPrimary, kpiSecondary = '', titleAttr = '') {
         const cls = palettes[colorVariant] || palettes.neutral;
+        const tooltip = titleAttr ? ` title="${escapeHtml(titleAttr)}"` : '';
         badges.push(`
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold border ${cls}">
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold border ${cls}"${tooltip}>
             <i class="mdi ${icon} text-xs leading-none"></i><span>${escapeHtml(text)}</span>
           </span>
         `);
@@ -2780,13 +2776,23 @@
         addMetric('mdi-battery-outline', `Batteri: ${voltStr}`, 'emerald', 'Batterispänning', voltStr);
       }
 
-      // 12. SMART FALLBACK FOR ALL REMAINING PAYLOAD KEYS
+      // 12. SMART FALLBACK FOR ALL REMAINING PAYLOAD KEYS (Truncate strings > 14 chars with full tooltip)
       Object.keys(p).forEach((key) => {
         if (TECHNICAL_METADATA_KEYS.has(key) || consumed.has(key)) return;
         const val = p[key];
         if (val === null || val === undefined || val === '') return;
         const formattedVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
-        addMetric('mdi-tag-outline', `${key}: ${formattedVal}`, 'neutral', key, formattedVal);
+        const isLongStr = formattedVal.length > 14;
+        const shortVal = isLongStr ? `${formattedVal.slice(0, 8)}…${formattedVal.slice(-5)}` : formattedVal;
+        addMetric(
+          'mdi-tag-outline',
+          `${key}: ${shortVal}`,
+          'neutral',
+          key,
+          formattedVal,
+          '',
+          isLongStr ? `${key}: ${formattedVal}` : ''
+        );
       });
 
       // 13. Sequence Number (sequence) -> Hide in table/cards if real telemetry exists; always show in Detail Modal
@@ -3365,8 +3371,13 @@
         const panel = document.getElementById(`view-${t}`);
         const btn = document.getElementById(`tabBtn_${t}`);
         if (panel) {
-          if (t === tab) panel.classList.remove('hidden');
-          else panel.classList.add('hidden');
+          if (t === tab) {
+            panel.classList.remove('hidden');
+            if (t === 'signals' || t === 'devices') panel.classList.add('flex');
+          } else {
+            panel.classList.add('hidden');
+            if (t === 'signals' || t === 'devices') panel.classList.remove('flex');
+          }
         }
         if (btn) {
           if (t === tab) {
@@ -3748,6 +3759,14 @@
           if (groupDevices && container) {
             const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
             if (existingEl) {
+              const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, sig.payload || {});
+              const titleTarget = existingEl.querySelector('[data-sig-title]');
+              if (titleTarget) {
+                titleTarget.innerHTML = secondaryName
+                  ? `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 truncate">(${escapeHtml(secondaryName)})</span>`
+                  : `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span>`;
+              }
+
               const { badgesHtml } = extractAndFormatMetrics(sig.payload || {}, sig);
               const badgesTarget = existingEl.querySelector('[data-sig-badges]');
               if (badgesTarget) badgesTarget.innerHTML = badgesHtml;
@@ -3772,6 +3791,14 @@
           const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
           if (existingEl) {
             // Update existing card or row in place without full re-render
+            const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, sig.payload || {});
+            const titleTarget = existingEl.querySelector('[data-sig-title]');
+            if (titleTarget) {
+              titleTarget.innerHTML = secondaryName
+                ? `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 truncate">(${escapeHtml(secondaryName)})</span>`
+                : `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span>`;
+            }
+
             const { badgesHtml } = extractAndFormatMetrics(sig.payload || {}, sig);
             const badgesTarget = existingEl.querySelector('[data-sig-badges]');
             if (badgesTarget) badgesTarget.innerHTML = badgesHtml;
@@ -3792,10 +3819,8 @@
             }
 
             if (isDefaultTimeDesc) {
-              // Rule 3.1: Immediately move updated element to the very top (row 1 / card 1)
-              if (container.firstElementChild !== existingEl) {
-                container.prepend(existingEl);
-              }
+              // Immediately move updated element to the very top (row 1 / card 1)
+              container.prepend(existingEl);
             } else if (signalSort.field === 'hits' || signalSort.field === 'rssi' || (signalSort.field === 'time' && signalSort.dir === 'asc')) {
               // Dynamic value sort: reposition element only if its sorted position changed
               const sortedItems = getFilteredSignals();
@@ -3976,7 +4001,7 @@
               <i class="mdi ${catIcon} text-base shrink-0"></i>
               <div data-sig-title class="text-xs truncate flex items-baseline gap-1 min-w-0">${titleHtml}</div>
             </div>
-            <div class="flex items-center gap-0.5 shrink-0">
+            <div data-sig-actions onmouseenter="setSignalsHoverLock(true)" onmouseleave="setSignalsHoverLock(false)" class="flex items-center gap-0.5 shrink-0">
               ${groupBadgeHtml}
               <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
               <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias, Grupp & Kategori">
@@ -4044,37 +4069,37 @@
 
       return `
         <tr data-device-key="${escapeHtml(devKey)}" onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})" class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
-          <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}">
+          <td class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}">
             <i class="mdi mdi-clock-outline mr-0.5"></i><span class="rel-time-label">${escapeHtml(relTime)}</span>
           </td>
-          <td class="py-1.5 px-2.5 whitespace-nowrap">
-            <div class="flex items-center gap-1.5">
-              <i class="mdi ${catIcon} text-sm"></i>
-              <span data-sig-title class="inline-flex items-baseline gap-1.5">
-                <span class="font-bold text-slate-900 dark:text-white">${escapeHtml(primaryName)}</span>
-                ${secondaryName ? `<span class="text-[11px] text-slate-400">(${escapeHtml(secondaryName)})</span>` : ''}
+          <td class="w-48 max-w-[200px] py-2 px-2.5 truncate" title="${escapeHtml(secondaryName ? primaryName + ' (' + secondaryName + ')' : primaryName)}">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <i class="mdi ${catIcon} text-sm shrink-0"></i>
+              <span data-sig-title class="inline-flex items-baseline gap-1 min-w-0 truncate">
+                <span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span>
+                ${secondaryName ? `<span class="text-[11px] text-slate-400 truncate">(${escapeHtml(secondaryName)})</span>` : ''}
               </span>
-              ${hasGroup ? `<span class="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</span>` : ''}
-              <span data-sig-hits class="ml-1 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}</span>
+              ${hasGroup ? `<span class="shrink-0 px-1.5 py-0.2 rounded text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25 truncate max-w-[90px]"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</span>` : ''}
+              <span data-sig-hits class="shrink-0 ml-auto px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}</span>
             </div>
           </td>
-          <td class="py-1.5 px-2.5 whitespace-nowrap">
+          <td class="w-24 py-2 px-2.5 whitespace-nowrap">
             <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
           </td>
-          <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-600 dark:text-slate-300">
+          <td class="w-28 max-w-[120px] py-2 px-2.5 font-mono text-[11px] truncate text-slate-600 dark:text-slate-300" title="${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ' / K' + escapeHtml(sig.channel) : ''}">
             ${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ` <span class="text-slate-400">/ K${escapeHtml(sig.channel)}</span>` : ''}
           </td>
-          <td class="py-1.5 px-2.5">
-            <div data-sig-badges class="flex flex-wrap items-center gap-1">${badgesHtml}</div>
+          <td class="min-w-[200px] py-2 px-2.5">
+            <div data-sig-badges class="flex flex-wrap gap-1 items-center">${badgesHtml}</div>
           </td>
-          <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-600 dark:text-slate-300">
+          <td class="w-32 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap truncate text-slate-600 dark:text-slate-300" title="${escapeHtml(radio.freqLabel)}${radio.proto ? ' ' + escapeHtml(radio.proto) : ''}">
             <i class="mdi ${radio.isBle ? 'mdi-bluetooth text-indigo-500' : 'mdi-sine-wave text-slate-400'} mr-0.5"></i>${escapeHtml(radio.freqLabel)} ${radio.proto ? `<span class="text-slate-400">${escapeHtml(radio.proto)}</span>` : ''}
           </td>
-          <td data-sig-strength class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap">
+          <td data-sig-strength class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-right">
             ${footerSignalHtml}
           </td>
-          <td class="py-1.5 px-2.5 whitespace-nowrap text-right">
-            <div class="inline-flex items-center gap-1">
+          <td class="w-24 py-2 px-2.5 whitespace-nowrap text-right">
+            <div data-sig-actions onmouseenter="setSignalsHoverLock(true)" onmouseleave="setSignalsHoverLock(false)" class="inline-flex items-center justify-end gap-1">
               <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center" title="Redigera Alias">
                 <i class="mdi mdi-pencil-outline"></i>
               </button>
@@ -4362,10 +4387,7 @@
     function closeDetailModal() {
       document.getElementById('detailModal').classList.add('hidden');
       currentModalDeviceKey = null;
-      const scrollWrap = document.getElementById('signals-scroll-container');
-      if (!scrollWrap || !scrollWrap.matches(':hover')) {
-        setSignalsHoverLock(false);
-      }
+      setSignalsHoverLock(false);
     }
 
     async function saveModalDevice() {
