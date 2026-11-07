@@ -271,7 +271,8 @@ async def api_get_signals(
     device_id: Optional[str] = Query(default=None),
     freq_band: Optional[str] = Query(default=None),
     only_aliased: bool = Query(default=False),
-    limit: int = Query(default=100, ge=1, le=500),
+    unique_devices: bool = Query(default=False),
+    limit: int = Query(default=150, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
     return await asyncio.to_thread(
@@ -281,6 +282,7 @@ async def api_get_signals(
         device_id=device_id,
         freq_band=freq_band,
         only_aliased=only_aliased,
+        unique_devices=unique_devices,
         limit=limit,
         offset=offset,
     )

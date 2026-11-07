@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>SensorScanner | RTL-SDR V4 RF Monitor</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -17,6 +18,14 @@
         }
       }
     };
+    (function () {
+      const savedTheme = localStorage.getItem('ss_theme') || 'dark';
+      if (savedTheme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else {
+        document.documentElement.classList.add('dark');
+      }
+    })();
   </script>
   <style>
     ::-webkit-scrollbar {
@@ -24,177 +33,161 @@
       height: 6px;
     }
     ::-webkit-scrollbar-track {
-      background: #0f172a;
+      background: transparent;
     }
     ::-webkit-scrollbar-thumb {
-      background: #334155;
+      background: #64748b44;
       border-radius: 3px;
     }
     ::-webkit-scrollbar-thumb:hover {
-      background: #475569;
+      background: #64748b88;
     }
     @keyframes pulseSubtle {
       0%, 100% { opacity: 1; }
-      50% { opacity: 0.45; }
+      50% { opacity: 0.4; }
     }
     .animate-pulse-subtle {
       animation: pulseSubtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     }
-    .signal-enter {
-      animation: highlightRow 1.2s ease-out;
-    }
-    @keyframes highlightRow {
-      0% { background-color: rgba(14, 165, 233, 0.22); }
-      100% { background-color: transparent; }
-    }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
+<body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-screen flex flex-col selection:bg-sky-500 selection:text-white transition-colors duration-150">
 
   <!-- TOPBAR / HEADER -->
-  <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800 shadow-lg">
-    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5">
-      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5">
+  <header class="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-sm">
+    <div class="max-w-[1920px] w-full mx-auto px-3 sm:px-6 py-2">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
         
         <!-- Brand + Live Status Badges -->
-        <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
           <div class="flex items-center gap-2.5">
-            <div class="w-9 h-9 rounded-lg bg-sky-500/15 border border-sky-500/40 flex items-center justify-center text-sky-400 shrink-0">
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-              </svg>
+            <div class="w-8 h-8 rounded-lg bg-sky-500/10 dark:bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-600 dark:text-sky-400 shrink-0">
+              <i class="mdi mdi-radar text-xl leading-none"></i>
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">SensorScanner</h1>
-                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">v2026.11.07.1</span>
+                <h1 class="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">SensorScanner</h1>
+                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">v2026.11.07.2</span>
               </div>
-              <p class="text-[11px] text-slate-400 hidden sm:block">RTL-SDR Blog V4 &amp; rtl_433 RF-signalanalysator</p>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block leading-tight">RTL-SDR Blog V4 &amp; rtl_433 RF-signalanalysator</p>
             </div>
           </div>
 
-          <!-- Status Indicators (SDR & MQTT) + Pause Button (Mobile right) -->
-          <div class="flex items-center gap-2">
-            <div id="sdrStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 border border-slate-700 text-slate-300" title="Status för rtl_433-processen">
-              <span id="sdrStatusDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <!-- Status Indicators (SDR & MQTT) + Pause + Theme Toggle -->
+          <div class="flex items-center gap-1.5">
+            <div id="sdrStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300" title="Status för rtl_433-processen">
+              <span id="sdrStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
               <span id="sdrStatusText">SDR: Initierar</span>
             </div>
 
-            <div id="mqttStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 border border-slate-700 text-slate-400" title="Status för MQTT-anslutning">
-              <span id="mqttStatusDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+            <div id="mqttStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400" title="Status för MQTT-anslutning">
+              <span id="mqttStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
               <span id="mqttStatusText" class="hidden sm:inline">MQTT: Frånkopplad</span>
               <span class="sm:hidden">MQTT</span>
             </div>
 
-            <button id="pauseBtn" onclick="togglePause()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700">
-              <svg id="pauseIcon" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6" />
-              </svg>
+            <button id="pauseBtn" onclick="togglePause()" class="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700" title="Pausa eller återuppta live-flödet">
+              <i id="pauseIcon" class="mdi mdi-pause text-sm leading-none"></i>
               <span id="pauseBtnText">Pausa</span>
+            </button>
+
+            <button id="themeToggleBtn" onclick="toggleTheme()" class="flex items-center justify-center w-7 h-7 rounded-lg text-sm border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700" title="Växla mellan Ljust och Mörkt läge">
+              <i id="themeToggleIcon" class="mdi mdi-weather-sunny leading-none"></i>
             </button>
           </div>
         </div>
 
-        <!-- Quick Frequency Switcher (Thumb-friendly on mobile) -->
-        <div class="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800 overflow-x-auto">
-          <button onclick="switchFrequencyMode('433')" id="modeBtn_433" class="flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-300 hover:text-white hover:bg-slate-800">
-            433.92 MHz
+        <!-- Quick Frequency Switcher -->
+        <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-950/90 p-1 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto">
+          <button onclick="switchFrequencyMode('433')" id="modeBtn_433" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
+            <i class="mdi mdi-sine-wave mr-0.5"></i>433.92 MHz
           </button>
-          <button onclick="switchFrequencyMode('868')" id="modeBtn_868" class="flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-300 hover:text-white hover:bg-slate-800">
-            868.3 MHz
+          <button onclick="switchFrequencyMode('868')" id="modeBtn_868" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
+            <i class="mdi mdi-sine-wave mr-0.5"></i>868.3 MHz
           </button>
-          <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" class="flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-300 hover:text-white hover:bg-slate-800">
-            Dual Hop 433/868
+          <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
+            <i class="mdi mdi-swap-horizontal mr-0.5"></i>Dual Hop 433/868
           </button>
-          <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-300 hover:text-white hover:bg-slate-800">
-            Custom
+          <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
+            <i class="mdi mdi-tune-variant mr-0.5"></i>Custom
           </button>
         </div>
 
       </div>
 
       <!-- Error Banner (shown only if SDR reports an error) -->
-      <div id="sdrErrorBanner" class="hidden mt-2 px-3 py-2 rounded-lg bg-rose-950/80 border border-rose-700/70 text-rose-200 text-xs flex items-center justify-between gap-2">
+      <div id="sdrErrorBanner" class="hidden mt-2 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-700/70 text-rose-800 dark:text-rose-200 text-xs flex items-center justify-between gap-2">
         <div class="flex items-center gap-2 min-w-0">
-          <svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+          <i class="mdi mdi-alert-circle-outline text-base text-rose-600 dark:text-rose-400 shrink-0"></i>
           <span id="sdrErrorText" class="truncate font-mono"></span>
         </div>
-        <button onclick="switchTab('system')" class="shrink-0 underline hover:text-white font-semibold">Visa logg</button>
+        <button onclick="switchTab('system')" class="shrink-0 underline hover:opacity-80 font-semibold">Visa logg</button>
       </div>
 
       <!-- Navigation Tabs -->
-      <nav class="flex items-center justify-between border-t border-slate-800/80 mt-2.5 pt-2 -mb-1">
-        <div class="flex space-x-1 sm:space-x-2 w-full sm:w-auto">
-          <button onclick="switchTab('signals')" id="tabBtn_signals" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition bg-sky-500/15 text-sky-400 border border-sky-500/30">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+      <nav class="flex items-center justify-between border-t border-slate-200 dark:border-slate-800/80 mt-2 pt-1.5 -mb-0.5">
+        <div class="flex space-x-1 sm:space-x-1.5 w-full sm:w-auto">
+          <button onclick="switchTab('signals')" id="tabBtn_signals" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition">
+            <i class="mdi mdi-access-point-network text-sm"></i>
             <span>Signaler</span>
-            <span id="navCountSignals" class="ml-1 px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[11px] font-mono">0</span>
+            <span id="navCountSignals" class="ml-0.5 px-1.5 py-0.2 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-mono">0</span>
           </button>
 
-          <button onclick="switchTab('devices')" id="tabBtn_devices" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-            </svg>
+          <button onclick="switchTab('devices')" id="tabBtn_devices" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition">
+            <i class="mdi mdi-devices text-sm"></i>
             <span>Enheter</span>
-            <span id="navCountDevices" class="ml-1 px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[11px] font-mono">0</span>
+            <span id="navCountDevices" class="ml-0.5 px-1.5 py-0.2 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-mono">0</span>
           </button>
 
-          <button onclick="switchTab('system')" id="tabBtn_system" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+          <button onclick="switchTab('system')" id="tabBtn_system" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition">
+            <i class="mdi mdi-console text-sm"></i>
             <span>System &amp; Logg</span>
           </button>
         </div>
 
-        <div class="hidden md:flex items-center gap-3 text-xs text-slate-400 font-mono">
-          <span id="headerCmdPreview" class="truncate max-w-md text-slate-500"></span>
+        <div class="hidden xl:flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+          <i class="mdi mdi-terminal"></i>
+          <span id="headerCmdPreview" class="truncate max-w-xl"></span>
         </div>
       </nav>
     </div>
   </header>
 
-  <!-- MAIN CONTENT CONTAINER -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4">
+  <!-- MAIN CONTENT CONTAINER (Full Width 1920px) -->
+  <main class="flex-1 max-w-[1920px] w-full mx-auto px-3 sm:px-6 py-3">
 
     <!-- =================================================================== -->
     <!-- TAB 1: LIVE & HISTORIK (SIGNALER)                                   -->
     <!-- =================================================================== -->
-    <section id="tabPanel_signals" class="space-y-4">
-      <!-- Filter Bar -->
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 shadow">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center">
+    <section id="tabPanel_signals" class="space-y-2.5">
+      
+      <!-- Filter & View Controls Bar -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm space-y-2">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
           
           <!-- Free-text Search -->
-          <div class="lg:col-span-5 relative">
-            <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+          <div class="lg:col-span-4 relative">
+            <i class="mdi mdi-magnify text-base text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
             <input
               type="text"
               id="signalSearchInput"
               oninput="debouncedLoadSignals()"
               placeholder="Sök modell, ID, alias eller JSON-nyckel..."
-              class="w-full pl-9 pr-8 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+              class="w-full pl-8 pr-14 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500"
             />
-            <button onclick="clearSignalFilters()" title="Rensa filter" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">
+            <button onclick="clearSignalFilters()" title="Återställ alla filter" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-[11px] font-medium">
               Rensa
             </button>
           </div>
 
           <!-- Model Dropdown -->
-          <div class="lg:col-span-3">
+          <div class="lg:col-span-2">
             <select
               id="signalModelSelect"
               onchange="loadSignals()"
-              class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-sky-500"
+              class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
             >
-              <option value="">Alla protokoll / modeller</option>
+              <option value="">Alla modeller</option>
             </select>
           </div>
 
@@ -203,51 +196,140 @@
             <select
               id="signalFreqSelect"
               onchange="loadSignals()"
-              class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-sky-500"
+              class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
             >
-              <option value="">Alla band</option>
+              <option value="">Alla frekvensband</option>
               <option value="433">433 MHz-bandet</option>
               <option value="868">868 MHz-bandet</option>
             </select>
           </div>
 
-          <!-- Only Aliased Checkbox -->
-          <div class="lg:col-span-2 flex items-center justify-between sm:justify-end gap-2">
-            <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-300">
+          <!-- Group Duplicates + Alias Filter + View Switcher -->
+          <div class="lg:col-span-4 flex flex-wrap items-center justify-between sm:justify-end gap-2">
+            
+            <!-- Group Devices Toggle -->
+            <button
+              id="groupDevicesBtn"
+              onclick="toggleGroupDevices()"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition"
+              title="Visa endast senaste kortet/raden per unik enhet och uppdatera på plats"
+            >
+              <i class="mdi mdi-layers-triple-outline text-sm leading-none"></i>
+              <span>Gruppera enheter</span>
+            </button>
+
+            <!-- Only Aliased Checkbox -->
+            <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-300 px-2 py-1 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
               <input
                 type="checkbox"
                 id="signalOnlyAliased"
                 onchange="loadSignals()"
-                class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-sky-500 focus:ring-0"
+                class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
               />
-              <span>Endast namngivna (Alias)</span>
+              <span>Endast Alias</span>
             </label>
+
+            <!-- View Switcher: Card vs Table -->
+            <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+              <button
+                id="viewModeBtn_grid"
+                onclick="setViewMode('grid')"
+                class="px-2 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition"
+                title="Kompakt Kortvy"
+              >
+                <i class="mdi mdi-view-grid-outline text-sm leading-none"></i>
+                <span class="hidden xl:inline">Kort</span>
+              </button>
+              <button
+                id="viewModeBtn_table"
+                onclick="setViewMode('table')"
+                class="px-2 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition"
+                title="Tät Tabellvy"
+              >
+                <i class="mdi mdi-table text-sm leading-none"></i>
+                <span class="hidden xl:inline">Tabell</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Quick Filter Pills Row -->
+        <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/70 overflow-x-auto">
+          <div class="flex items-center gap-1.5">
+            <button onclick="setQuickPill('all')" id="pill_all" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-all-inclusive"></i>
+              <span>Alla</span>
+            </button>
+            <button onclick="setQuickPill('weather')" id="pill_weather" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-weather-partly-cloudy"></i>
+              <span>Väder</span>
+            </button>
+            <button onclick="setQuickPill('tpms')" id="pill_tpms" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-car-tire-alert"></i>
+              <span>TPMS</span>
+            </button>
+            <button onclick="setQuickPill('meter_switch')" id="pill_meter_switch" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-flash-outline"></i>
+              <span>Mätare &amp; Switch</span>
+            </button>
+            <button onclick="setQuickPill('low_battery')" id="pill_low_battery" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-battery-alert-variant-outline"></i>
+              <span>Lågt batteri</span>
+            </button>
           </div>
 
+          <div class="text-[11px] font-mono text-slate-400 dark:text-slate-500 shrink-0 hidden sm:block">
+            Visar <span id="visibleSignalCount" class="font-semibold text-slate-700 dark:text-slate-300">0</span> poster
+          </div>
         </div>
       </div>
 
       <!-- Paused Notice Banner -->
-      <div id="pausedBanner" class="hidden bg-amber-950/70 border border-amber-700/60 text-amber-200 px-3.5 py-2 rounded-lg text-xs flex items-center justify-between">
-        <span>Live-flödet är pausat i gränssnittet. Inkommande signaler sparas fortfarande i databasen.</span>
-        <button onclick="togglePause()" class="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-semibold">Återuppta nu</button>
+      <div id="pausedBanner" class="hidden bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-200 px-3 py-1.5 rounded-lg text-xs flex items-center justify-between">
+        <div class="flex items-center gap-1.5">
+          <i class="mdi mdi-pause-circle-outline text-base"></i>
+          <span>Live-flödet är pausat i gränssnittet. Inkommande signaler sparas fortfarande i databasen.</span>
+        </div>
+        <button onclick="togglePause()" class="px-2.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 font-semibold">Återuppta nu</button>
       </div>
 
-      <!-- Signals List (Cards on Mobile & Dense Card-Grid on Desktop) -->
-      <div id="signalsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <!-- Signals Multi-Column Card Grid -->
+      <div id="signalsGridContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5">
         <!-- Rendered by JS -->
       </div>
 
-      <!-- Empty State -->
-      <div id="signalsEmptyState" class="hidden bg-slate-900/60 border border-slate-800 rounded-xl p-10 text-center">
-        <div class="w-12 h-12 rounded-full bg-slate-800 mx-auto flex items-center justify-center text-slate-400 mb-3">
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-          </svg>
+      <!-- Signals Dense Table View -->
+      <div id="signalsTableContainer" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-50 dark:bg-slate-950/90 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider">
+                <th class="py-2 px-2.5">Tid</th>
+                <th class="py-2 px-2.5">Enhet / Alias</th>
+                <th class="py-2 px-2.5">Kategori</th>
+                <th class="py-2 px-2.5">ID / Kanal</th>
+                <th class="py-2 px-2.5">Mätvärden</th>
+                <th class="py-2 px-2.5">Frekvens</th>
+                <th class="py-2 px-2.5">RSSI / SNR</th>
+                <th class="py-2 px-2.5 text-right">Åtgärder</th>
+              </tr>
+            </thead>
+            <tbody id="signalsTableBody" class="divide-y divide-slate-200/70 dark:divide-slate-800/70">
+              <!-- Rendered by JS -->
+            </tbody>
+          </table>
         </div>
-        <h3 class="text-sm font-semibold text-slate-200">Inga signaler matchar filtret ännu</h3>
-        <p class="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-          Väntar på RF-paket från rtl_433 på valt frekvensband, eller prova att rensa sökfiltret ovan.
+      </div>
+
+      <!-- Empty State -->
+      <div id="signalsEmptyState" class="hidden bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center">
+        <div class="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 mx-auto flex items-center justify-center text-slate-400 mb-2.5">
+          <i class="mdi mdi-access-point-network-off text-2xl"></i>
+        </div>
+        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Inga signaler matchar filtret ännu</h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+          Väntar på RF-paket från rtl_433 på valt frekvensband, eller prova att återställa snabbfiltret ovan.
         </p>
       </div>
     </section>
@@ -255,42 +337,41 @@
     <!-- =================================================================== -->
     <!-- TAB 2: ENHETSREGISTER (ENHETER)                                     -->
     <!-- =================================================================== -->
-    <section id="tabPanel_devices" class="hidden space-y-4">
-      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 shadow flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <section id="tabPanel_devices" class="hidden space-y-2.5">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <div class="relative flex-1">
-          <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+          <i class="mdi mdi-magnify text-base text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
           <input
             type="text"
             id="deviceSearchInput"
             oninput="debouncedLoadDevices()"
             placeholder="Sök enhet på modell, ID, alias eller kategori..."
-            class="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            class="w-full pl-8 pr-4 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500"
           />
         </div>
-        <div class="flex items-center justify-between sm:justify-end gap-3">
-          <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-300">
+        <div class="flex items-center justify-between sm:justify-end gap-2.5">
+          <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-300">
             <input
               type="checkbox"
               id="deviceShowIgnored"
               checked
               onchange="loadDevices()"
-              class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-sky-500 focus:ring-0"
+              class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
             />
             <span>Visa ignorerade/svartlistade</span>
           </label>
-          <button onclick="loadDevices()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700">
-            Uppdatera
+          <button onclick="loadDevices()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+            <i class="mdi mdi-refresh"></i>
+            <span>Uppdatera</span>
           </button>
         </div>
       </div>
 
-      <div id="devicesContainer" class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div id="devicesContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5">
         <!-- Rendered by JS -->
       </div>
 
-      <div id="devicesEmptyState" class="hidden bg-slate-900/60 border border-slate-800 rounded-xl p-10 text-center text-xs text-slate-400">
+      <div id="devicesEmptyState" class="hidden bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center text-xs text-slate-500 dark:text-slate-400">
         Inga enheter har registrerats ännu.
       </div>
     </section>
@@ -298,100 +379,118 @@
     <!-- =================================================================== -->
     <!-- TAB 3: STATISTIK & INSTÄLLNINGAR (SYSTEM & LOGG)                    -->
     <!-- =================================================================== -->
-    <section id="tabPanel_system" class="hidden space-y-6">
+    <section id="tabPanel_system" class="hidden space-y-4">
       
       <!-- Overview KPI Cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div class="text-xs text-slate-400">Signaler idag / Totalt</div>
-          <div class="mt-1 flex items-baseline gap-2">
-            <span id="statSignalsToday" class="text-2xl font-bold text-white font-mono">0</span>
-            <span class="text-xs text-slate-500 font-mono">/ <span id="statSignalsTotal">0</span></span>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
+          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>Signaler idag / Totalt</span>
+            <i class="mdi mdi-counter text-base text-sky-500"></i>
           </div>
-          <div class="mt-2 text-[11px] text-slate-400">Debouncade dubbletter: <span id="statDebounced" class="font-mono text-slate-300">0</span></div>
+          <div class="mt-1 flex items-baseline gap-2">
+            <span id="statSignalsToday" class="text-xl font-bold text-slate-900 dark:text-white font-mono">0</span>
+            <span class="text-xs text-slate-400 dark:text-slate-500 font-mono">/ <span id="statSignalsTotal">0</span></span>
+          </div>
+          <div class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Debouncade dubbletter: <span id="statDebounced" class="font-mono font-semibold text-slate-700 dark:text-slate-300">0</span></div>
         </div>
 
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div class="text-xs text-slate-400">Aktiva enheter</div>
-          <div class="mt-1 flex items-baseline gap-2">
-            <span id="statActiveDevices" class="text-2xl font-bold text-emerald-400 font-mono">0</span>
-            <span class="text-xs text-slate-500 font-mono">(<span id="statIgnoredDevices">0</span> ignorerade)</span>
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
+          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>Aktiva enheter</span>
+            <i class="mdi mdi-devices text-base text-emerald-500"></i>
           </div>
-          <div class="mt-2 text-[11px] text-slate-400">Unika sändare i registret</div>
+          <div class="mt-1 flex items-baseline gap-2">
+            <span id="statActiveDevices" class="text-xl font-bold text-emerald-600 dark:text-emerald-400 font-mono">0</span>
+            <span class="text-xs text-slate-400 dark:text-slate-500 font-mono">(<span id="statIgnoredDevices">0</span> ignorerade)</span>
+          </div>
+          <div class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Unika sändare i registret</div>
         </div>
 
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div class="text-xs text-slate-400">Bandfördelning (433 vs 868 MHz)</div>
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
+          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>Bandfördelning (433 vs 868 MHz)</span>
+            <i class="mdi mdi-sine-wave text-base text-indigo-500"></i>
+          </div>
           <div class="mt-1 flex items-center justify-between text-xs font-mono">
-            <span class="text-sky-400">433: <strong id="statBand433">0</strong></span>
-            <span class="text-indigo-400">868: <strong id="statBand868">0</strong></span>
+            <span class="text-sky-600 dark:text-sky-400">433: <strong id="statBand433">0</strong></span>
+            <span class="text-indigo-600 dark:text-indigo-400">868: <strong id="statBand868">0</strong></span>
           </div>
-          <div class="mt-2 w-full h-2.5 bg-slate-800 rounded-full overflow-hidden flex">
+          <div class="mt-2 w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden flex">
             <div id="statBandBar433" class="bg-sky-500 h-full transition-all" style="width: 50%"></div>
             <div id="statBandBar868" class="bg-indigo-500 h-full transition-all" style="width: 50%"></div>
           </div>
         </div>
 
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div class="text-xs text-slate-400">SDR Uptime &amp; MQTT</div>
-          <div class="mt-1 flex items-baseline justify-between">
-            <span id="statUptime" class="text-lg font-bold text-white font-mono">0s</span>
-            <span class="text-xs text-slate-400 font-mono">MQTT tx: <strong id="statMqttPublished" class="text-slate-200">0</strong></span>
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
+          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>SDR Uptime &amp; MQTT</span>
+            <i class="mdi mdi-timer-outline text-base text-amber-500"></i>
           </div>
-          <div class="mt-2 text-[11px] text-slate-400">Omstarter (watchdog): <span id="statRestarts" class="font-mono text-slate-300">0</span></div>
+          <div class="mt-1 flex items-baseline justify-between">
+            <span id="statUptime" class="text-lg font-bold text-slate-900 dark:text-white font-mono">0s</span>
+            <span class="text-xs text-slate-500 dark:text-slate-400 font-mono">MQTT tx: <strong id="statMqttPublished" class="text-slate-800 dark:text-slate-200">0</strong></span>
+          </div>
+          <div class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Omstarter (watchdog): <span id="statRestarts" class="font-mono font-semibold text-slate-700 dark:text-slate-300">0</span></div>
         </div>
       </div>
 
       <!-- Charts Row: 24h Hourly Activity + Top 10 Devices -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-semibold text-white">Signaler per timme (senaste 24h)</h3>
-            <button onclick="loadStats()" class="text-xs text-sky-400 hover:underline">Uppdatera</button>
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+        <div class="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+              <i class="mdi mdi-chart-bar mr-1 text-sky-500"></i>Signaler per timme (senaste 24h)
+            </h3>
+            <button onclick="loadStats()" class="text-xs text-sky-600 dark:text-sky-400 hover:underline">
+              <i class="mdi mdi-refresh mr-0.5"></i>Uppdatera
+            </button>
           </div>
-          <div id="hourlyChartContainer" class="h-40 flex items-end gap-1 pt-4 border-b border-slate-800">
+          <div id="hourlyChartContainer" class="h-36 flex items-end gap-1 pt-4 border-b border-slate-200 dark:border-slate-800">
             <!-- Bars rendered by JS -->
           </div>
-          <div id="hourlyChartLabels" class="flex justify-between text-[10px] font-mono text-slate-500 mt-1.5">
+          <div id="hourlyChartLabels" class="flex justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-1">
             <!-- Labels rendered by JS -->
           </div>
         </div>
 
-        <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <h3 class="text-sm font-semibold text-white mb-3">Topp 10 mest aktiva enheter</h3>
-          <div id="topDevicesList" class="space-y-2 max-h-44 overflow-y-auto pr-1">
+        <div class="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 mb-2">
+            <i class="mdi mdi-trophy-outline mr-1 text-amber-500"></i>Topp 10 mest aktiva enheter
+          </h3>
+          <div id="topDevicesList" class="space-y-1.5 max-h-40 overflow-y-auto pr-1">
             <!-- Rendered by JS -->
           </div>
         </div>
       </div>
 
       <!-- Settings Form & Live Terminal Row -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
         
         <!-- System & SDR & MQTT Configuration Form -->
-        <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+        <div class="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm space-y-3.5">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
             <div>
-              <h3 class="text-sm font-semibold text-white">System-, SDR- &amp; MQTT-inställningar</h3>
-              <p class="text-xs text-slate-400">Sparas permanent i SQLite och tillämpas direkt</p>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white">System-, SDR- &amp; MQTT-inställningar</h3>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400">Sparas permanent i SQLite och tillämpas direkt</p>
             </div>
-            <button onclick="restartSdrProcess()" class="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold transition">
-              Starta om SDR
+            <button onclick="restartSdrProcess()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition">
+              <i class="mdi mdi-restart"></i>
+              <span>Starta om SDR</span>
             </button>
           </div>
 
-          <form id="settingsForm" onsubmit="saveSettings(event)" class="space-y-4 text-xs">
-            <!-- SDR Section -->
-            <div class="space-y-2.5">
-              <div class="text-[11px] font-bold uppercase tracking-wider text-sky-400">RTL-SDR Blog V4 &amp; Frekvensstyrning</div>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <form id="settingsForm" onsubmit="saveSettings(event)" class="space-y-3.5 text-xs">
+            <div class="space-y-2">
+              <div class="text-[11px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">RTL-SDR Blog V4 &amp; Frekvensstyrning</div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label class="block text-slate-400 mb-1">Enhetsindex / Serienummer (-d)</label>
-                  <input type="text" id="set_device_index" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="0 eller 00000001" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Enhetsindex / Serienummer (-d)</label>
+                  <input type="text" id="set_device_index" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0 eller 00000433" />
                 </div>
                 <div>
-                  <label class="block text-slate-400 mb-1">Aktivt frekvensläge</label>
-                  <select id="set_mode" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100">
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Aktivt frekvensläge</label>
+                  <select id="set_mode" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100">
                     <option value="433">433.92 MHz (Fast)</option>
                     <option value="868">868.3 MHz (Fast)</option>
                     <option value="hop">Dual Hop (433.92 + 868.3 MHz)</option>
@@ -399,108 +498,110 @@
                   </select>
                 </div>
                 <div>
-                  <label class="block text-slate-400 mb-1">Hopp-intervall (-H sek)</label>
-                  <input type="number" id="set_hop_interval" min="5" max="3600" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Hopp-intervall (-H sek)</label>
+                  <input type="number" id="set_hop_interval" min="5" max="3600" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <label class="block text-slate-400 mb-1">Custom-frekvenser (kommaseparerade)</label>
-                  <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="433.92M,868.3M" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom-frekvenser (kommaseparerade)</label>
+                  <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M,868.3M" />
                 </div>
                 <div>
-                  <label class="block text-slate-400 mb-1">Custom Sample Rate (-s)</label>
-                  <input type="text" id="set_custom_sample_rate" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="1024k" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom Sample Rate (-s)</label>
+                  <input type="text" id="set_custom_sample_rate" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1024k" />
                 </div>
               </div>
 
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div>
-                  <label class="block text-slate-400 mb-1">Gain (-g)</label>
-                  <input type="text" id="set_gain" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="auto eller 40.2" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Gain (-g)</label>
+                  <input type="text" id="set_gain" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="auto eller 40.2" />
                 </div>
                 <div>
-                  <label class="block text-slate-400 mb-1">PPM-korrigering (-p)</label>
-                  <input type="number" id="set_ppm" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="0" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">PPM-korrigering (-p)</label>
+                  <input type="number" id="set_ppm" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0" />
                 </div>
                 <div>
-                  <label class="block text-slate-400 mb-1">Debounce (sek)</label>
-                  <input type="number" step="0.1" min="0" max="60" id="set_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Debounce (sek)</label>
+                  <input type="number" step="0.1" min="0" max="60" id="set_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
                 </div>
                 <div>
-                  <label class="block text-slate-400 mb-1">Retention (dagar)</label>
-                  <input type="number" min="1" max="3650" id="set_retention_days" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Retention (dagar)</label>
+                  <input type="number" min="1" max="3650" id="set_retention_days" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
                 </div>
               </div>
             </div>
 
             <!-- MQTT Section -->
-            <div class="space-y-2.5 pt-2 border-t border-slate-800">
+            <div class="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
               <div class="flex items-center justify-between">
-                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">MQTT Broker &amp; Home Assistant</span>
-                <label class="inline-flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" id="set_mqtt_enabled" class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-emerald-500" />
-                  <span class="text-slate-300 font-medium">MQTT Aktiverad</span>
+                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">MQTT Broker &amp; Home Assistant</span>
+                <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" id="set_mqtt_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500" />
+                  <span class="text-slate-700 dark:text-slate-300 font-medium">MQTT Aktiverad</span>
                 </label>
               </div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div class="sm:col-span-2">
-                  <label class="block text-slate-400 mb-1">MQTT Host / IP</label>
-                  <input type="text" id="set_mqtt_host" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="192.168.1.121" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">MQTT Host / IP</label>
+                  <input type="text" id="set_mqtt_host" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="192.168.1.121" />
                 </div>
                 <div>
-                  <label class="block text-slate-400 mb-1">Port</label>
-                  <input type="number" id="set_mqtt_port" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="1883" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Port</label>
+                  <input type="number" id="set_mqtt_port" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1883" />
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label class="block text-slate-400 mb-1">Användarnamn (valfritt)</label>
-                  <input type="text" id="set_mqtt_user" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Användarnamn</label>
+                  <input type="text" id="set_mqtt_user" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100" />
                 </div>
                 <div>
-                  <label class="block text-slate-400 mb-1">Lösenord (valfritt)</label>
-                  <input type="password" id="set_mqtt_pass" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Lösenord</label>
+                  <input type="password" id="set_mqtt_pass" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100" />
                 </div>
                 <div>
-                  <label class="block text-slate-400 mb-1">Topic Prefix</label>
-                  <input type="text" id="set_mqtt_prefix" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="sensor_scanner" />
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Topic Prefix</label>
+                  <input type="text" id="set_mqtt_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="sensor_scanner" />
                 </div>
               </div>
             </div>
 
-            <div class="pt-2 flex items-center justify-end gap-3">
-              <span id="settingsSaveFeedback" class="text-xs text-emerald-400 hidden">Inställningar sparade!</span>
-              <button type="submit" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition">
-                Spara &amp; Tillämpa inställningar
+            <div class="pt-1 flex items-center justify-end gap-2.5">
+              <span id="settingsSaveFeedback" class="text-xs text-emerald-600 dark:text-emerald-400 hidden">Inställningar sparade!</span>
+              <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition">
+                <i class="mdi mdi-content-save-outline text-sm"></i>
+                <span>Spara &amp; Tillämpa</span>
               </button>
             </div>
           </form>
         </div>
 
         <!-- Live Diagnostic Terminal (rtl_433 command + stderr) -->
-        <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
+        <div class="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2 mb-2.5">
             <div>
-              <h3 class="text-sm font-semibold text-white">SDR Diagnostik &amp; rtl_433 Logg (stderr)</h3>
-              <p class="text-xs text-slate-400">Live-utskrift från RTL-SDR Blog V4 (R828D) och rtl_433</p>
+              <h3 class="text-sm font-bold text-slate-900 dark:text-white">SDR Diagnostik &amp; rtl_433 Logg (stderr)</h3>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400">Live-utskrift från RTL-SDR Blog V4 (R828D) och rtl_433</p>
             </div>
-            <button onclick="clearTerminalLog()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs">
-              Töm vy
+            <button onclick="clearTerminalLog()" class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs border border-slate-200 dark:border-slate-700">
+              <i class="mdi mdi-broom"></i>
+              <span>Töm vy</span>
             </button>
           </div>
 
-          <div class="mb-2.5">
-            <div class="text-[11px] text-slate-400 mb-1">Aktiv kommandorad:</div>
-            <div id="terminalCommandBox" class="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-sky-400 break-all">
+          <div class="mb-2">
+            <div class="text-[11px] text-slate-500 dark:text-slate-400 mb-1">Aktiv kommandorad:</div>
+            <div id="terminalCommandBox" class="px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-950 border border-slate-800 font-mono text-xs text-sky-400 break-all">
               rtl_433 ...
             </div>
           </div>
 
-          <div id="terminalStderrBox" class="flex-1 min-h-[260px] max-h-[380px] overflow-y-auto p-3 rounded-lg bg-slate-950 border border-slate-800 font-mono text-[11px] leading-relaxed text-slate-300 space-y-1">
+          <div id="terminalStderrBox" class="flex-1 min-h-[250px] max-h-[370px] overflow-y-auto p-3 rounded-lg bg-slate-950 border border-slate-800 font-mono text-[11px] leading-relaxed text-slate-300 space-y-1">
             <!-- Stderr lines appended here -->
           </div>
         </div>
@@ -513,22 +614,20 @@
   <!-- ===================================================================== -->
   <!-- DETAIL MODAL (INSPECT SIGNAL, RAW JSON, SET ALIAS, LAST 20 READINGS)  -->
   <!-- ===================================================================== -->
-  <div id="detailModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
-    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+  <div id="detailModal" class="fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
       
       <!-- Modal Header -->
-      <div class="px-4 py-3 bg-slate-800/70 border-b border-slate-700 flex items-center justify-between gap-2">
+      <div class="px-4 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
         <div class="min-w-0">
           <div class="flex items-center gap-2">
-            <h2 id="modalTitle" class="text-base font-bold text-white truncate">Enhetsdetaljer</h2>
-            <span id="modalCategoryBadge" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">Sensor</span>
+            <h2 id="modalTitle" class="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">Enhetsdetaljer</h2>
+            <span id="modalCategoryBadge" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">Sensor</span>
           </div>
-          <p id="modalSubtitle" class="text-xs text-slate-400 font-mono truncate"></p>
+          <p id="modalSubtitle" class="text-xs text-slate-500 dark:text-slate-400 font-mono truncate"></p>
         </div>
-        <button onclick="closeDetailModal()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">
-          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+        <button onclick="closeDetailModal()" class="w-8 h-8 rounded-lg bg-slate-200/70 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+          <i class="mdi mdi-close text-lg"></i>
         </button>
       </div>
 
@@ -536,16 +635,16 @@
       <div class="p-4 overflow-y-auto space-y-4 text-xs">
         
         <!-- Quick Device Configuration Bar -->
-        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-3">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Snabbkonfigurera Enhet</div>
+        <div class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-3">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Snabbkonfigurera Enhet</div>
           <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
             <div class="sm:col-span-5">
-              <label class="block text-slate-400 mb-1">Alias (Eget namn)</label>
-              <input type="text" id="modalAliasInput" placeholder="t.ex. Växthus Termometer" class="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-100" />
+              <label class="block text-slate-500 dark:text-slate-400 mb-1">Alias (Eget namn)</label>
+              <input type="text" id="modalAliasInput" placeholder="t.ex. Växthus Termometer" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100" />
             </div>
             <div class="sm:col-span-3">
-              <label class="block text-slate-400 mb-1">Kategori</label>
-              <select id="modalCategorySelect" class="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-100">
+              <label class="block text-slate-500 dark:text-slate-400 mb-1">Kategori</label>
+              <select id="modalCategorySelect" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100">
                 <option value="Weather">Weather</option>
                 <option value="TPMS">TPMS</option>
                 <option value="Switch">Switch</option>
@@ -556,52 +655,54 @@
             </div>
             <div class="sm:col-span-4 flex items-center gap-2">
               <button onclick="saveModalDevice()" class="flex-1 py-1.5 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold transition">
-                Spara Alias
+                <i class="mdi mdi-check mr-1"></i>Spara
               </button>
-              <button onclick="triggerHaDiscoveryFromModal()" class="py-1.5 px-2.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 font-semibold transition" title="Skicka Home Assistant MQTT Auto-Discovery">
-                HA Discovery
+              <button onclick="triggerHaDiscoveryFromModal()" class="py-1.5 px-2.5 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold transition" title="Skicka Home Assistant MQTT Auto-Discovery">
+                <i class="mdi mdi-home-assistant mr-1"></i>HA Discovery
               </button>
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800/80">
             <div class="flex items-center gap-4">
-              <label class="inline-flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="modalMqttToggle" onchange="saveModalDevice()" class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-emerald-500" />
-                <span class="text-slate-300">Publicera till MQTT</span>
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" id="modalMqttToggle" onchange="saveModalDevice()" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500" />
+                <span class="text-slate-700 dark:text-slate-300">Publicera till MQTT</span>
               </label>
-              <label class="inline-flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="modalIgnoredToggle" onchange="saveModalDevice()" class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-rose-500" />
-                <span class="text-slate-300">Ignorera / Svartlista enhet</span>
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" id="modalIgnoredToggle" onchange="saveModalDevice()" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-rose-500" />
+                <span class="text-slate-700 dark:text-slate-300">Ignorera / Svartlista enhet</span>
               </label>
             </div>
-            <span id="modalActionStatus" class="text-emerald-400 font-medium"></span>
+            <span id="modalActionStatus" class="text-emerald-600 dark:text-emerald-400 font-semibold"></span>
           </div>
         </div>
 
         <!-- Raw JSON Payload -->
         <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Rå JSON-payload (Senast valda paket)</span>
-            <button onclick="copyModalJson()" class="text-sky-400 hover:underline text-[11px]">Kopiera JSON</button>
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Rå JSON-payload (Senast valda paket)</span>
+            <button onclick="copyModalJson()" class="text-sky-600 dark:text-sky-400 hover:underline text-[11px]">
+              <i class="mdi mdi-content-copy mr-0.5"></i>Kopiera JSON
+            </button>
           </div>
           <pre id="modalRawJson" class="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-emerald-300 overflow-x-auto"></pre>
         </div>
 
         <!-- Last 20 Measurements for this Device -->
         <div>
-          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">De 20 senaste mätvärdena för denna enhet</div>
-          <div class="overflow-x-auto border border-slate-800 rounded-xl">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">De 20 senaste mätvärdena för denna enhet</div>
+          <div class="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
             <table class="w-full text-left border-collapse">
               <thead>
-                <tr class="bg-slate-950 text-slate-400 border-b border-slate-800 text-[11px]">
-                  <th class="py-2 px-3">Tidpunkt</th>
-                  <th class="py-2 px-3">Frekvens</th>
-                  <th class="py-2 px-3">RSSI / SNR</th>
-                  <th class="py-2 px-3">Mätvärden</th>
+                <tr class="bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px]">
+                  <th class="py-1.5 px-3">Tidpunkt</th>
+                  <th class="py-1.5 px-3">Frekvens</th>
+                  <th class="py-1.5 px-3">RSSI / SNR</th>
+                  <th class="py-1.5 px-3">Mätvärden</th>
                 </tr>
               </thead>
-              <tbody id="modalHistoryBody" class="divide-y divide-slate-800/70 font-mono text-[11px]">
+              <tbody id="modalHistoryBody" class="divide-y divide-slate-200 dark:divide-slate-800/70 font-mono text-[11px]">
                 <!-- Populated via JS -->
               </tbody>
             </table>
@@ -613,7 +714,7 @@
   </div>
 
   <!-- TOAST NOTIFICATION -->
-  <div id="toastBox" class="fixed bottom-4 right-4 z-50 hidden px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 text-xs font-medium shadow-xl"></div>
+  <div id="toastBox" class="fixed bottom-4 right-4 z-50 hidden px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 border border-slate-700 text-white text-xs font-medium shadow-xl"></div>
 
   <!-- ===================================================================== -->
   <!-- APPLICATION JAVASCRIPT                                                -->
@@ -621,7 +722,11 @@
   <script>
     let activeTab = 'signals';
     let isPaused = false;
-    let signalsList = [];
+    let viewMode = localStorage.getItem('ss_view_mode') || 'grid';
+    let groupDevices = localStorage.getItem('ss_group_devices') !== 'false'; // ON by default
+    let activeQuickPill = 'all';
+
+    let rawSignalsList = [];
     let devicesList = [];
     let knownModels = new Set();
     let currentModalDeviceKey = null;
@@ -629,29 +734,123 @@
     let searchDebounceTimer = null;
     let deviceDebounceTimer = null;
     let wsConnection = null;
+    let highlightedDeviceKey = null;
 
     // -----------------------------------------------------------------------
     // Initialization
     // -----------------------------------------------------------------------
     window.addEventListener('DOMContentLoaded', () => {
+      syncThemeIcon();
+      syncViewModeButtons();
+      syncGroupDevicesButton();
+      syncQuickPillButtons();
+      switchTab('signals', true);
       loadStatus();
       loadModels();
       loadSignals();
       loadSettingsForm();
       connectWebSocket();
+
+      // Update relative timestamps every 5 seconds
+      setInterval(() => {
+        if (!isPaused && activeTab === 'signals') {
+          updateRelativeTimestampsInDom();
+        }
+      }, 5000);
     });
 
+    // -----------------------------------------------------------------------
+    // Theme Toggle (Light / Dark Mode)
+    // -----------------------------------------------------------------------
+    function toggleTheme() {
+      const root = document.documentElement;
+      const isDark = root.classList.contains('dark');
+      if (isDark) {
+        root.classList.remove('dark');
+        localStorage.setItem('ss_theme', 'light');
+      } else {
+        root.classList.add('dark');
+        localStorage.setItem('ss_theme', 'dark');
+      }
+      syncThemeIcon();
+    }
+
+    function syncThemeIcon() {
+      const isDark = document.documentElement.classList.contains('dark');
+      const icon = document.getElementById('themeToggleIcon');
+      if (icon) {
+        icon.className = isDark ? 'mdi mdi-weather-sunny text-amber-400 leading-none' : 'mdi mdi-weather-night text-slate-700 leading-none';
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // View Mode (Grid vs Table) & Group Devices Toggle & Filter Pills
+    // -----------------------------------------------------------------------
+    function setViewMode(mode) {
+      viewMode = mode === 'table' ? 'table' : 'grid';
+      localStorage.setItem('ss_view_mode', viewMode);
+      syncViewModeButtons();
+      renderSignalsView();
+    }
+
+    function syncViewModeButtons() {
+      const gBtn = document.getElementById('viewModeBtn_grid');
+      const tBtn = document.getElementById('viewModeBtn_table');
+      const activeCls = 'px-2 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition bg-sky-600 text-white shadow-sm';
+      const inactiveCls = 'px-2 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+      gBtn.className = viewMode === 'grid' ? activeCls : inactiveCls;
+      tBtn.className = viewMode === 'table' ? activeCls : inactiveCls;
+    }
+
+    function toggleGroupDevices() {
+      groupDevices = !groupDevices;
+      localStorage.setItem('ss_group_devices', groupDevices ? 'true' : 'false');
+      syncGroupDevicesButton();
+      loadSignals();
+    }
+
+    function syncGroupDevicesButton() {
+      const btn = document.getElementById('groupDevicesBtn');
+      if (groupDevices) {
+        btn.className = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40';
+      } else {
+        btn.className = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300';
+      }
+    }
+
+    function setQuickPill(pill) {
+      activeQuickPill = pill;
+      syncQuickPillButtons();
+      renderSignalsView();
+    }
+
+    function syncQuickPillButtons() {
+      const pills = ['all', 'weather', 'tpms', 'meter_switch', 'low_battery'];
+      pills.forEach((p) => {
+        const el = document.getElementById(`pill_${p}`);
+        if (!el) return;
+        if (p === activeQuickPill) {
+          el.className = 'whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition bg-sky-600 text-white border-sky-600 shadow-sm';
+        } else {
+          el.className = 'whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800';
+        }
+      });
+    }
+
+    // -----------------------------------------------------------------------
+    // Toast Notification
+    // -----------------------------------------------------------------------
     function showToast(message, isError = false) {
       const box = document.getElementById('toastBox');
       box.textContent = message;
-      box.className = `fixed bottom-4 right-4 z-50 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xl border transition ${
+      box.className = `fixed bottom-4 right-4 z-50 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-xl border transition ${
         isError
-          ? 'bg-rose-950 border-rose-700 text-rose-200'
-          : 'bg-slate-800 border-sky-500/50 text-slate-100'
+          ? 'bg-rose-900 border-rose-700 text-rose-100'
+          : 'bg-slate-900 dark:bg-slate-800 border-sky-500/50 text-white'
       }`;
       box.classList.remove('hidden');
       clearTimeout(box._timer);
-      box._timer = setTimeout(() => box.classList.add('hidden'), 3500);
+      box._timer = setTimeout(() => box.classList.add('hidden'), 3200);
     }
 
     // -----------------------------------------------------------------------
@@ -663,7 +862,6 @@
       wsConnection = new WebSocket(url);
 
       wsConnection.onopen = () => {
-        // Keepalive ping every 25s
         if (wsConnection._pingInterval) clearInterval(wsConnection._pingInterval);
         wsConnection._pingInterval = setInterval(() => {
           if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
@@ -678,12 +876,14 @@
           if (msg.type === 'status' && msg.data) {
             applyStatusUpdate(msg.data);
           } else if (msg.type === 'signal' && msg.data) {
-            handleIncomingSignal(msg.data);
+            handleIncomingSignal(msg.data, msg.device);
           } else if (msg.type === 'stderr' && msg.line) {
             appendStderrLine(msg.line, msg.last_error);
           } else if (msg.type === 'device_updated' && msg.device) {
             handleDeviceUpdated(msg.device);
           } else if (msg.type === 'device_deleted' && msg.device_key) {
+            rawSignalsList = rawSignalsList.filter((s) => s.device_key !== msg.device_key);
+            renderSignalsView();
             if (activeTab === 'devices') loadDevices();
           }
         } catch (err) {
@@ -719,26 +919,23 @@
       const mqtt = status.mqtt || {};
       const counts = status.counts || {};
 
-      // Nav badges
       document.getElementById('navCountSignals').textContent = counts.signals_today ?? 0;
       document.getElementById('navCountDevices').textContent = counts.active_devices ?? 0;
 
-      // SDR status badge
       const sdrDot = document.getElementById('sdrStatusDot');
       const sdrText = document.getElementById('sdrStatusText');
       const sdrBadge = document.getElementById('sdrStatusBadge');
 
       if (rtl.running) {
-        sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse-subtle';
+        sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse-subtle';
         sdrText.textContent = `SDR: Aktiv (${(rtl.mode || 'hop').toUpperCase()})`;
-        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-950/60 border border-emerald-700/60 text-emerald-300';
+        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300';
       } else {
         sdrDot.className = 'w-2 h-2 rounded-full bg-rose-500';
         sdrText.textContent = `SDR: ${rtl.state === 'starting' ? 'Startar...' : 'Fel / Stoppad'}`;
-        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-950/70 border border-rose-700/60 text-rose-300';
+        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-700/60 text-rose-800 dark:text-rose-300';
       }
 
-      // Error banner
       const errBanner = document.getElementById('sdrErrorBanner');
       const errText = document.getElementById('sdrErrorText');
       if (rtl.last_error) {
@@ -748,33 +945,30 @@
         errBanner.classList.add('hidden');
       }
 
-      // MQTT status badge
       const mqttDot = document.getElementById('mqttStatusDot');
       const mqttText = document.getElementById('mqttStatusText');
       const mqttBadge = document.getElementById('mqttStatusBadge');
 
       if (mqtt.connected) {
-        mqttDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        mqttDot.className = 'w-2 h-2 rounded-full bg-emerald-500';
         mqttText.textContent = `MQTT: Ansluten (${mqtt.host})`;
-        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-950/60 border border-emerald-700/60 text-emerald-300';
+        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300';
       } else {
-        mqttDot.className = 'w-2 h-2 rounded-full bg-slate-500';
+        mqttDot.className = 'w-2 h-2 rounded-full bg-slate-400';
         mqttText.textContent = mqtt.enabled ? 'MQTT: Frånkopplad' : 'MQTT: Avstängd';
-        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 border border-slate-700 text-slate-400';
+        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400';
       }
 
-      // Highlight active frequency mode button in header
       ['433', '868', 'hop', 'custom'].forEach((m) => {
         const btn = document.getElementById(`modeBtn_${m}`);
         if (!btn) return;
         if (rtl.mode === m) {
-          btn.className = 'flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-sky-600 text-white shadow';
+          btn.className = 'flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition bg-sky-600 text-white shadow-sm';
         } else {
-          btn.className = 'flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-300 hover:text-white hover:bg-slate-800';
+          btn.className = 'flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800';
         }
       });
 
-      // Command preview & stderr tail
       if (rtl.command) {
         document.getElementById('headerCmdPreview').textContent = rtl.command;
         document.getElementById('terminalCommandBox').textContent = rtl.command;
@@ -791,7 +985,6 @@
         stderrBox.scrollTop = stderrBox.scrollHeight;
       }
 
-      // System tab quick stats
       document.getElementById('statSignalsToday').textContent = counts.signals_today ?? 0;
       document.getElementById('statSignalsTotal').textContent = counts.total_signals ?? 0;
       document.getElementById('statActiveDevices').textContent = counts.active_devices ?? 0;
@@ -826,7 +1019,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // Quick Frequency Switching & Pause
+    // Frequency Switching & Pause
     // -----------------------------------------------------------------------
     async function switchFrequencyMode(mode) {
       if (mode === 'custom' && activeTab !== 'system') {
@@ -869,16 +1062,19 @@
     function togglePause() {
       isPaused = !isPaused;
       const btn = document.getElementById('pauseBtn');
+      const icon = document.getElementById('pauseIcon');
       const txt = document.getElementById('pauseBtnText');
       const banner = document.getElementById('pausedBanner');
 
       if (isPaused) {
+        icon.className = 'mdi mdi-play text-sm leading-none';
         txt.textContent = 'Återuppta';
-        btn.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-amber-500/20 text-amber-300 border-amber-500/40';
+        btn.className = 'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40';
         banner.classList.remove('hidden');
       } else {
+        icon.className = 'mdi mdi-pause text-sm leading-none';
         txt.textContent = 'Pausa';
-        btn.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700';
+        btn.className = 'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700';
         banner.classList.add('hidden');
         loadSignals();
       }
@@ -887,20 +1083,21 @@
     // -----------------------------------------------------------------------
     // Tab Navigation
     // -----------------------------------------------------------------------
-    function switchTab(tab) {
+    function switchTab(tab, skipLoad = false) {
       activeTab = tab;
       ['signals', 'devices', 'system'].forEach((t) => {
         const panel = document.getElementById(`tabPanel_${t}`);
         const btn = document.getElementById(`tabBtn_${t}`);
         if (t === tab) {
           panel.classList.remove('hidden');
-          btn.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition bg-sky-500/15 text-sky-400 border border-sky-500/30';
+          btn.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition bg-sky-500/15 text-sky-700 dark:text-sky-400 border border-sky-500/30';
         } else {
           panel.classList.add('hidden');
-          btn.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent';
+          btn.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 border border-transparent';
         }
       });
 
+      if (skipLoad) return;
       if (tab === 'signals') loadSignals();
       if (tab === 'devices') loadDevices();
       if (tab === 'system') {
@@ -910,7 +1107,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // Signals Tab & Real-time Signal Handling
+    // Signals Loading, Filtering & Grouping
     // -----------------------------------------------------------------------
     async function loadModels() {
       try {
@@ -929,7 +1126,7 @@
     function renderModelOptions(selectedValue) {
       const select = document.getElementById('signalModelSelect');
       const sorted = Array.from(knownModels).sort((a, b) => a.localeCompare(b));
-      select.innerHTML = '<option value="">Alla protokoll / modeller</option>';
+      select.innerHTML = '<option value="">Alla modeller</option>';
       sorted.forEach((m) => {
         const opt = document.createElement('option');
         opt.value = m;
@@ -941,7 +1138,7 @@
 
     function debouncedLoadSignals() {
       clearTimeout(searchDebounceTimer);
-      searchDebounceTimer = setTimeout(loadSignals, 220);
+      searchDebounceTimer = setTimeout(loadSignals, 200);
     }
 
     function clearSignalFilters() {
@@ -949,6 +1146,8 @@
       document.getElementById('signalModelSelect').value = '';
       document.getElementById('signalFreqSelect').value = '';
       document.getElementById('signalOnlyAliased').checked = false;
+      activeQuickPill = 'all';
+      syncQuickPillButtons();
       loadSignals();
     }
 
@@ -958,7 +1157,11 @@
       const freqBand = document.getElementById('signalFreqSelect').value;
       const onlyAliased = document.getElementById('signalOnlyAliased').checked;
 
-      const params = new URLSearchParams({ limit: '100', offset: '0' });
+      const params = new URLSearchParams({
+        limit: '200',
+        offset: '0',
+        unique_devices: groupDevices ? 'true' : 'false'
+      });
       if (search) params.set('search', search);
       if (model) params.set('model', model);
       if (freqBand) params.set('freq_band', freqBand);
@@ -968,11 +1171,32 @@
         const res = await fetch(`/api/signals?${params.toString()}`);
         if (!res.ok) return;
         const data = await res.json();
-        signalsList = data.items || [];
-        renderSignalsList();
+        rawSignalsList = data.items || [];
+        renderSignalsView();
       } catch (e) {
         console.error('Error loading signals:', e);
       }
+    }
+
+    function matchesQuickPill(sig) {
+      if (activeQuickPill === 'all') return true;
+      const cat = (sig.category || '').toLowerCase();
+      const p = sig.payload || {};
+      const bat = sig.battery_ok !== null && sig.battery_ok !== undefined ? sig.battery_ok : p.battery_ok;
+
+      if (activeQuickPill === 'weather') {
+        return cat === 'weather' || p.temperature_C !== undefined || p.humidity !== undefined || p.wind_avg_km_h !== undefined || p.rain_mm !== undefined;
+      }
+      if (activeQuickPill === 'tpms') {
+        return cat === 'tpms' || p.pressure_kPa !== undefined || p.pressure_bar !== undefined || p.pressure_PSI !== undefined;
+      }
+      if (activeQuickPill === 'meter_switch') {
+        return cat === 'meter' || cat === 'switch' || cat === 'security' || p.power_W !== undefined || p.energy_kWh !== undefined || p.state !== undefined || p.cmd !== undefined;
+      }
+      if (activeQuickPill === 'low_battery') {
+        return bat !== null && bat !== undefined && Number(bat) === 0;
+      }
+      return true;
     }
 
     function signalMatchesActiveFilters(sig) {
@@ -985,6 +1209,7 @@
       if (onlyAliased && (!sig.alias || !sig.alias.trim())) return false;
       if (freqBand === '433' && !(sig.freq >= 430 && sig.freq <= 440)) return false;
       if (freqBand === '868' && !(sig.freq >= 860 && sig.freq <= 875)) return false;
+      if (!matchesQuickPill(sig)) return false;
 
       if (search) {
         const hay = `${sig.model} ${sig.device_id} ${sig.alias || ''} ${sig.category || ''} ${JSON.stringify(sig.payload || {})}`.toLowerCase();
@@ -993,10 +1218,14 @@
       return true;
     }
 
-    function handleIncomingSignal(sig) {
+    function handleIncomingSignal(sig, dev) {
       if (sig.model && !knownModels.has(sig.model)) {
         knownModels.add(sig.model);
         renderModelOptions(document.getElementById('signalModelSelect').value);
+      }
+
+      if (dev && dev.hit_count) {
+        sig.hit_count = dev.hit_count;
       }
 
       const navSig = document.getElementById('navCountSignals');
@@ -1004,206 +1233,460 @@
 
       if (isPaused) return;
 
-      if (signalMatchesActiveFilters(sig)) {
-        sig._isNew = true;
-        signalsList.unshift(sig);
-        if (signalsList.length > 100) signalsList.pop();
-        if (activeTab === 'signals') {
-          renderSignalsList();
+      highlightedDeviceKey = sig.device_key;
+
+      if (groupDevices) {
+        const existingIdx = rawSignalsList.findIndex(
+          (item) => item.device_key === sig.device_key || (item.model === sig.model && String(item.device_id) === String(sig.device_id))
+        );
+        if (existingIdx !== -1) {
+          const prevHits = rawSignalsList[existingIdx].hit_count || 1;
+          sig.hit_count = sig.hit_count || prevHits + 1;
+          rawSignalsList[existingIdx] = sig;
+        } else {
+          sig.hit_count = sig.hit_count || 1;
+          rawSignalsList.unshift(sig);
         }
+      } else {
+        rawSignalsList.unshift(sig);
+        if (rawSignalsList.length > 250) rawSignalsList.pop();
+      }
+
+      if (activeTab === 'signals') {
+        renderSignalsView();
       }
     }
 
-    function renderSignalsList() {
-      const container = document.getElementById('signalsContainer');
-      const empty = document.getElementById('signalsEmptyState');
+    function getFilteredSignals() {
+      const filtered = rawSignalsList.filter(signalMatchesActiveFilters);
+      if (!groupDevices) return filtered;
 
-      if (!signalsList.length) {
-        container.innerHTML = '';
-        empty.classList.remove('hidden');
+      const seen = new Map();
+      for (const sig of filtered) {
+        const key = sig.device_key || `${sig.model}_${sig.device_id}`;
+        if (!seen.has(key)) {
+          seen.set(key, sig);
+        }
+      }
+      return Array.from(seen.values());
+    }
+
+    function renderSignalsView() {
+      const items = getFilteredSignals();
+      document.getElementById('visibleSignalCount').textContent = items.length;
+
+      const gridEl = document.getElementById('signalsGridContainer');
+      const tableWrap = document.getElementById('signalsTableContainer');
+      const tableBody = document.getElementById('signalsTableBody');
+      const emptyEl = document.getElementById('signalsEmptyState');
+
+      if (!items.length) {
+        gridEl.classList.add('hidden');
+        tableWrap.classList.add('hidden');
+        emptyEl.classList.remove('hidden');
         return;
       }
 
-      empty.classList.add('hidden');
-      container.innerHTML = signalsList.map((sig, idx) => buildSignalCardHtml(sig, idx)).join('');
-      signalsList.forEach((s) => delete s._isNew);
+      emptyEl.classList.add('hidden');
+
+      if (viewMode === 'table') {
+        gridEl.classList.add('hidden');
+        tableWrap.classList.remove('hidden');
+        tableBody.innerHTML = items.map((sig) => buildSignalTableRowHtml(sig)).join('');
+      } else {
+        tableWrap.classList.add('hidden');
+        gridEl.classList.remove('hidden');
+        gridEl.innerHTML = items.map((sig) => buildSignalCardHtml(sig)).join('');
+      }
+
+      if (highlightedDeviceKey) {
+        const keyToClear = highlightedDeviceKey;
+        highlightedDeviceKey = null;
+        setTimeout(() => {
+          const el = document.getElementById(`sigcard_${CSS.escape(keyToClear)}`);
+          if (el) el.classList.remove('ring-2', 'ring-sky-500');
+        }, 1100);
+      }
     }
 
-    function buildSignalCardHtml(sig, idx) {
-      const p = sig.payload || {};
-      const title = sig.alias && sig.alias.trim() ? escapeHtml(sig.alias) : escapeHtml(sig.model);
-      const subtitle = sig.alias && sig.alias.trim()
-        ? `${escapeHtml(sig.model)} | ID: ${escapeHtml(sig.device_id)}`
-        : `ID: ${escapeHtml(sig.device_id)}${sig.channel ? ' | Kanal ' + escapeHtml(sig.channel) : ''}`;
+    // -----------------------------------------------------------------------
+    // Category Icons & Extended MDI Metric Badges
+    // -----------------------------------------------------------------------
+    function getCategoryIcon(category) {
+      const c = (category || '').toLowerCase();
+      if (c === 'weather') return 'mdi-weather-partly-cloudy text-sky-500';
+      if (c === 'tpms') return 'mdi-car-tire-alert text-purple-500';
+      if (c === 'meter') return 'mdi-flash text-emerald-500';
+      if (c === 'switch') return 'mdi-toggle-switch-outline text-indigo-500';
+      if (c === 'security') return 'mdi-shield-alert-outline text-rose-500';
+      return 'mdi-access-point text-slate-400';
+    }
 
-      const badges = buildTelemetryBadges(sig, p);
-      const rssiBadge = buildSignalQualityBadge(sig.rssi, sig.snr);
-      const freqBadge = sig.freq
-        ? `<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-800 text-slate-300 border border-slate-700">${Number(sig.freq).toFixed(2)} MHz</span>`
+    function buildSignalCardHtml(sig) {
+      const p = sig.payload || {};
+      const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
+      const hasAlias = Boolean(sig.alias && sig.alias.trim());
+      const catIcon = getCategoryIcon(sig.category);
+      const isHighlighted = highlightedDeviceKey === devKey;
+      const highlightCls = isHighlighted ? 'ring-2 ring-sky-500' : '';
+
+      const titleHtml = hasAlias
+        ? `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(sig.alias)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 truncate">(${escapeHtml(sig.model)})</span>`
+        : `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(sig.model)}</span>`;
+
+      const channelPart = sig.channel !== null && sig.channel !== undefined && sig.channel !== ''
+        ? `<span>Kanal: <strong class="text-slate-700 dark:text-slate-200">${escapeHtml(sig.channel)}</strong></span>`
         : '';
 
-      const animClass = sig._isNew ? 'signal-enter' : '';
+      const freqPart = sig.freq
+        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"><i class="mdi mdi-sine-wave text-xs"></i>${Number(sig.freq).toFixed(2)} MHz</span>`
+        : '';
+
+      const exactTime = formatTimestamp(sig.timestamp);
+      const relTime = formatRelativeTime(sig.timestamp);
+
+      const metricsHtml = buildExtendedMetricBadges(sig, p);
+      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr);
+      const hitCount = sig.hit_count || 1;
 
       return `
-        <div onclick="openSignalModal(${idx})" class="${animClass} cursor-pointer group bg-slate-900 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/40 rounded-xl p-3.5 transition shadow flex flex-col justify-between gap-2.5">
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-sm font-bold text-white group-hover:text-sky-400 transition truncate">${title}</span>
-                <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-800 text-slate-300 border border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
-              </div>
-              <div class="text-xs font-mono text-slate-400 mt-0.5 truncate">${subtitle}</div>
+        <div
+          id="sigcard_${escapeHtml(devKey)}"
+          onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${ Number(sig.id || 0) })"
+          class="${highlightCls} cursor-pointer group bg-white dark:bg-slate-900 hover:bg-slate-50/90 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-sky-500/50 rounded-xl p-2.5 transition duration-200 shadow-sm flex flex-col justify-between gap-2"
+        >
+          <!-- Row 1: Header -->
+          <div class="flex items-center justify-between gap-1.5">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <i class="mdi ${catIcon} text-base shrink-0"></i>
+              <div class="text-xs truncate flex items-baseline gap-1 min-w-0">${titleHtml}</div>
             </div>
-            <div class="text-right shrink-0">
-              <div class="text-xs font-mono text-slate-300">${formatTimestamp(sig.timestamp)}</div>
-              <div class="mt-1 flex items-center justify-end gap-1">${freqBadge}</div>
+            <div class="flex items-center gap-1 shrink-0">
+              <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
+              <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias & Kategori">
+                <i class="mdi mdi-pencil-outline text-sm"></i>
+              </button>
+              <button onclick="quickHaDiscovery(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-emerald-500 flex items-center justify-center transition" title="Skicka Home Assistant Auto-Discovery">
+                <i class="mdi mdi-home-assistant text-sm"></i>
+              </button>
+              <button onclick="quickIgnoreDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-rose-500 flex items-center justify-center transition" title="Ignorera / Svartlista enhet">
+                <i class="mdi mdi-eye-off-outline text-sm"></i>
+              </button>
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
-            <div class="flex flex-wrap items-center gap-1.5">
-              ${badges}
+          <!-- Row 2: Metadata -->
+          <div class="flex flex-wrap items-center justify-between gap-1.5 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            <div class="flex items-center gap-2">
+              <span>ID: <strong class="text-slate-700 dark:text-slate-200">${escapeHtml(sig.device_id)}</strong></span>
+              ${channelPart}
+              ${freqPart}
             </div>
-            <div class="flex items-center gap-1.5 ml-auto">
-              ${rssiBadge}
-            </div>
+            <span class="inline-flex items-center gap-0.5 text-slate-400 dark:text-slate-500" title="${escapeHtml(exactTime)}" data-ts="${escapeHtml(sig.timestamp)}">
+              <i class="mdi mdi-clock-outline text-xs"></i>
+              <span class="rel-time-label">${escapeHtml(relTime)}</span>
+            </span>
+          </div>
+
+          <!-- Row 3: Telemetry Metrics -->
+          <div class="flex flex-wrap items-center gap-1 py-0.5">
+            ${metricsHtml}
+          </div>
+
+          <!-- Row 4: Footer (RSSI/SNR + Counter) -->
+          <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/80 text-[11px] font-mono">
+            ${footerSignalHtml}
+            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700" title="Antal mottagna paket från denna enhet">
+              <i class="mdi mdi-counter text-xs text-sky-500"></i>${hitCount}
+            </span>
           </div>
         </div>
       `;
     }
 
-    function buildTelemetryBadges(sig, p) {
-      const items = [];
+    function buildSignalTableRowHtml(sig) {
+      const p = sig.payload || {};
+      const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
+      const hasAlias = Boolean(sig.alias && sig.alias.trim());
+      const catIcon = getCategoryIcon(sig.category);
+      const exactTime = formatTimestamp(sig.timestamp);
+      const relTime = formatRelativeTime(sig.timestamp);
+      const metricsHtml = buildExtendedMetricBadges(sig, p);
+      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr);
+      const hitCount = sig.hit_count || 1;
 
-      // Temperature
-      const tempC = sig.temperature_c !== null && sig.temperature_c !== undefined ? sig.temperature_c : p.temperature_C;
-      if (tempC !== null && tempC !== undefined) {
-        items.push(`
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            ${Number(tempC).toFixed(1)} °C
+      return `
+        <tr onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})" class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
+          <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400" title="${escapeHtml(exactTime)}" data-ts="${escapeHtml(sig.timestamp)}">
+            <i class="mdi mdi-clock-outline mr-0.5"></i><span class="rel-time-label">${escapeHtml(relTime)}</span>
+          </td>
+          <td class="py-1.5 px-2.5 whitespace-nowrap">
+            <div class="flex items-center gap-1.5">
+              <i class="mdi ${catIcon} text-sm"></i>
+              <span class="font-bold text-slate-900 dark:text-white">${escapeHtml(hasAlias ? sig.alias : sig.model)}</span>
+              ${hasAlias ? `<span class="text-[11px] text-slate-400">(${escapeHtml(sig.model)})</span>` : ''}
+              <span class="ml-1 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500"><i class="mdi mdi-counter mr-0.5"></i>${hitCount}</span>
+            </div>
+          </td>
+          <td class="py-1.5 px-2.5 whitespace-nowrap">
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
+          </td>
+          <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-600 dark:text-slate-300">
+            ${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ` <span class="text-slate-400">/ K${escapeHtml(sig.channel)}</span>` : ''}
+          </td>
+          <td class="py-1.5 px-2.5">
+            <div class="flex flex-wrap items-center gap-1">${metricsHtml}</div>
+          </td>
+          <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-600 dark:text-slate-300">
+            ${sig.freq ? `<i class="mdi mdi-sine-wave mr-0.5 text-slate-400"></i>${Number(sig.freq).toFixed(2)} MHz` : '-'}
+          </td>
+          <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap">
+            ${footerSignalHtml}
+          </td>
+          <td class="py-1.5 px-2.5 whitespace-nowrap text-right">
+            <div class="inline-flex items-center gap-1">
+              <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center" title="Redigera Alias">
+                <i class="mdi mdi-pencil-outline"></i>
+              </button>
+              <button onclick="quickHaDiscovery(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-emerald-500 flex items-center justify-center" title="HA Discovery">
+                <i class="mdi mdi-home-assistant"></i>
+              </button>
+              <button onclick="quickIgnoreDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-rose-500 flex items-center justify-center" title="Ignorera enhet">
+                <i class="mdi mdi-eye-off-outline"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
+    function buildExtendedMetricBadges(sig, p) {
+      const badges = [];
+
+      // 1. Temperature (temperature_C / temperature_F)
+      let tempC = sig.temperature_c !== null && sig.temperature_c !== undefined ? sig.temperature_c : p.temperature_C;
+      if ((tempC === null || tempC === undefined) && p.temperature_F !== undefined) {
+        tempC = ((Number(p.temperature_F) - 32) * 5) / 9;
+      }
+      if (tempC !== null && tempC !== undefined && !Number.isNaN(Number(tempC))) {
+        badges.push(`
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30">
+            <i class="mdi mdi-thermometer text-xs"></i>${Number(tempC).toFixed(1)} °C
           </span>
         `);
       }
 
-      // Humidity
+      // 2. Humidity (humidity)
       const hum = sig.humidity !== null && sig.humidity !== undefined ? sig.humidity : p.humidity;
-      if (hum !== null && hum !== undefined) {
-        items.push(`
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/30">
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3.25c-4.5 5.25-6.75 8.25-6.75 11.25a6.75 6.75 0 0013.5 0c0-3-2.25-6-6.75-11.25z" />
-            </svg>
-            ${Number(hum).toFixed(0)} %
+      if (hum !== null && hum !== undefined && !Number.isNaN(Number(hum))) {
+        badges.push(`
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30">
+            <i class="mdi mdi-water-percent text-xs"></i>${Number(hum).toFixed(0)} %
           </span>
         `);
       }
 
-      // Tire Pressure / Barometric Pressure
-      if (p.pressure_kPa !== undefined) {
-        items.push(`
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
-            Tryck: ${Number(p.pressure_kPa).toFixed(0)} kPa
-          </span>
-        `);
-      } else if (p.pressure_bar !== undefined) {
-        items.push(`
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
-            Tryck: ${Number(p.pressure_bar).toFixed(2)} bar
-          </span>
-        `);
-      } else if (p.pressure_hPa !== undefined) {
-        items.push(`
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
-            ${Number(p.pressure_hPa).toFixed(1)} hPa
+      // 3. Atmospheric Pressure (pressure_hPa)
+      if (p.pressure_hPa !== undefined && p.pressure_hPa !== null) {
+        badges.push(`
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-teal-50 text-teal-800 border border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30">
+            <i class="mdi mdi-gauge text-xs"></i>${Number(p.pressure_hPa).toFixed(1)} hPa
           </span>
         `);
       }
 
-      // Power / Energy
-      if (p.power_W !== undefined) {
-        items.push(`
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-            Effekt: ${Number(p.power_W).toFixed(0)} W
-          </span>
-        `);
-      }
-      if (p.energy_kWh !== undefined) {
-        items.push(`
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-            Energi: ${Number(p.energy_kWh).toFixed(2)} kWh
+      // 4. Tire Pressure / TPMS (pressure_kPa, pressure_bar, pressure_PSI)
+      let kpa = null;
+      if (p.pressure_kPa !== undefined) kpa = Number(p.pressure_kPa);
+      else if (p.pressure_bar !== undefined) kpa = Number(p.pressure_bar) * 100;
+      else if (p.pressure_PSI !== undefined) kpa = Number(p.pressure_PSI) * 6.89476;
+
+      if (kpa !== null && !Number.isNaN(kpa)) {
+        const bar = (kpa / 100).toFixed(2);
+        badges.push(`
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-800 border border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30">
+            <i class="mdi mdi-car-tire-alert text-xs"></i>${kpa.toFixed(0)} kPa (${bar} bar)
           </span>
         `);
       }
 
-      // Switch / State / Command
-      const switchState = p.state ?? p.cmd ?? p.button;
-      if (switchState !== undefined && switchState !== null) {
-        items.push(`
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-            Status: ${escapeHtml(String(switchState))}
+      // 5. Wind (wind_avg_km_h, wind_avg_m_s, wind_max_km_h, wind_max_m_s, wind_dir_deg)
+      let windMs = null;
+      if (p.wind_avg_m_s !== undefined) windMs = Number(p.wind_avg_m_s);
+      else if (p.wind_avg_km_h !== undefined) windMs = Number(p.wind_avg_km_h) / 3.6;
+
+      let gustMs = null;
+      if (p.wind_max_m_s !== undefined) gustMs = Number(p.wind_max_m_s);
+      else if (p.wind_max_km_h !== undefined) gustMs = Number(p.wind_max_km_h) / 3.6;
+
+      if (windMs !== null && !Number.isNaN(windMs)) {
+        const gustStr = gustMs !== null && !Number.isNaN(gustMs) ? ` (Byar ${gustMs.toFixed(1)})` : '';
+        badges.push(`
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30">
+            <i class="mdi mdi-weather-windy text-xs"></i>${windMs.toFixed(1)} m/s${gustStr}
+          </span>
+        `);
+      }
+      if (p.wind_dir_deg !== undefined && p.wind_dir_deg !== null) {
+        badges.push(`
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30">
+            <i class="mdi mdi-compass-outline text-xs"></i>${Number(p.wind_dir_deg).toFixed(0)}°
           </span>
         `);
       }
 
-      // Battery
+      // 6. Rain (rain_mm, rain_rate_mm_h)
+      if (p.rain_mm !== undefined && p.rain_mm !== null) {
+        const rateStr = p.rain_rate_mm_h !== undefined ? ` (${Number(p.rain_rate_mm_h).toFixed(1)} mm/h)` : '';
+        badges.push(`
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30">
+            <i class="mdi mdi-weather-pouring text-xs"></i>${Number(p.rain_mm).toFixed(1)} mm${rateStr}
+          </span>
+        `);
+      }
+
+      // 7. Energy / Power (power_W, energy_kWh, current_A, voltage_V)
+      const energyParts = [];
+      if (p.power_W !== undefined) energyParts.push(`${Number(p.power_W).toFixed(0)} W`);
+      if (p.energy_kWh !== undefined) energyParts.push(`${Number(p.energy_kWh).toFixed(2)} kWh`);
+      if (p.current_A !== undefined) energyParts.push(`${Number(p.current_A).toFixed(1)} A`);
+      if (p.voltage_V !== undefined) energyParts.push(`${Number(p.voltage_V).toFixed(0)} V`);
+      if (energyParts.length > 0) {
+        badges.push(`
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30">
+            <i class="mdi mdi-flash text-xs"></i>${escapeHtml(energyParts.join(' / '))}
+          </span>
+        `);
+      }
+
+      // 8. Switch / Door / Motion (state, cmd, button, contact_open, motion)
+      if (p.motion !== undefined || p.contact_open !== undefined) {
+        const label = p.motion !== undefined ? `Rörelse: ${p.motion}` : `Kontakt: ${p.contact_open ? 'ÖPPEN' : 'STÄNGD'}`;
+        badges.push(`
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30">
+            <i class="mdi mdi-motion-sensor text-xs"></i>${escapeHtml(label)}
+          </span>
+        `);
+      } else {
+        const swVal = p.state ?? p.cmd ?? p.button;
+        if (swVal !== undefined && swVal !== null) {
+          badges.push(`
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30">
+              <i class="mdi mdi-toggle-switch-outline text-xs"></i>${escapeHtml(String(swVal))}
+            </span>
+          `);
+        }
+      }
+
+      // 9. Battery (battery_ok)
       const bat = sig.battery_ok !== null && sig.battery_ok !== undefined ? sig.battery_ok : p.battery_ok;
       if (bat !== null && bat !== undefined) {
         const isOk = Number(bat) === 1;
-        items.push(`
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold ${
-            isOk
-              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-              : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-          }">
-            Batteri: ${isOk ? 'OK' : 'LÅGT'}
-          </span>
-        `);
+        if (isOk) {
+          badges.push(`
+            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30">
+              <i class="mdi mdi-battery-check-outline text-xs"></i>OK
+            </span>
+          `);
+        } else {
+          badges.push(`
+            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-800 border border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40">
+              <i class="mdi mdi-battery-alert-variant-outline text-xs"></i>LÅGT
+            </span>
+          `);
+        }
       }
 
-      // Fallback if no standard metric matched: show up to 2 interesting keys
-      if (items.length === 0) {
-        const ignore = new Set(['time', 'model', 'id', 'device', 'channel', 'freq', 'freq1', 'freq2', 'rssi', 'snr', 'noise', 'mod', 'mic', 'protocol']);
-        const extraKeys = Object.keys(p).filter((k) => !ignore.has(k)).slice(0, 3);
-        extraKeys.forEach((k) => {
-          items.push(`
-            <span class="px-2 py-0.5 rounded-md text-[11px] font-mono bg-slate-800 text-slate-300 border border-slate-700">
+      // Fallback if no known telemetry key matched
+      if (badges.length === 0) {
+        const skip = new Set(['time', 'model', 'id', 'device', 'channel', 'freq', 'freq1', 'freq2', 'rssi', 'snr', 'noise', 'mod', 'mic', 'protocol']);
+        const extras = Object.keys(p).filter((k) => !skip.has(k)).slice(0, 2);
+        extras.forEach((k) => {
+          badges.push(`
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
               ${escapeHtml(k)}: ${escapeHtml(String(p[k]))}
             </span>
           `);
         });
       }
 
-      return items.join('');
+      return badges.join('');
     }
 
-    function buildSignalQualityBadge(rssi, snr) {
-      if (rssi === null || rssi === undefined) return '';
-      const val = Number(rssi);
-      let color = 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
-      if (val < -25) {
-        color = 'bg-rose-500/15 text-rose-300 border-rose-500/30';
-      } else if (val < -12) {
-        color = 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+    function buildFooterSignalStrength(rssi, snr) {
+      if (rssi === null || rssi === undefined) {
+        return `<span class="text-slate-400"><i class="mdi mdi-wifi-strength-outline mr-1"></i>RSSI -</span>`;
       }
-      const snrPart = snr !== null && snr !== undefined ? ` / SNR ${Number(snr).toFixed(1)}` : '';
-      return `<span class="px-2 py-0.5 rounded text-[11px] font-mono border ${color}">RSSI ${val.toFixed(1)} dB${snrPart}</span>`;
+      const val = Number(rssi);
+      let icon = 'mdi-wifi-strength-4';
+      let color = 'text-emerald-600 dark:text-emerald-400';
+
+      if (val < -20) {
+        icon = 'mdi-wifi-strength-1';
+        color = 'text-rose-600 dark:text-rose-400';
+      } else if (val < -12) {
+        icon = 'mdi-wifi-strength-2';
+        color = 'text-amber-600 dark:text-amber-400';
+      } else if (val < -5) {
+        icon = 'mdi-wifi-strength-3';
+        color = 'text-sky-600 dark:text-sky-400';
+      }
+
+      const snrText = snr !== null && snr !== undefined ? ` <span class="text-slate-400 dark:text-slate-500">/ SNR ${Number(snr).toFixed(1)}</span>` : '';
+      return `
+        <span class="inline-flex items-center gap-1 ${color}">
+          <i class="mdi ${icon} text-sm leading-none"></i>
+          <span>${val.toFixed(1)} dB${snrText}</span>
+        </span>
+      `;
+    }
+
+    // -----------------------------------------------------------------------
+    // Quick Actions on Card / Table Row
+    // -----------------------------------------------------------------------
+    function quickEditDevice(event, deviceKey) {
+      event.stopPropagation();
+      openDeviceModalByKey(deviceKey);
+      setTimeout(() => {
+        const input = document.getElementById('modalAliasInput');
+        if (input) input.focus();
+      }, 120);
+    }
+
+    async function quickHaDiscovery(event, deviceKey) {
+      event.stopPropagation();
+      await triggerHaDiscovery(deviceKey);
+    }
+
+    async function quickIgnoreDevice(event, deviceKey) {
+      event.stopPropagation();
+      try {
+        const res = await fetch(`/api/devices/${encodeURIComponent(deviceKey)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ignored: 1 })
+        });
+        if (res.ok) {
+          rawSignalsList = rawSignalsList.filter((s) => s.device_key !== deviceKey);
+          renderSignalsView();
+          loadStatus();
+          showToast(`Enhet ${deviceKey} har svartlistats och dolts`);
+        }
+      } catch (e) {
+        showToast('Kunde inte svartlista enhet', true);
+      }
     }
 
     // -----------------------------------------------------------------------
     // Detail Modal
     // -----------------------------------------------------------------------
-    async function openSignalModal(index) {
-      const sig = signalsList[index];
-      if (!sig) return;
-      await openDeviceModalByKey(sig.device_key, sig.payload);
-    }
-
-    async function openDeviceModalByKey(deviceKey, overridePayload = null) {
+    async function openDeviceModalByKey(deviceKey, signalId = 0) {
       currentModalDeviceKey = deviceKey;
       document.getElementById('modalActionStatus').textContent = '';
+
+      const matchingSig = signalId
+        ? rawSignalsList.find((s) => Number(s.id) === Number(signalId))
+        : rawSignalsList.find((s) => s.device_key === deviceKey);
 
       try {
         const res = await fetch(`/api/devices/${encodeURIComponent(deviceKey)}`);
@@ -1215,7 +1698,7 @@
         const dev = data.device;
         const history = data.history || [];
 
-        currentModalPayload = overridePayload || dev.last_payload || {};
+        currentModalPayload = (matchingSig && matchingSig.payload) || dev.last_payload || {};
 
         document.getElementById('modalTitle').textContent = dev.alias ? `${dev.alias} (${dev.model})` : dev.model;
         document.getElementById('modalSubtitle').textContent = `Key: ${dev.device_key} | ID: ${dev.device_id} | Träffar: ${dev.hit_count}`;
@@ -1240,11 +1723,11 @@
           if (summaryParts.length === 0) summaryParts.push(JSON.stringify(hp).slice(0, 70));
 
           return `
-            <tr class="hover:bg-slate-800/50">
-              <td class="py-1.5 px-3 text-slate-300 whitespace-nowrap">${formatTimestamp(h.timestamp)}</td>
-              <td class="py-1.5 px-3 text-slate-400 whitespace-nowrap">${h.freq ? Number(h.freq).toFixed(2) + ' MHz' : '-'}</td>
-              <td class="py-1.5 px-3 text-slate-400 whitespace-nowrap">${h.rssi !== null ? h.rssi + ' dB' : '-'}</td>
-              <td class="py-1.5 px-3 text-sky-300 truncate max-w-xs">${escapeHtml(summaryParts.join(' | '))}</td>
+            <tr class="hover:bg-slate-100 dark:hover:bg-slate-800/50">
+              <td class="py-1.5 px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">${formatTimestamp(h.timestamp)}</td>
+              <td class="py-1.5 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${h.freq ? Number(h.freq).toFixed(2) + ' MHz' : '-'}</td>
+              <td class="py-1.5 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${h.rssi !== null ? h.rssi + ' dB' : '-'}</td>
+              <td class="py-1.5 px-3 text-sky-600 dark:text-sky-300 truncate max-w-xs">${escapeHtml(summaryParts.join(' | '))}</td>
             </tr>
           `;
         }).join('');
@@ -1299,11 +1782,11 @@
     }
 
     // -----------------------------------------------------------------------
-    // Devices Tab (Enhetsregister)
+    // Devices Tab (Enhetsregister - Compact Multi-Column Grid)
     // -----------------------------------------------------------------------
     function debouncedLoadDevices() {
       clearTimeout(deviceDebounceTimer);
-      deviceDebounceTimer = setTimeout(loadDevices, 220);
+      deviceDebounceTimer = setTimeout(loadDevices, 200);
     }
 
     async function loadDevices() {
@@ -1324,15 +1807,19 @@
     }
 
     function handleDeviceUpdated(dev) {
-      signalsList.forEach((s) => {
-        if (s.device_key === dev.device_key) {
-          s.alias = dev.alias;
-          s.category = dev.category;
-          s.mqtt_enabled = dev.mqtt_enabled;
-          s.ignored = dev.ignored;
-        }
-      });
-      if (activeTab === 'signals') renderSignalsList();
+      if (Number(dev.ignored) === 1) {
+        rawSignalsList = rawSignalsList.filter((s) => s.device_key !== dev.device_key);
+      } else {
+        rawSignalsList.forEach((s) => {
+          if (s.device_key === dev.device_key) {
+            s.alias = dev.alias;
+            s.category = dev.category;
+            s.mqtt_enabled = dev.mqtt_enabled;
+            s.ignored = dev.ignored;
+          }
+        });
+      }
+      if (activeTab === 'signals') renderSignalsView();
       if (activeTab === 'devices') loadDevices();
     }
 
@@ -1350,100 +1837,109 @@
       container.innerHTML = devicesList.map((dev) => {
         const isIgnored = Number(dev.ignored) === 1;
         const isMqtt = Number(dev.mqtt_enabled) === 1;
-        const borderClass = isIgnored ? 'border-rose-900/60 opacity-75' : 'border-slate-800';
+        const catIcon = getCategoryIcon(dev.category);
+        const borderClass = isIgnored
+          ? 'border-rose-300 dark:border-rose-900/60 opacity-75'
+          : 'border-slate-200 dark:border-slate-800';
 
         return `
-          <div class="bg-slate-900 border ${borderClass} rounded-xl p-4 shadow flex flex-col justify-between gap-3">
+          <div class="bg-white dark:bg-slate-900 border ${borderClass} rounded-xl p-3 shadow-sm flex flex-col justify-between gap-2.5">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-bold text-white truncate">${escapeHtml(dev.alias || dev.model)}</span>
-                  <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-sky-300 border border-slate-700">${escapeHtml(dev.category || 'Sensor')}</span>
-                  ${isIgnored ? '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-950 text-rose-300 border border-rose-700">Ignorerad</span>' : ''}
+                <div class="flex items-center gap-1.5">
+                  <i class="mdi ${catIcon} text-base"></i>
+                  <span class="text-xs font-bold text-slate-900 dark:text-white truncate">${escapeHtml(dev.alias || dev.model)}</span>
+                  <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700">${escapeHtml(dev.category || 'Sensor')}</span>
                 </div>
-                <div class="text-xs font-mono text-slate-400 mt-0.5">
-                  Modell: ${escapeHtml(dev.model)} | ID: ${escapeHtml(dev.device_id)}
+                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  ${escapeHtml(dev.model)} | ID: ${escapeHtml(dev.device_id)}
                 </div>
               </div>
-              <div class="text-right font-mono text-xs shrink-0">
-                <div class="text-slate-200 font-semibold">${dev.hit_count} träffar</div>
-                <div class="text-slate-500 text-[11px]">Senast: ${formatTimestamp(dev.last_seen)}</div>
+              <div class="text-right font-mono text-[11px] shrink-0">
+                <span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold">
+                  <i class="mdi mdi-counter text-sky-500"></i>${dev.hit_count}
+                </span>
+                <div class="text-slate-400 text-[10px] mt-0.5" title="${escapeHtml(formatTimestamp(dev.last_seen))}">${escapeHtml(formatRelativeTime(dev.last_seen))}</div>
               </div>
             </div>
 
             <!-- Inline Edit Alias & Category -->
-            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center pt-2 border-t border-slate-800/80 text-xs">
-              <div class="sm:col-span-6">
+            <div class="grid grid-cols-12 gap-1.5 items-center pt-1.5 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+              <div class="col-span-6">
                 <input
                   type="text"
                   id="devAlias_${escapeHtml(dev.device_key)}"
                   value="${escapeHtml(dev.alias || '')}"
-                  placeholder="Ange eget alias..."
-                  class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:border-sky-500 focus:outline-none"
+                  placeholder="Alias..."
+                  class="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none text-xs"
                 />
               </div>
-              <div class="sm:col-span-3">
+              <div class="col-span-4">
                 <select
                   id="devCat_${escapeHtml(dev.device_key)}"
-                  class="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200"
+                  class="w-full px-1.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-800 dark:text-slate-200 text-xs"
                 >
                   ${['Weather', 'TPMS', 'Switch', 'Meter', 'Security', 'Sensor'].map(
                     (c) => `<option value="${c}" ${dev.category === c ? 'selected' : ''}>${c}</option>`
                   ).join('')}
                 </select>
               </div>
-              <div class="sm:col-span-3">
+              <div class="col-span-2">
                 <button
                   onclick="saveDeviceInline('${escapeHtml(dev.device_key)}')"
-                  class="w-full py-1.5 px-3 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border border-sky-500/30 font-semibold transition"
+                  class="w-full py-1 px-2 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold transition text-xs flex items-center justify-center"
+                  title="Spara Alias & Kategori"
                 >
-                  Spara
+                  <i class="mdi mdi-check"></i>
                 </button>
               </div>
             </div>
 
             <!-- Action Switches & Buttons -->
-            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/60 text-xs">
-              <div class="flex items-center gap-4">
-                <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+            <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[11px]">
+              <div class="flex items-center gap-2.5">
+                <label class="inline-flex items-center gap-1 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     ${isMqtt ? 'checked' : ''}
                     onchange="toggleDeviceFlag('${escapeHtml(dev.device_key)}', 'mqtt_enabled', this.checked ? 1 : 0)"
-                    class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-emerald-500"
+                    class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500"
                   />
-                  <span class="text-slate-300">MQTT</span>
+                  <span class="text-slate-600 dark:text-slate-300">MQTT</span>
                 </label>
 
-                <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                <label class="inline-flex items-center gap-1 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     ${isIgnored ? 'checked' : ''}
                     onchange="toggleDeviceFlag('${escapeHtml(dev.device_key)}', 'ignored', this.checked ? 1 : 0)"
-                    class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-rose-500"
+                    class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-rose-500"
                   />
-                  <span class="text-slate-300">Ignorera</span>
+                  <span class="text-slate-600 dark:text-slate-300">Ignorera</span>
                 </label>
               </div>
 
-              <div class="flex items-center gap-1.5">
+              <div class="flex items-center gap-1">
                 <button
                   onclick="openDeviceModalByKey('${escapeHtml(dev.device_key)}')"
-                  class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                  class="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+                  title="Visa detaljer och historik"
                 >
-                  Detaljer
+                  <i class="mdi mdi-code-json"></i>
                 </button>
                 <button
                   onclick="triggerHaDiscovery('${escapeHtml(dev.device_key)}')"
-                  class="px-2.5 py-1 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 border border-emerald-500/30 font-semibold"
+                  class="px-2 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold"
+                  title="Skicka Home Assistant Auto-Discovery"
                 >
-                  HA Discovery
+                  <i class="mdi mdi-home-assistant"></i>
                 </button>
                 <button
                   onclick="deleteDevice('${escapeHtml(dev.device_key)}')"
-                  class="px-2.5 py-1 rounded-lg bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 border border-rose-500/30"
+                  class="px-2 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+                  title="Radera enhet och historik"
                 >
-                  Radera
+                  <i class="mdi mdi-trash-can-outline"></i>
                 </button>
               </div>
             </div>
@@ -1535,7 +2031,6 @@
         document.getElementById('statBandBar433').style.width = `${Math.round((b433 / totalBands) * 100)}%`;
         document.getElementById('statBandBar868').style.width = `${Math.round((b868 / totalBands) * 100)}%`;
 
-        // 24h Hourly chart
         const hourly = data.hourly_24h || [];
         const maxHourly = Math.max(1, ...hourly.map((h) => h.count));
         const chartContainer = document.getElementById('hourlyChartContainer');
@@ -1548,7 +2043,7 @@
               <div class="opacity-0 group-hover:opacity-100 absolute -top-6 bg-slate-800 text-white text-[10px] font-mono px-1.5 py-0.5 rounded border border-slate-700 whitespace-nowrap z-10 pointer-events-none">
                 ${h.hour}: ${h.count} st
               </div>
-              <div class="w-full rounded-t bg-sky-500/70 hover:bg-sky-400 transition-all" style="height: ${pct}%"></div>
+              <div class="w-full rounded-t bg-sky-500/75 hover:bg-sky-400 transition-all" style="height: ${pct}%"></div>
             </div>
           `;
         }).join('');
@@ -1563,20 +2058,19 @@
           `;
         }
 
-        // Top 10 devices
         const topList = document.getElementById('topDevicesList');
         const topDevs = data.top_devices || [];
         if (!topDevs.length) {
           topList.innerHTML = '<div class="text-xs text-slate-500">Inga aktiva enheter ännu.</div>';
         } else {
           topList.innerHTML = topDevs.map((d, i) => `
-            <div onclick="openDeviceModalByKey('${escapeHtml(d.device_key)}')" class="cursor-pointer flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs">
+            <div onclick="openDeviceModalByKey('${escapeHtml(d.device_key)}')" class="cursor-pointer flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs">
               <div class="flex items-center gap-2 min-w-0">
-                <span class="text-slate-500 font-mono w-4">${i + 1}.</span>
-                <span class="font-semibold text-slate-200 truncate">${escapeHtml(d.alias || d.model)}</span>
-                <span class="text-slate-500 font-mono text-[11px]">(${escapeHtml(d.device_id)})</span>
+                <span class="text-slate-400 font-mono w-4">${i + 1}.</span>
+                <span class="font-semibold text-slate-800 dark:text-slate-200 truncate">${escapeHtml(d.alias || d.model)}</span>
+                <span class="text-slate-400 font-mono text-[11px]">(${escapeHtml(d.device_id)})</span>
               </div>
-              <span class="font-mono text-sky-400 font-semibold shrink-0">${d.hit_count}</span>
+              <span class="font-mono text-sky-600 dark:text-sky-400 font-semibold shrink-0"><i class="mdi mdi-counter mr-0.5"></i>${d.hit_count}</span>
             </div>
           `).join('');
         }
@@ -1653,12 +2147,37 @@
     }
 
     // -----------------------------------------------------------------------
-    // Utility Helpers
+    // Relative Time & Utility Helpers
     // -----------------------------------------------------------------------
     function formatTimestamp(ts) {
       if (!ts) return '-';
       const clean = String(ts).replace('T', ' ');
       return clean.length > 19 ? clean.slice(0, 19) : clean;
+    }
+
+    function formatRelativeTime(ts) {
+      if (!ts) return '-';
+      const parsed = Date.parse(ts.includes('T') ? ts : ts.replace(' ', 'T'));
+      if (Number.isNaN(parsed)) return formatTimestamp(ts);
+      const diffSec = Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+      if (diffSec < 5) return 'Just nu';
+      if (diffSec < 60) return `${diffSec}s sedan`;
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m sedan`;
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours < 24) return `${diffHours}h sedan`;
+      const diffDays = Math.floor(diffHours / 24);
+      return `${diffDays}d sedan`;
+    }
+
+    function updateRelativeTimestampsInDom() {
+      document.querySelectorAll('[data-ts]').forEach((el) => {
+        const ts = el.getAttribute('data-ts');
+        const label = el.querySelector('.rel-time-label');
+        if (ts && label) {
+          label.textContent = formatRelativeTime(ts);
+        }
+      });
     }
 
     function formatDuration(seconds) {
@@ -1684,4 +2203,3 @@
   </script>
 </body>
 </html>
-

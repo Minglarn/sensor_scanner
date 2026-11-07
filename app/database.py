@@ -334,6 +334,7 @@ class Database:
                         "category": device_dict.get("category", inferred_cat),
                         "mqtt_enabled": device_dict.get("mqtt_enabled", 1),
                         "ignored": device_dict.get("ignored", 0),
+                        "hit_count": int(device_dict.get("hit_count", 1)),
                         "channel": channel,
                         "freq": freq,
                         "rssi": rssi,
@@ -355,6 +356,7 @@ class Database:
         device_id: Optional[str] = None,
         freq_band: Optional[str] = None,
         only_aliased: bool = False,
+        unique_devices: bool = False,
         limit: int = 100,
         offset: int = 0,
     ) -> Dict[str, Any]:
@@ -391,25 +393,52 @@ class Database:
 
         where_sql = " AND ".join(where_clauses)
 
-        query = f"""
-            SELECT
-                s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
-                s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
-                d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.category, 'Sensor') AS category,
-                COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ignored, 0) AS ignored
-            FROM signals s
-            LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
-            WHERE {where_sql}
-            ORDER BY s.timestamp DESC, s.id DESC
-            LIMIT ? OFFSET ?;
-        """
-
-        count_query = f"""
-            SELECT COUNT(*) AS total
-            FROM signals s
-            LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
-            WHERE {where_sql};
-        """
+        if unique_devices:
+            query = f"""
+                SELECT
+                    s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
+                    s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
+                    d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.category, 'Sensor') AS category,
+                    COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ignored, 0) AS ignored,
+                    COALESCE(d.hit_count, 1) AS hit_count
+                FROM signals s
+                INNER JOIN (
+                    SELECT MAX(s2.id) AS max_id
+                    FROM signals s2
+                    LEFT JOIN devices d2 ON d2.model = s2.model AND d2.device_id = s2.device_id
+                    WHERE {where_sql.replace('s.', 's2.').replace('d.', 'd2.')}
+                    GROUP BY s2.model, s2.device_id
+                ) latest ON s.id = latest.max_id
+                LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
+                ORDER BY s.timestamp DESC, s.id DESC
+                LIMIT ? OFFSET ?;
+            """
+            count_query = f"""
+                SELECT COUNT(DISTINCT s.model || ':' || s.device_id) AS total
+                FROM signals s
+                LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
+                WHERE {where_sql};
+            """
+        else:
+            query = f"""
+                SELECT
+                    s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
+                    s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
+                    d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.category, 'Sensor') AS category,
+                    COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ignored, 0) AS ignored,
+                    COALESCE(d.hit_count, 1) AS hit_count
+                FROM signals s
+                LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
+                WHERE {where_sql}
+                ORDER BY s.timestamp DESC, s.id DESC
+                LIMIT ? OFFSET ?;
+            """
+            count_query = f"""
+                SELECT COUNT(*) AS total
+                FROM signals s
+                LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
+                WHERE {where_sql};
+            """
 
         with self._lock:
             conn = self._get_conn()
