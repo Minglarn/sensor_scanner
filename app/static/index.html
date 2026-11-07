@@ -59,6 +59,10 @@
     .json-number { color: #fbbf24; }
     .json-boolean { color: #c084fc; }
     .json-null { color: #94a3b8; }
+    .signal-flash-highlight {
+      background-color: rgba(14, 165, 233, 0.12) !important;
+      border-color: rgba(14, 165, 233, 0.5) !important;
+    }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 h-screen flex overflow-hidden selection:bg-sky-500 selection:text-white transition-colors duration-150">
@@ -168,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.10</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.11</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -317,7 +321,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
           
           <!-- Free-text Search -->
-          <div class="lg:col-span-3 relative">
+          <div class="lg:col-span-2 xl:col-span-3 relative">
             <i class="mdi mdi-magnify text-base text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
             <input
               type="text"
@@ -373,7 +377,7 @@
           </div>
 
           <!-- Dynamic Multi-Select "Kategorier & Filter" Dropdown -->
-          <div class="lg:col-span-3 relative" id="sigFilterDropdownWrap">
+          <div class="lg:col-span-2 relative" id="sigFilterDropdownWrap">
             <button
               type="button"
               onclick="toggleDropdownMenu('sigFilterMenu')"
@@ -415,14 +419,40 @@
             </select>
           </div>
 
-          <!-- Group Duplicates + View Switcher + Visible Count -->
-          <div class="lg:col-span-2 flex flex-wrap items-center justify-between sm:justify-end gap-1.5">
+          <!-- Synchronized Sort Dropdown + Group Duplicates + View Switcher + Visible Count -->
+          <div class="lg:col-span-4 xl:col-span-3 flex flex-wrap items-center justify-between sm:justify-end gap-1.5">
             
+            <!-- Synchronized Signal Sort Dropdown -->
+            <div class="relative flex items-center min-w-0 flex-1 sm:flex-initial">
+              <i class="mdi mdi-sort-variant text-sky-500 text-sm absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+              <select
+                id="signalSortSelect"
+                onchange="onSignalSortDropdownChange(this.value)"
+                title="Sortera signaler (synkroniserad med tabellens kolumnrubriker)"
+                class="w-full sm:w-auto pl-6 pr-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500/60 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500 transition"
+              >
+                <option value="time:desc">Senast aktiv (Tid ↓)</option>
+                <option value="time:asc">Äldst först (Tid ↑)</option>
+                <option value="name:asc">Namn / Alias (A–Ö)</option>
+                <option value="name:desc">Namn / Alias (Ö–A)</option>
+                <option value="hits:desc">Flest träffar (Antal ↓)</option>
+                <option value="hits:asc">Färst träffar (Antal ↑)</option>
+                <option value="rssi:desc">Signalstyrka (RSSI ↓)</option>
+                <option value="rssi:asc">Signalstyrka (RSSI ↑)</option>
+                <option value="freq:asc">Frekvensband</option>
+                <option value="freq:desc">Frekvensband (Fallande)</option>
+                <option value="category:asc">Kategori (A–Ö)</option>
+                <option value="category:desc">Kategori (Ö–A)</option>
+                <option value="id:asc">ID / Kanal (A–Ö)</option>
+                <option value="id:desc">ID / Kanal (Ö–A)</option>
+              </select>
+            </div>
+
             <!-- Group Devices Toggle -->
             <button
               id="groupDevicesBtn"
               onclick="toggleGroupDevices()"
-              class="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition"
+              class="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0"
               title="Visa endast senaste kortet/raden per unik enhet och uppdatera på plats"
             >
               <i class="mdi mdi-layers-triple-outline text-sm leading-none"></i>
@@ -430,7 +460,7 @@
             </button>
 
             <!-- View Switcher: Card vs Table -->
-            <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+            <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shrink-0">
               <button
                 id="viewModeBtn_grid"
                 onclick="setViewMode('grid')"
@@ -476,14 +506,87 @@
           <table class="w-full text-left border-collapse text-xs">
             <thead>
               <tr class="bg-slate-50 dark:bg-slate-950/90 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider">
-                <th class="py-2 px-2.5">Tid</th>
-                <th class="py-2 px-2.5">Enhet / Alias</th>
-                <th class="py-2 px-2.5">Kategori</th>
-                <th class="py-2 px-2.5">ID / Kanal</th>
-                <th class="py-2 px-2.5">Mätvärden</th>
-                <th class="py-2 px-2.5">Radio &amp; Frekvens</th>
-                <th class="py-2 px-2.5">RSSI / SNR</th>
-                <th class="py-2 px-2.5 text-right">Åtgärder</th>
+                <th
+                  id="sigTh_time"
+                  onclick="toggleSignalSort('time')"
+                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                  title="Klicka för att sortera på Tid"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    <span>Tid</span>
+                    <span id="sigSortIcon_time" class="inline-flex items-center"><i class="mdi mdi-arrow-down"></i></span>
+                  </span>
+                </th>
+                <th
+                  id="sigTh_name"
+                  onclick="toggleSignalSort('name')"
+                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                  title="Klicka för att sortera alfabetiskt på Enhet / Alias"
+                >
+                  <div class="inline-flex items-center gap-2">
+                    <span id="sigThLabel_name" class="inline-flex items-center gap-1">
+                      <span>Enhet / Alias</span>
+                      <span id="sigSortIcon_name" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                    </span>
+                    <button
+                      type="button"
+                      id="sigThBtn_hits"
+                      onclick="event.stopPropagation(); toggleSignalSort('hits')"
+                      title="Sortera på Antal träffar (paket)"
+                      class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900 hover:border-sky-500/60 text-[10px] font-mono normal-case transition"
+                    >
+                      <i class="mdi mdi-counter text-sky-500"></i>
+                      <span>Träffar</span>
+                      <span id="sigSortIcon_hits" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40"></i></span>
+                    </button>
+                  </div>
+                </th>
+                <th
+                  id="sigTh_category"
+                  onclick="toggleSignalSort('category')"
+                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                  title="Klicka för att sortera på Kategori"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    <span>Kategori</span>
+                    <span id="sigSortIcon_category" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                  </span>
+                </th>
+                <th
+                  id="sigTh_id"
+                  onclick="toggleSignalSort('id')"
+                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                  title="Klicka för att sortera på ID / Kanal"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    <span>ID / Kanal</span>
+                    <span id="sigSortIcon_id" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                  </span>
+                </th>
+                <th class="py-2 px-2.5 whitespace-nowrap">Mätvärden</th>
+                <th
+                  id="sigTh_freq"
+                  onclick="toggleSignalSort('freq')"
+                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                  title="Klicka för att sortera på Radio &amp; Frekvens"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    <span>Radio &amp; Frekvens</span>
+                    <span id="sigSortIcon_freq" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                  </span>
+                </th>
+                <th
+                  id="sigTh_rssi"
+                  onclick="toggleSignalSort('rssi')"
+                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                  title="Klicka för att sortera på RSSI / Signalstyrka"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    <span>RSSI / SNR</span>
+                    <span id="sigSortIcon_rssi" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                  </span>
+                </th>
+                <th class="py-2 px-2.5 text-right whitespace-nowrap">Åtgärder</th>
               </tr>
             </thead>
             <tbody id="signalsTableBody" class="divide-y divide-slate-200/70 dark:divide-slate-800/70">
@@ -1400,6 +1503,15 @@
     let selectedSignalModels = new Set();
     let selectedSignalStatusFilters = new Set(); // 'new', 'low_battery', 'aliased'
     let selectedSignalCategories = new Set();
+    let signalSort = (() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('ss_signal_sort') || '');
+        if (saved && saved.field && (saved.dir === 'asc' || saved.dir === 'desc')) {
+          return saved;
+        }
+      } catch (e) {}
+      return { field: 'time', dir: 'desc' };
+    })();
 
     // Enheter Tab Grouping, Sorting, Dynamic Multi-Select Filters & Bulk Selection state
     let deviceGroupBy = localStorage.getItem('ss_dev_group_by') || 'custom_group';
@@ -1443,6 +1555,7 @@
       applySidebarCollapseState();
       syncViewModeButtons();
       syncGroupDevicesButton();
+      syncSignalSortUi();
       syncDeviceToolbarControls();
       renderCategoryFilterDropdowns();
       renderSignalModelDropdownList();
@@ -3255,13 +3368,148 @@
       return true;
     }
 
+    function saveSignalSort() {
+      try {
+        localStorage.setItem('ss_signal_sort', JSON.stringify(signalSort));
+      } catch (e) {}
+    }
+
+    function toggleSignalSort(field) {
+      if (signalSort.field === field) {
+        signalSort.dir = signalSort.dir === 'desc' ? 'asc' : 'desc';
+      } else {
+        signalSort.field = field;
+        // Default direction: 'desc' for time, hits, rssi; 'asc' for name, category, id, freq
+        signalSort.dir = ['time', 'hits', 'rssi'].includes(field) ? 'desc' : 'asc';
+      }
+      saveSignalSort();
+      syncSignalSortUi();
+      renderSignalsView();
+    }
+
+    function onSignalSortDropdownChange(val) {
+      const [field, dir] = String(val || 'time:desc').split(':');
+      signalSort = {
+        field: field || 'time',
+        dir: dir === 'asc' ? 'asc' : 'desc'
+      };
+      saveSignalSort();
+      syncSignalSortUi();
+      renderSignalsView();
+    }
+
+    function syncSignalSortUi() {
+      const selectEl = document.getElementById('signalSortSelect');
+      const currentVal = `${signalSort.field}:${signalSort.dir}`;
+      if (selectEl && selectEl.value !== currentVal) {
+        selectEl.value = currentVal;
+      }
+
+      const mainCols = ['time', 'name', 'category', 'id', 'freq', 'rssi'];
+      for (const col of mainCols) {
+        const thEl = col === 'name'
+          ? document.getElementById('sigThLabel_name')
+          : document.getElementById(`sigTh_${col}`);
+        const iconEl = document.getElementById(`sigSortIcon_${col}`);
+        if (!thEl || !iconEl) continue;
+
+        if (signalSort.field === col) {
+          thEl.classList.add('text-sky-600', 'dark:text-sky-400', 'font-bold');
+          iconEl.innerHTML = signalSort.dir === 'desc'
+            ? '<i class="mdi mdi-arrow-down text-xs"></i>'
+            : '<i class="mdi mdi-arrow-up text-xs"></i>';
+        } else {
+          thEl.classList.remove('text-sky-600', 'dark:text-sky-400', 'font-bold');
+          iconEl.innerHTML = '<i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i>';
+        }
+      }
+
+      const hitsBtn = document.getElementById('sigThBtn_hits');
+      const hitsIcon = document.getElementById('sigSortIcon_hits');
+      if (hitsBtn && hitsIcon) {
+        if (signalSort.field === 'hits') {
+          hitsBtn.className = 'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-sky-500/60 bg-sky-500/15 text-sky-600 dark:text-sky-400 text-[10px] font-mono font-bold normal-case transition';
+          hitsIcon.innerHTML = signalSort.dir === 'desc'
+            ? '<i class="mdi mdi-arrow-down text-xs"></i>'
+            : '<i class="mdi mdi-arrow-up text-xs"></i>';
+        } else {
+          hitsBtn.className = 'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900 hover:border-sky-500/60 text-slate-500 dark:text-slate-400 text-[10px] font-mono normal-case transition';
+          hitsIcon.innerHTML = '<i class="mdi mdi-unfold-more-horizontal opacity-40"></i>';
+        }
+      }
+    }
+
+    function compareSignals(a, b) {
+      const f = signalSort.field || 'time';
+      const mult = signalSort.dir === 'asc' ? 1 : -1;
+
+      if (f === 'name') {
+        const nameA = ((a.alias && a.alias.trim()) ? a.alias.trim() : (a.model || '')).toLowerCase();
+        const nameB = ((b.alias && b.alias.trim()) ? b.alias.trim() : (b.model || '')).toLowerCase();
+        const cmp = nameA.localeCompare(nameB, 'sv', { numeric: true });
+        if (cmp !== 0) return cmp * mult;
+        return String(a.device_id || '').localeCompare(String(b.device_id || ''), 'sv', { numeric: true });
+      }
+
+      if (f === 'hits') {
+        const hitsA = Number(a.hit_count || 1);
+        const hitsB = Number(b.hit_count || 1);
+        if (hitsA !== hitsB) return (hitsA - hitsB) * mult;
+      }
+
+      if (f === 'category') {
+        const catA = (a.category || 'Sensor').trim().toLowerCase();
+        const catB = (b.category || 'Sensor').trim().toLowerCase();
+        const cmp = catA.localeCompare(catB, 'sv', { numeric: true });
+        if (cmp !== 0) return cmp * mult;
+        const nameA = ((a.alias && a.alias.trim()) ? a.alias.trim() : (a.model || '')).toLowerCase();
+        const nameB = ((b.alias && b.alias.trim()) ? b.alias.trim() : (b.model || '')).toLowerCase();
+        return nameA.localeCompare(nameB, 'sv', { numeric: true });
+      }
+
+      if (f === 'id') {
+        const idA = `${a.device_id ?? ''}${a.channel !== null && a.channel !== undefined && a.channel !== '' ? '_' + a.channel : ''}`;
+        const idB = `${b.device_id ?? ''}${b.channel !== null && b.channel !== undefined && b.channel !== '' ? '_' + b.channel : ''}`;
+        const cmp = idA.localeCompare(idB, 'sv', { numeric: true });
+        if (cmp !== 0) return cmp * mult;
+      }
+
+      if (f === 'freq') {
+        const radA = extractRadioMetadata(a, a.payload);
+        const radB = extractRadioMetadata(b, b.payload);
+        const freqA = radA.isBle ? (radA.freqMHz || 2402.0) : (radA.freqMHz || 999999);
+        const freqB = radB.isBle ? (radB.freqMHz || 2402.0) : (radB.freqMHz || 999999);
+        if (freqA !== freqB) return (freqA - freqB) * mult;
+      }
+
+      if (f === 'rssi') {
+        const hasA = a.rssi !== null && a.rssi !== undefined && a.rssi !== '' && !Number.isNaN(Number(a.rssi));
+        const hasB = b.rssi !== null && b.rssi !== undefined && b.rssi !== '' && !Number.isNaN(Number(b.rssi));
+        if (!hasA && hasB) return 1;
+        if (hasA && !hasB) return -1;
+        if (hasA && hasB) {
+          const rA = Number(a.rssi);
+          const rB = Number(b.rssi);
+          if (rA !== rB) return (rA - rB) * mult;
+        }
+      }
+
+      // Default / Tie-breaker: Timestamp ('time')
+      const tsA = String(a.timestamp || '');
+      const tsB = String(b.timestamp || '');
+      if (tsA !== tsB) {
+        return f === 'time' ? tsA.localeCompare(tsB) * mult : tsB.localeCompare(tsA);
+      }
+      return ((Number(a.id) || 0) - (Number(b.id) || 0)) * (f === 'time' ? mult : -1);
+    }
+
     function pulseElement(el) {
       if (!el) return;
-      el.classList.add('ring-2', 'ring-sky-500', 'transition-all', 'duration-500');
+      el.classList.add('bg-sky-500/10', 'signal-flash-highlight', 'transition-colors', 'duration-700');
       clearTimeout(el._pulseTimer);
       el._pulseTimer = setTimeout(() => {
-        el.classList.remove('ring-2', 'ring-sky-500');
-      }, 900);
+        el.classList.remove('bg-sky-500/10', 'signal-flash-highlight');
+      }, 800);
     }
 
     function handleIncomingSignal(sig, dev, counts, totalSignalsCount, totalDevicesCount) {
@@ -3300,7 +3548,7 @@
 
       if (isPaused) return;
 
-      // 3. Update rawSignalsList cache
+      // 3. Update rawSignalsList cache (keep newest signal at index 0)
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       if (groupDevices) {
         const existingIdx = rawSignalsList.findIndex(
@@ -3309,7 +3557,8 @@
         if (existingIdx !== -1) {
           const prevHits = rawSignalsList[existingIdx].hit_count || 1;
           sig.hit_count = sig.hit_count || prevHits + 1;
-          rawSignalsList[existingIdx] = sig;
+          rawSignalsList.splice(existingIdx, 1);
+          rawSignalsList.unshift(sig);
         } else {
           sig.hit_count = sig.hit_count || 1;
           rawSignalsList.unshift(sig);
@@ -3319,7 +3568,7 @@
         if (rawSignalsList.length > 100) rawSignalsList.length = 100;
       }
 
-      // 4. Live DOM update in Signaler tab (even when filters are active!)
+      // 4. Live DOM update in Signaler tab (respecting active signalSort!)
       if (activeTab === 'signals' && signalMatchesActiveFilters(sig)) {
         const container = viewMode === 'table'
           ? document.getElementById('signalsTableBody')
@@ -3333,6 +3582,8 @@
           if (viewMode === 'table') tableWrap.classList.remove('hidden');
           else gridEl.classList.remove('hidden');
         }
+
+        const isDefaultTimeDesc = signalSort.field === 'time' && signalSort.dir === 'desc';
 
         if (groupDevices && container) {
           const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
@@ -3357,24 +3608,54 @@
               if (relLabel) relLabel.textContent = formatRelativeTime(sig.timestamp);
             }
 
+            if (isDefaultTimeDesc) {
+              // Rule 3.1: Immediately move updated element to the very top (row 1 / card 1)
+              if (container.firstElementChild !== existingEl) {
+                container.prepend(existingEl);
+              }
+            } else if (signalSort.field === 'hits' || signalSort.field === 'rssi' || (signalSort.field === 'time' && signalSort.dir === 'asc')) {
+              // Dynamic value sort: reposition element only if its sorted position changed
+              const sortedItems = getFilteredSignals();
+              const targetIdx = sortedItems.findIndex((item) => (item.device_key || `${item.model}_${item.device_id}`) === devKey);
+              if (targetIdx !== -1 && container.children[targetIdx] !== existingEl) {
+                const refNode = container.children[targetIdx] || null;
+                container.insertBefore(existingEl, refNode);
+              }
+            }
+            // For 'name', 'category', 'id', 'freq': stays strictly in place!
+
             pulseElement(existingEl);
           } else {
-            // Device not in DOM yet -> insert at top
+            // Brand new device not in DOM yet -> insert at correct sorted position
             const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
             temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig) : buildSignalCardHtml(sig)).trim();
             const newEl = temp.firstElementChild;
             if (newEl) {
-              container.insertBefore(newEl, container.firstChild);
+              if (isDefaultTimeDesc) {
+                container.prepend(newEl);
+              } else {
+                const sortedItems = getFilteredSignals();
+                const targetIdx = sortedItems.findIndex((item) => (item.device_key || `${item.model}_${item.device_id}`) === devKey);
+                const refNode = (targetIdx !== -1 && container.children[targetIdx]) ? container.children[targetIdx] : null;
+                container.insertBefore(newEl, refNode);
+              }
               pulseElement(newEl);
             }
           }
         } else if (!groupDevices && container) {
-          // Ungrouped stream -> insert at top and trim > 100
+          // Ungrouped stream -> insert at sorted position (top for time:desc) and trim > 100
           const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
           temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig) : buildSignalCardHtml(sig)).trim();
           const newEl = temp.firstElementChild;
           if (newEl) {
-            container.insertBefore(newEl, container.firstChild);
+            if (isDefaultTimeDesc) {
+              container.prepend(newEl);
+            } else {
+              const sortedItems = getFilteredSignals();
+              const targetIdx = sortedItems.findIndex((item) => item === sig || (item.id && sig.id && item.id === sig.id));
+              const refNode = (targetIdx !== -1 && container.children[targetIdx]) ? container.children[targetIdx] : null;
+              container.insertBefore(newEl, refNode);
+            }
             pulseElement(newEl);
             while (container.children.length > 100) {
               container.removeChild(container.lastElementChild);
@@ -3393,7 +3674,9 @@
 
     function getFilteredSignals() {
       const filtered = rawSignalsList.filter(signalMatchesActiveFilters);
-      if (!groupDevices) return filtered.slice(0, 100);
+      if (!groupDevices) {
+        return filtered.slice(0, 100).sort(compareSignals);
+      }
 
       const seen = new Map();
       for (const sig of filtered) {
@@ -3402,7 +3685,7 @@
           seen.set(key, sig);
         }
       }
-      return Array.from(seen.values());
+      return Array.from(seen.values()).sort(compareSignals);
     }
 
     function renderSignalsView() {
