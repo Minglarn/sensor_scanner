@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.19</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.20</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1351,7 +1351,7 @@
   <!-- REDESIGNED TELEMETRY DETAIL MODAL                                     -->
   <!-- ===================================================================== -->
   <div id="detailModal" class="fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl w-[94vw] max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
       
       <!-- Modal Header -->
       <div class="px-4 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
@@ -1435,7 +1435,7 @@
             </span>
             <span id="modalPacketTime" class="text-[11px] font-mono text-slate-400"></span>
           </div>
-          <div id="modalKpiGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+          <div id="modalKpiGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             <!-- Populated via extractAndFormatMetrics() -->
           </div>
         </div>
@@ -2560,49 +2560,54 @@
       if (isTeslaModel || p.vehicle_status) {
         consumed.add('vehicle_status');
         if (isTeslaModel) {
-          // Determine Tesla BLE node position from the last character of beacon ID / local_name / device_id
+          // Determine Tesla BLE endpoint from the last character of beacon ID / local_name / device_id
           const rawTeslaId = String(p.beacon_hash || p.local_name || (sig && sig.device_id) || '').trim();
-          const lastChar = rawTeslaId.length >= 18 ? rawTeslaId.slice(-1).toUpperCase() : '';
-          const nodeMap = {
-            C: 'Fordon / VCSEC (C)',
-            D: 'Förardörr (D)',
-            P: 'Passagerardörr (P)',
-            R: 'Baklucka (R)',
+          const lastChar = rawTeslaId.length >= 18 ? rawTeslaId.slice(-1).toUpperCase() : 'C';
+          const endpointMap = {
+            C: 'Controller (C)',
+            D: 'Driver (D)',
+            P: 'Passenger (P)',
+            R: 'Rear (R)',
             F: 'Frunk (F)',
-            B: 'Kaross (B)'
+            B: 'Body (B)'
           };
-          const nodeName = p.tesla_node ? String(p.tesla_node) : (nodeMap[lastChar] || '');
+          const endpointName = endpointMap[lastChar] || `Endpoint (${lastChar})`;
           const isOwnTesla = p.is_own_vehicle === true || Boolean(
             teslaExpectedPrefix && rawTeslaId && rawTeslaId.toLowerCase().startsWith(teslaExpectedPrefix.toLowerCase())
           );
 
           if (isOwnTesla) {
-            const ownLabel = nodeName ? `Verifierad Egen Tesla • ${nodeName}` : 'Verifierad Egen Tesla';
             addMetric(
               'mdi-shield-check',
-              ownLabel,
+              'VCSEC • Verifierat VIN',
               'emerald',
-              'Fordonsstatus',
-              'Verifierad Egen Tesla',
-              nodeName ? `Nod: ${nodeName}` : (p.mac ? `MAC: ${p.mac}` : '')
+              'VCSEC TELEMETRI',
+              'Verifierat Fordon (VIN)',
+              `Endpoint: ${endpointName}`
             );
           } else {
-            const otherLabel = nodeName ? `Annan Tesla i närheten • ${nodeName}` : 'Annan Tesla i närheten';
+            const rangeBadge = lastChar ? `VCSEC • Inom räckvidd (${lastChar})` : 'VCSEC • Inom räckvidd';
             addMetric(
-              'mdi-car-wireless',
-              otherLabel,
+              'mdi-car-connected',
+              rangeBadge,
               'sky',
-              'Fordonsstatus',
-              'Annan Tesla i närheten',
-              nodeName ? `Nod: ${nodeName}` : (p.mac ? `MAC: ${p.mac}` : '')
+              'VCSEC TELEMETRI',
+              'VCSEC Key Aktiv',
+              `Endpoint: ${endpointName}`
             );
           }
           if (rawTeslaId) {
             addModalOnlyKpi('mdi-key-wireless', 'teal', 'Tesla BLE Beacon', rawTeslaId, p.ibeacon_uuid ? `UUID: ${p.ibeacon_uuid}` : '');
           }
         } else {
-          const vStatus = String(p.vehicle_status);
-          addMetric('mdi-car-connected', vStatus, 'emerald', 'Fordonsstatus', vStatus, p.mac ? `MAC: ${p.mac}` : '');
+          addMetric(
+            'mdi-key-wireless',
+            'Digital Key • Inom räckvidd',
+            'emerald',
+            'DIGITAL KEY STATUS',
+            'BLE Key Aktiv',
+            'Protokoll: Digital Key'
+          );
         }
       } else if (isIbeaconModel) {
         const hasMajMin = p.major !== undefined && p.major !== null && p.minor !== undefined && p.minor !== null;
@@ -3116,7 +3121,7 @@
       // 14. BLE devices without numeric sensor telemetry (e.g. Plejd-Mesh, TV, Printer)
       if (badges.length === 0 && isBlePacket) {
         const isPlejd = modelStr === 'Plejd-Mesh' || p.local_name === 'P mesh' || p.manufacturer_name === 'Plejd';
-        const statusLabel = isPlejd ? 'Mesh-nod' : 'Aktiv Beacon';
+        const statusLabel = isPlejd ? 'BLE Mesh' : 'BLE Beacon';
         badges.push(`
           <span class="inline-flex items-center gap-1 text-xs text-slate-400">
             <i class="mdi mdi-broadcast"></i><span>${statusLabel}</span>

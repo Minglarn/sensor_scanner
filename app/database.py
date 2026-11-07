@@ -449,6 +449,24 @@ class Database:
                         "DELETE FROM signals WHERE model = 'BLE-4';"
                     )
 
+                    # Remove false-positive Zeekr-Vehicle-BLE entries (e.g. CCC3) where device_id does not start with ZeekrVehicle and manufacturer_id is not 0x06FE
+                    conn.execute(
+                        """
+                        DELETE FROM devices
+                        WHERE model = 'Zeekr-Vehicle-BLE'
+                          AND UPPER(device_id) NOT LIKE 'ZEEKRVEHICLE%'
+                          AND last_payload NOT LIKE '%0x06FE%';
+                        """
+                    )
+                    conn.execute(
+                        """
+                        DELETE FROM signals
+                        WHERE model = 'Zeekr-Vehicle-BLE'
+                          AND UPPER(device_id) NOT LIKE 'ZEEKRVEHICLE%'
+                          AND payload NOT LIKE '%0x06FE%';
+                        """
+                    )
+
                     # Auto-categorize existing devices that still have generic 'Sensor' or 'Unknown' category
                     existing_Rows = conn.execute(
                         "SELECT device_key, model, category, last_payload FROM devices;"
@@ -459,6 +477,8 @@ class Database:
                         except Exception:
                             pl = {}
                         enriched_pl = enrich_sparsnas_payload(dict(pl))
+                        if r["model"] in ("Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE"):
+                            enriched_pl["vehicle_status"] = "Digital Key • Inom räckvidd"
                         new_cat = infer_category(r["model"], enriched_pl)
                         cur_cat = r["category"] or "Sensor"
                         new_pl_json = json.dumps(enriched_pl, ensure_ascii=False)
@@ -500,6 +520,7 @@ class Database:
                             pl = {}
 
                         b_hash = str(pl.get("beacon_hash") or pl.get("local_name") or dev_id)
+                        node_char = b_hash[-1].upper() if len(b_hash) >= 18 else ""
                         is_match = bool(
                             expected_prefix
                             and (
@@ -508,7 +529,11 @@ class Database:
                             )
                         )
                         pl["is_own_vehicle"] = is_match
-                        pl["vehicle_status"] = "Verifierad Egen Tesla" if is_match else "Annan Tesla i närheten"
+                        pl["vehicle_status"] = (
+                            "VCSEC • Verifierat VIN"
+                            if is_match
+                            else (f"VCSEC • Inom räckvidd ({node_char})" if node_char else "VCSEC • Inom räckvidd")
+                        )
 
                         new_alias = cur_alias
                         new_is_new = int(row["is_new"] or 0)

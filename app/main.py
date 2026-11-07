@@ -236,7 +236,7 @@ def _log_signal_stdout(signal_rec: Dict[str, Any], device_rec: Dict[str, Any]) -
     elif signal_rec.get("battery_ok") is not None:
         metrics.append(f"Batt: {'OK' if int(signal_rec['battery_ok']) == 1 else 'LOW'}")
     if model == "Tesla-Vehicle-BLE":
-        metrics.append("Verifierad Egen Tesla" if payload.get("is_own_vehicle") is True else "Annan Tesla i närheten")
+        metrics.append("VCSEC • Verifierat VIN" if payload.get("is_own_vehicle") is True else "VCSEC • Inom räckvidd")
     elif payload.get("vehicle_status"):
         metrics.append(str(payload.get("vehicle_status")))
     if not metrics and not is_ble:

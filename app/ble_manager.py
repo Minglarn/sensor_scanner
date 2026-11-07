@@ -93,12 +93,12 @@ BLE_SERVICE_UUIDS: Dict[str, str] = {
 }
 
 TESLA_NODE_NAMES: Dict[str, str] = {
-    "C": "Fordon / VCSEC (C)",
-    "D": "Förardörr (D)",
-    "P": "Passagerardörr (P)",
-    "R": "Baklucka (R)",
+    "C": "Controller (C)",
+    "D": "Driver (D)",
+    "P": "Passenger (P)",
+    "R": "Rear (R)",
     "F": "Frunk (F)",
-    "B": "Kaross (B)",
+    "B": "Body (B)",
 }
 
 TESLA_BEACON_RE = re.compile(r"^S[0-9a-fA-F]{15,17}[A-Za-z0-9]$")
@@ -984,34 +984,29 @@ class BLEManager:
             model = "Tesla-Vehicle-BLE"
             payload["category"] = "Vehicle"
             payload["beacon_hash"] = local_name or device_id
+            node_char = ""
             # Use beacon_hash as stable device_id so rotating BLE MACs map to the same Tesla vehicle
             if local_name:
                 device_id = local_name
                 if len(local_name) >= 18:
                     node_char = local_name[-1].upper()
-                    payload["tesla_node"] = TESLA_NODE_NAMES.get(node_char, f"Nod ({node_char})")
+                    payload["tesla_node"] = TESLA_NODE_NAMES.get(node_char, f"Endpoint ({node_char})")
 
             expected_prefix = compute_tesla_ble_prefix(settings.get("tesla_vin", ""))
             if expected_prefix and device_id.lower().startswith(expected_prefix.lower()):
                 payload["is_own_vehicle"] = True
-                payload["vehicle_status"] = "Verifierad Egen Tesla"
+                payload["vehicle_status"] = "VCSEC • Verifierat VIN"
             else:
                 payload["is_own_vehicle"] = False
-                payload["vehicle_status"] = "Annan Tesla i närheten"
+                payload["vehicle_status"] = f"VCSEC • Inom räckvidd ({node_char})" if node_char else "VCSEC • Inom räckvidd"
 
             has_decoded_sensor = True
 
-        # B. Zeekr / Geely Vehicles (local_name starts with ZeekrVehicle, Mfg 0x06FE, or Service UUID 0xFDFD)
-        elif (
-            name_upper.startswith("ZEEKRVEHICLE")
-            or name_upper.startswith("ZEEKR")
-            or 0x06FE in mfg_data
-            or any("0000fdfd-" in u or u == "fdfd" for u in uuids_lower)
-            or any("fdfd" in u for u in srv_data_uuids_lower)
-        ):
+        # B. Zeekr / Geely Vehicles (STRICT: local_name starts with ZeekrVehicle OR Manufacturer ID 0x06FE)
+        elif name_upper.startswith("ZEEKRVEHICLE") or 0x06FE in mfg_data:
             model = "Zeekr-Vehicle-BLE"
             payload["category"] = "Vehicle"
-            payload["vehicle_status"] = "Zeekr Närvarande (Digital Key)"
+            payload["vehicle_status"] = "Digital Key • Inom räckvidd"
             if local_name:
                 device_id = local_name
             has_decoded_sensor = True
@@ -1026,7 +1021,7 @@ class BLEManager:
                 brand = "Volvo"
             model = f"{brand}-Vehicle-BLE"
             payload["category"] = "Vehicle"
-            payload["vehicle_status"] = f"{brand} Närvarande (BLE)"
+            payload["vehicle_status"] = "Digital Key • Inom räckvidd"
             if local_name:
                 device_id = local_name
             has_decoded_sensor = True
