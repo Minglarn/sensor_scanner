@@ -242,6 +242,7 @@ class Database:
                             model TEXT NOT NULL,
                             device_id TEXT NOT NULL,
                             alias TEXT DEFAULT '',
+                            group_name TEXT DEFAULT '',
                             category TEXT DEFAULT 'Sensor',
                             mqtt_enabled INTEGER DEFAULT 1,
                             ha_discovery INTEGER DEFAULT 0,
@@ -256,10 +257,15 @@ class Database:
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_last_seen ON devices(last_seen DESC);")
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_model_id ON devices(model, device_id);")
 
-                    # Schema migration: add ha_discovery column if missing on older DB
-                    cols = [r["name"] for r in conn.execute("PRAGMA table_info(devices);").fetchall()]
-                    if "ha_discovery" not in cols:
+                    # Schema migrations for existing SQLite databases
+                    try:
                         conn.execute("ALTER TABLE devices ADD COLUMN ha_discovery INTEGER DEFAULT 0;")
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute("ALTER TABLE devices ADD COLUMN group_name TEXT DEFAULT '';")
+                    except Exception:
+                        pass
 
                     conn.execute(
                         """
@@ -276,6 +282,14 @@ class Database:
                             "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);",
                             (k, str(v)),
                         )
+
+                    # Explicit category upgrades for IKEA Sparsnäs and Oregon rain/weather sensors
+                    conn.execute(
+                        "UPDATE devices SET category = 'Meter' WHERE model LIKE '%Sparsnas%' OR last_payload LIKE '%cumulative_kwh%';"
+                    )
+                    conn.execute(
+                        "UPDATE devices SET category = 'Weather' WHERE model LIKE '%Oregon-PCR%' OR last_payload LIKE '%rain%';"
+                    )
 
                     # Auto-categorize existing devices that still have generic 'Sensor' or 'Unknown' category
                     existing_Rows = conn.execute(
@@ -382,9 +396,9 @@ class Database:
                         conn.execute(
                             """
                             INSERT INTO devices (
-                                device_key, model, device_id, alias, category,
+                                device_key, model, device_id, alias, group_name, category,
                                 mqtt_enabled, ha_discovery, ignored, first_seen, last_seen, hit_count, last_payload
-                            ) VALUES (?, ?, ?, '', ?, 1, 0, 0, ?, ?, 1, ?);
+                            ) VALUES (?, ?, ?, '', '', ?, 1, 0, 0, ?, ?, 1, ?);
                             """,
                             (device_key, model, device_id, inferred_cat, timestamp, timestamp, raw_json),
                         )
@@ -407,6 +421,7 @@ class Database:
                         "SELECT * FROM devices WHERE device_key = ?;", (device_key,)
                     ).fetchone()
                     device_dict = dict(dev_row)
+                    device_dict["group_name"] = device_dict.get("group_name") or ""
                     device_dict["last_payload"] = payload
 
                     if int(device_dict.get("ignored", 0)) == 1:
@@ -443,6 +458,7 @@ class Database:
                         "device_id": device_id,
                         "device_key": device_key,
                         "alias": device_dict.get("alias", ""),
+                        "group_name": device_dict.get("group_name", ""),
                         "category": device_dict.get("category", inferred_cat),
                         "mqtt_enabled": device_dict.get("mqtt_enabled", 1),
                         "ha_discovery": device_dict.get("ha_discovery", 0),
@@ -500,9 +516,9 @@ class Database:
         if search and search.strip():
             q = f"%{search.strip()}%"
             where_clauses.append(
-                "(s.model LIKE ? OR s.device_id LIKE ? OR COALESCE(d.alias, '') LIKE ? OR COALESCE(d.category, '') LIKE ? OR s.payload LIKE ?)"
+                "(s.model LIKE ? OR s.device_id LIKE ? OR COALESCE(d.alias, '') LIKE ? OR COALESCE(d.group_name, '') LIKE ? OR COALESCE(d.category, '') LIKE ? OR s.payload LIKE ?)"
             )
-            params.extend([q, q, q, q, q])
+            params.extend([q, q, q, q, q, q])
 
         where_sql = " AND ".join(where_clauses)
 
@@ -511,7 +527,8 @@ class Database:
                 SELECT
                     s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
                     s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
-                    d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.category, 'Sensor') AS category,
+                    d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
+                    COALESCE(d.category, 'Sensor') AS category,
                     COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
                     COALESCE(d.ignored, 0) AS ignored, COALESCE(d.hit_count, 1) AS hit_count
                 FROM signals s
@@ -537,7 +554,8 @@ class Database:
                 SELECT
                     s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
                     s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
-                    d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.category, 'Sensor') AS category,
+                    d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
+                    COALESCE(d.category, 'Sensor') AS category,
                     COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
                     COALESCE(d.ignored, 0) AS ignored, COALESCE(d.hit_count, 1) AS hit_count
                 FROM signals s
@@ -565,6 +583,7 @@ class Database:
                     item = dict(row)
                     if not item.get("device_key"):
                         item["device_key"] = f"{sanitize_key(item['model'])}_{sanitize_key(item['device_id'])}"
+                    item["group_name"] = item.get("group_name") or ""
                     try:
                         pl = json.loads(item["payload"])
                         item["payload"] = enrich_sparsnas_payload(pl) if isinstance(pl, dict) else {"raw": item["payload"]}
@@ -614,9 +633,9 @@ class Database:
         if search and search.strip():
             q = f"%{search.strip()}%"
             where_clauses.append(
-                "(model LIKE ? OR device_id LIKE ? OR alias LIKE ? OR category LIKE ? OR last_payload LIKE ?)"
+                "(model LIKE ? OR device_id LIKE ? OR alias LIKE ? OR COALESCE(group_name, '') LIKE ? OR category LIKE ? OR last_payload LIKE ?)"
             )
-            params.extend([q, q, q, q, q])
+            params.extend([q, q, q, q, q, q])
 
         where_sql = " AND ".join(where_clauses)
         with self._lock:
@@ -633,6 +652,7 @@ class Database:
                 result = []
                 for r in rows:
                     d = dict(r)
+                    d["group_name"] = d.get("group_name") or ""
                     try:
                         pl = json.loads(d["last_payload"])
                         d["last_payload"] = enrich_sparsnas_payload(pl) if isinstance(pl, dict) else {}
@@ -653,6 +673,7 @@ class Database:
                 if not row:
                     return None
                 d = dict(row)
+                d["group_name"] = d.get("group_name") or ""
                 try:
                     pl = json.loads(d["last_payload"])
                     d["last_payload"] = enrich_sparsnas_payload(pl) if isinstance(pl, dict) else {}
@@ -666,6 +687,7 @@ class Database:
         self,
         device_key: str,
         alias: Optional[str] = None,
+        group_name: Optional[str] = None,
         category: Optional[str] = None,
         mqtt_enabled: Optional[int] = None,
         ha_discovery: Optional[int] = None,
@@ -680,8 +702,9 @@ class Database:
                 if not row:
                     return None
 
-                new_alias = alias.strip() if alias is not None else row["alias"]
-                new_cat = category.strip() if category is not None else row["category"]
+                new_alias = alias.strip() if alias is not None else (row["alias"] or "")
+                new_group = group_name.strip() if group_name is not None else (row["group_name"] or "")
+                new_cat = category.strip() if category is not None else (row["category"] or "Sensor")
                 new_mqtt = int(bool(mqtt_enabled)) if mqtt_enabled is not None else row["mqtt_enabled"]
                 new_ha = int(bool(ha_discovery)) if ha_discovery is not None else row["ha_discovery"]
                 new_ignored = int(bool(ignored)) if ignored is not None else row["ignored"]
@@ -690,14 +713,51 @@ class Database:
                     conn.execute(
                         """
                         UPDATE devices
-                        SET alias = ?, category = ?, mqtt_enabled = ?, ha_discovery = ?, ignored = ?
+                        SET alias = ?, group_name = ?, category = ?, mqtt_enabled = ?, ha_discovery = ?, ignored = ?
                         WHERE device_key = ?;
                         """,
-                        (new_alias, new_cat, new_mqtt, new_ha, new_ignored, device_key),
+                        (new_alias, new_group, new_cat, new_mqtt, new_ha, new_ignored, device_key),
                     )
             finally:
                 conn.close()
         return self.get_device(device_key)
+
+    def bulk_update_devices(
+        self,
+        device_keys: List[str],
+        group_name: Optional[str] = None,
+        category: Optional[str] = None,
+        ignored: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        if not device_keys:
+            return []
+        updated_keys: List[str] = []
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    for dk in device_keys:
+                        row = conn.execute(
+                            "SELECT * FROM devices WHERE device_key = ?;", (dk,)
+                        ).fetchone()
+                        if not row:
+                            continue
+                        new_group = group_name.strip() if group_name is not None else (row["group_name"] or "")
+                        new_cat = category.strip() if (category is not None and category.strip() != "") else (row["category"] or "Sensor")
+                        new_ignored = int(bool(ignored)) if ignored is not None else row["ignored"]
+                        conn.execute(
+                            """
+                            UPDATE devices
+                            SET group_name = ?, category = ?, ignored = ?
+                            WHERE device_key = ?;
+                            """,
+                            (new_group, new_cat, new_ignored, dk),
+                        )
+                        updated_keys.append(dk)
+            finally:
+                conn.close()
+
+        return [d for d in (self.get_device(k) for k in updated_keys) if d is not None]
 
     def delete_device(self, device_key: str) -> bool:
         with self._lock:

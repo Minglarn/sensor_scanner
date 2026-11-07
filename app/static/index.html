@@ -72,14 +72,19 @@
             <div>
               <div class="flex items-center gap-2">
                 <h1 class="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">SensorScanner</h1>
-                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">v2026.11.07.4</span>
+                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">v2026.11.07.5</span>
               </div>
               <p class="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block leading-tight">RTL-SDR Blog V4 &amp; rtl_433 RF-signalanalysator</p>
             </div>
           </div>
 
-          <!-- Status Indicators (SDR & MQTT) + Pause + Theme Toggle -->
+          <!-- Status Indicators (WS, SDR & MQTT) + Pause + Theme Toggle -->
           <div class="flex items-center gap-1.5">
+            <div id="wsStatusBadge" class="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400" title="Realtidsanslutning (WebSocket)">
+              <span id="wsStatusDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+              <span id="wsStatusText" class="hidden md:inline">WS: Ansluter</span>
+            </div>
+
             <div id="sdrStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300" title="Status för rtl_433-processen">
               <span id="sdrStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
               <span id="sdrStatusText">SDR: Initierar</span>
@@ -340,46 +345,185 @@
     </section>
 
     <!-- =================================================================== -->
-    <!-- TAB 2: ENHETSREGISTER (ENHETER - 3-5 KOLUMNERS KOMPAKT GRID)        -->
+    <!-- TAB 2: ENHETSREGISTER (GRUPPERING, SORTERING & MULTI-SELECT)        -->
     <!-- =================================================================== -->
-    <section id="tabPanel_devices" class="hidden space-y-2.5">
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-        <div class="relative flex-1">
-          <i class="mdi mdi-magnify text-base text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-          <input
-            type="text"
-            id="deviceSearchInput"
-            oninput="debouncedLoadDevices()"
-            placeholder="Sök enhet på modell, ID, alias eller kategori..."
-            class="w-full pl-8 pr-4 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500"
-          />
-        </div>
-        <div class="flex items-center justify-between sm:justify-end gap-2.5">
-          <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-300">
+    <section id="tabPanel_devices" class="hidden space-y-2.5 pb-16">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm space-y-2">
+        
+        <!-- Row 1: Search, Group By, Sort By, Show Ignored -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
+          
+          <!-- Search Input -->
+          <div class="lg:col-span-4 relative">
+            <i class="mdi mdi-magnify text-base text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
             <input
-              type="checkbox"
-              id="deviceShowIgnored"
-              checked
-              onchange="loadDevices()"
-              class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
+              type="text"
+              id="deviceSearchInput"
+              oninput="renderDevicesList()"
+              placeholder="Sök modell, ID, alias, grupp eller kategori..."
+              class="w-full pl-8 pr-12 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500"
             />
-            <span>Visa ignorerade/svartlistade</span>
-          </label>
-          <button onclick="loadDevices()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
-            <i class="mdi mdi-refresh"></i>
-            <span>Uppdatera</span>
-          </button>
+            <button onclick="clearDeviceFilters()" title="Återställ enhetsfilter" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-[11px] font-medium">
+              Rensa
+            </button>
+          </div>
+
+          <!-- Group By Dropdown -->
+          <div class="lg:col-span-3 flex items-center gap-1.5">
+            <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+              <i class="mdi mdi-folder-multiple-outline text-sky-500 mr-0.5"></i>Gruppera:
+            </span>
+            <select
+              id="deviceGroupBySelect"
+              onchange="setDeviceGroupBy(this.value)"
+              class="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+            >
+              <option value="custom_group">Egen Grupp (Standard)</option>
+              <option value="category">Kategori</option>
+              <option value="model">Modell / Protokoll</option>
+              <option value="none">Platt vy (Ingen gruppering)</option>
+            </select>
+          </div>
+
+          <!-- Sort Within Group Dropdown -->
+          <div class="lg:col-span-3 flex items-center gap-1.5">
+            <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+              <i class="mdi mdi-sort text-sky-500 mr-0.5"></i>Sortera:
+            </span>
+            <select
+              id="deviceSortBySelect"
+              onchange="setDeviceSortBy(this.value)"
+              class="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+            >
+              <option value="name">Alias / Modell (A–Ö) - Fasta platser</option>
+              <option value="last_seen">Senast aktiv</option>
+              <option value="hits">Flest träffar</option>
+              <option value="rssi">Starkast signal (RSSI)</option>
+            </select>
+          </div>
+
+          <!-- Show Ignored + Refresh -->
+          <div class="lg:col-span-2 flex items-center justify-between sm:justify-end gap-2">
+            <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-300" title="Visa även svartlistade/ignorerade enheter">
+              <input
+                type="checkbox"
+                id="deviceShowIgnored"
+                checked
+                onchange="loadDevices()"
+                class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
+              />
+              <span>Ignorerade</span>
+            </label>
+            <button onclick="loadDevices()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700" title="Synka om enhetslistan">
+              <i class="mdi mdi-refresh"></i>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Row 2: Device Quick Filter Pills -->
+        <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/70 overflow-x-auto">
+          <div class="flex items-center gap-1.5">
+            <button onclick="setDeviceQuickPill('all')" id="devPill_all" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-all-inclusive"></i>
+              <span>Alla</span>
+            </button>
+            <button onclick="setDeviceQuickPill('grouped')" id="devPill_grouped" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-folder-check-outline"></i>
+              <span>Grupperade</span>
+            </button>
+            <button onclick="setDeviceQuickPill('ungrouped')" id="devPill_ungrouped" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-folder-open-outline"></i>
+              <span>Ogrupperade</span>
+            </button>
+            <button onclick="setDeviceQuickPill('weather')" id="devPill_weather" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-weather-partly-cloudy"></i>
+              <span>Weather</span>
+            </button>
+            <button onclick="setDeviceQuickPill('tpms')" id="devPill_tpms" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-car-tire-alert"></i>
+              <span>TPMS</span>
+            </button>
+            <button onclick="setDeviceQuickPill('meter')" id="devPill_meter" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-lightning-bolt"></i>
+              <span>Meter</span>
+            </button>
+            <button onclick="setDeviceQuickPill('low_battery')" id="devPill_low_battery" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
+              <i class="mdi mdi-battery-alert-variant-outline"></i>
+              <span>Lågt batteri</span>
+            </button>
+          </div>
+
+          <div class="text-[11px] font-mono text-slate-400 dark:text-slate-500 shrink-0 hidden sm:block">
+            Visar <span id="visibleDeviceCount" class="font-semibold text-slate-700 dark:text-slate-300">0</span> enheter
+          </div>
         </div>
       </div>
 
-      <div id="devicesContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+      <!-- Devices Container (Collapsible Group Sections or Flat Grid) -->
+      <div id="devicesContainer" class="space-y-3">
         <!-- Rendered by JS -->
       </div>
 
       <div id="devicesEmptyState" class="hidden bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center text-xs text-slate-500 dark:text-slate-400">
-        Inga enheter har registrerats ännu.
+        Inga enheter matchar filtret ännu.
       </div>
     </section>
+
+    <!-- Datalist for Existing Device Groups -->
+    <datalist id="existing-groups"></datalist>
+
+    <!-- Floating Multi-Select Action Bar -->
+    <div id="multiSelectBar" class="hidden fixed bottom-3 left-1/2 -translate-x-1/2 z-40 w-[96%] max-w-4xl bg-slate-900/95 dark:bg-slate-900/95 text-white border border-sky-500/50 rounded-2xl px-3.5 py-2.5 shadow-2xl backdrop-blur">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 border border-sky-500/40 font-mono font-bold" id="multiSelectCountBadge">0 enheter valda</span>
+          <button onclick="clearSelectedDevices()" class="text-slate-400 hover:text-white underline text-[11px]">Avmarkera alla</button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative">
+            <i class="mdi mdi-folder-outline text-slate-400 absolute left-2 top-1/2 -translate-y-1/2"></i>
+            <input
+              type="text"
+              id="bulkGroupNameInput"
+              list="existing-groups"
+              placeholder="Gruppnamn (t.ex. KIA Däck)..."
+              class="pl-7 pr-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-400 focus:outline-none focus:border-sky-400 text-xs w-48 sm:w-56"
+            />
+          </div>
+
+          <select
+            id="bulkCategorySelect"
+            class="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-sky-400 text-xs"
+          >
+            <option value="">Behåll kategori</option>
+            <option value="Meter">Meter</option>
+            <option value="Weather">Weather</option>
+            <option value="TPMS">TPMS</option>
+            <option value="Switch">Switch</option>
+            <option value="Security">Security</option>
+            <option value="Sensor">Sensor</option>
+          </select>
+
+          <button
+            onclick="applyBulkGroupSave()"
+            class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold transition"
+          >
+            <i class="mdi mdi-content-save-check-outline"></i>
+            <span>Spara för valda</span>
+          </button>
+
+          <button
+            onclick="applyBulkIgnore()"
+            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-600/25 hover:bg-rose-600/40 text-rose-200 border border-rose-500/40 font-semibold transition"
+          >
+            <i class="mdi mdi-eye-off-outline"></i>
+            <span>Ignorera valda</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- =================================================================== -->
     <!-- TAB 3: STATISTIK & INSTÄLLNINGAR (SYSTEM & LOGG)                    -->
@@ -668,11 +812,15 @@
             <i class="mdi mdi-cog-outline mr-1"></i>Snabbkonfigurera Enhet
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
-            <div class="sm:col-span-5">
+            <div class="sm:col-span-4">
               <label class="block text-slate-500 dark:text-slate-400 mb-1">Alias (Eget namn)</label>
               <input type="text" id="modalAliasInput" placeholder="t.ex. Elmätare Sparsnäs / Toyota VF" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100" />
             </div>
-            <div class="sm:col-span-4">
+            <div class="sm:col-span-3">
+              <label class="block text-slate-500 dark:text-slate-400 mb-1">Grupp</label>
+              <input type="text" id="modalGroupInput" list="existing-groups" placeholder="t.ex. Frugans KIA Däck" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100" />
+            </div>
+            <div class="sm:col-span-3">
               <label class="block text-slate-500 dark:text-slate-400 mb-1">Kategori</label>
               <select id="modalCategorySelect" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100">
                 <option value="Meter">Meter</option>
@@ -683,7 +831,7 @@
                 <option value="Sensor">Sensor</option>
               </select>
             </div>
-            <div class="sm:col-span-3 flex items-center gap-2">
+            <div class="sm:col-span-2 flex items-center gap-2">
               <button onclick="saveModalDevice()" class="w-full py-1.5 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold transition">
                 <i class="mdi mdi-check mr-1"></i>Spara
               </button>
@@ -779,6 +927,13 @@
     let activeQuickPill = 'all';
     let haDiscoveryEnabled = false;
 
+    // Enheter Tab Grouping, Sorting, Quick Filter & Multi-select state
+    let deviceGroupBy = localStorage.getItem('ss_dev_group_by') || 'custom_group';
+    let deviceSortBy = localStorage.getItem('ss_dev_sort_by') || 'name';
+    let activeDevicePill = 'all';
+    let selectedDeviceKeys = new Set();
+    let collapsedGroups = new Set();
+
     let rawSignalsList = [];
     let devicesList = [];
     let knownModels = new Set();
@@ -787,13 +942,15 @@
     let searchDebounceTimer = null;
     let deviceDebounceTimer = null;
     let wsConnection = null;
+    let wsConnected = false;
     let highlightedDeviceKey = null;
 
     // Keys that represent technical radio/envelope metadata rather than sensor measurements
     const TECHNICAL_METADATA_KEYS = new Set([
       'time', 'protocol', 'model', 'type', 'id', 'device', 'sensor_id', 'node_id',
       'address', 'house_code', 'code', 'channel', 'mic', 'mod', 'freq', 'freq1',
-      'freq2', 'rssi', 'snr', 'noise', 'alias', 'device_key'
+      'freq2', 'rssi', 'snr', 'noise', 'alias', 'group_name', 'device_key',
+      'mode', 'pulses_per_kwh', 'calculated_power_W'
     ]);
 
     // -----------------------------------------------------------------------
@@ -804,18 +961,35 @@
       syncViewModeButtons();
       syncGroupDevicesButton();
       syncQuickPillButtons();
+      syncDeviceToolbarControls();
       switchTab('signals', true);
       loadStatus();
       loadModels();
       loadSignals();
+      loadDevices();
       loadSettingsForm();
       connectWebSocket();
 
+      // Update relative timestamps every 2 seconds across the entire DOM
       setInterval(() => {
-        if (!isPaused && activeTab === 'signals') {
+        if (!isPaused) {
           updateRelativeTimestampsInDom();
         }
-      }, 5000);
+      }, 2000);
+
+      // Silent background sync every 15 seconds (fallback for mobile/background tabs)
+      setInterval(() => {
+        if (!isPaused) {
+          silentBackgroundSync();
+        }
+      }, 15000);
+
+      // Immediate sync when returning to a backgrounded browser tab
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && !isPaused) {
+          silentBackgroundSync();
+        }
+      });
     });
 
     // -----------------------------------------------------------------------
@@ -963,19 +1137,20 @@
         });
       }
 
+      // Always mark IKEA Sparsnäs & energy meter internal keys as consumed so they never appear as raw fallback tags
+      ['cumulative_kwh', 'cumulative_kWh', 'energy_kWh', 'total_kWh', 'energy_mWh', 'effect', 'pulses', 'pulse_count', 'pulses_per_kwh', 'sequence', 'mode', 'calculated_power_W'].forEach((k) => consumed.add(k));
+
       // 1. Energy / Cumulative Consumption (cumulative_kwh, energy_kWh, total_kWh, energy_mWh)
       let kwhVal = null;
       if (p.cumulative_kwh !== undefined && p.cumulative_kwh !== null) {
-        consumed.add('cumulative_kwh');
         kwhVal = Number(p.cumulative_kwh);
+      } else if (p.cumulative_kWh !== undefined && p.cumulative_kWh !== null) {
+        kwhVal = Number(p.cumulative_kWh);
       } else if (p.energy_kWh !== undefined && p.energy_kWh !== null) {
-        consumed.add('energy_kWh');
         kwhVal = Number(p.energy_kWh);
       } else if (p.total_kWh !== undefined && p.total_kWh !== null) {
-        consumed.add('total_kWh');
         kwhVal = Number(p.total_kWh);
       } else if (p.energy_mWh !== undefined && p.energy_mWh !== null) {
-        consumed.add('energy_mWh');
         kwhVal = Number(p.energy_mWh) / 1000000.0;
       }
       if (kwhVal !== null && !Number.isNaN(kwhVal)) {
@@ -989,20 +1164,21 @@
       }
 
       // 2. Power / Effect (IKEA Sparsnäs 'effect', calculated_power_W, power_W, power_kW)
-      consumed.add('calculated_power_W');
-      consumed.add('pulses_per_kwh');
-      if (p.effect !== undefined && p.effect !== null && Number(p.effect) > 0) {
-        consumed.add('effect');
+      if (p.effect !== undefined && p.effect !== null) {
+        const effNum = Number(p.effect);
         const pulsesPerKwh = Number(p.pulses_per_kwh) || 1000;
-        const watts = Math.round(((3600000 / pulsesPerKwh) * 1024) / Number(p.effect));
+        const watts = effNum > 0 ? Math.round(((3600000 / pulsesPerKwh) * 1024) / effNum) : 0;
         addMetric(
           'mdi-flash',
-          `${watts} W (Rå: ${p.effect})`,
+          `${watts} W`,
           'amber',
           'Aktuell Effekt',
           `${watts} W`,
           `Rå: ${p.effect}`
         );
+      } else if (p.calculated_power_W !== undefined && p.calculated_power_W !== null) {
+        const w = Number(p.calculated_power_W);
+        addMetric('mdi-flash', `${w.toFixed(0)} W`, 'amber', 'Aktuell Effekt', `${w.toFixed(0)} W`);
       } else if (p.power_W !== undefined && p.power_W !== null) {
         consumed.add('power_W');
         const w = Number(p.power_W);
@@ -1030,17 +1206,15 @@
       // 3. Pulses (pulses, pulse_count)
       const rawPulses = p.pulses ?? p.pulse_count;
       if (rawPulses !== undefined && rawPulses !== null) {
-        consumed.add('pulses');
-        consumed.add('pulse_count');
-        const formattedPulses = formatNumberSpaces(rawPulses);
+        const formattedPulses = Number(rawPulses).toLocaleString('sv-SE');
         const ppkText = p.pulses_per_kwh ? `${p.pulses_per_kwh} imp/kWh` : '';
         addMetric(
           'mdi-pulse',
-          `${formattedPulses} pulser${ppkText ? ' (' + ppkText + ')' : ''}`,
+          `${formattedPulses} pulser`,
           'sky',
           'Pulser',
           `${formattedPulses}`,
-          ppkText ? `${p.pulses_per_kwh}/kWh` : ''
+          ppkText
         );
       }
 
@@ -1327,20 +1501,42 @@
     }
 
     // -----------------------------------------------------------------------
-    // WebSocket Live Stream
+    // WebSocket Live Stream & Background Auto-Sync
     // -----------------------------------------------------------------------
+    function updateWsStatusBadge(connected) {
+      wsConnected = connected;
+      const dot = document.getElementById('wsStatusDot');
+      const txt = document.getElementById('wsStatusText');
+      const badge = document.getElementById('wsStatusBadge');
+      if (!dot || !txt || !badge) return;
+
+      if (connected) {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse-subtle';
+        txt.textContent = 'Live';
+        badge.className = 'flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-amber-500';
+        txt.textContent = 'WS: Återansluter';
+        badge.className = 'flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-300';
+      }
+    }
+
     function connectWebSocket() {
+      if (wsConnection && (wsConnection.readyState === WebSocket.OPEN || wsConnection.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = `${proto}//${window.location.host}/ws`;
       wsConnection = new WebSocket(url);
 
       wsConnection.onopen = () => {
+        updateWsStatusBadge(true);
         if (wsConnection._pingInterval) clearInterval(wsConnection._pingInterval);
         wsConnection._pingInterval = setInterval(() => {
           if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
             wsConnection.send('ping');
           }
-        }, 25000);
+        }, 20000);
       };
 
       wsConnection.onmessage = (event) => {
@@ -1349,24 +1545,46 @@
           if (msg.type === 'status' && msg.data) {
             applyStatusUpdate(msg.data);
           } else if (msg.type === 'signal' && msg.data) {
-            handleIncomingSignal(msg.data, msg.device);
+            handleIncomingSignal(msg.data, msg.device, msg.counts, msg.total_signals_count, msg.total_devices_count);
           } else if (msg.type === 'stderr' && msg.line) {
             appendStderrLine(msg.line, msg.last_error);
           } else if (msg.type === 'device_updated' && msg.device) {
             handleDeviceUpdated(msg.device);
+          } else if (msg.type === 'devices_bulk_updated' && Array.isArray(msg.devices)) {
+            handleDevicesBulkUpdated(msg.devices);
           } else if (msg.type === 'device_deleted' && msg.device_key) {
             rawSignalsList = rawSignalsList.filter((s) => s.device_key !== msg.device_key);
+            devicesList = devicesList.filter((d) => d.device_key !== msg.device_key);
+            selectedDeviceKeys.delete(msg.device_key);
+            syncMultiSelectBar();
             renderSignalsView();
-            if (activeTab === 'devices') loadDevices();
+            if (activeTab === 'devices') renderDevicesList();
           }
         } catch (err) {
           console.error('WS parse error:', err);
         }
       };
 
-      wsConnection.onclose = () => {
-        setTimeout(connectWebSocket, 3000);
+      wsConnection.onerror = () => {
+        updateWsStatusBadge(false);
       };
+
+      wsConnection.onclose = () => {
+        updateWsStatusBadge(false);
+        setTimeout(connectWebSocket, 2500);
+      };
+    }
+
+    async function silentBackgroundSync() {
+      await loadStatus();
+      // If an input field is currently focused by the user, do not disrupt their typing
+      const activeEl = document.activeElement;
+      const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'TEXTAREA') && activeEl.id !== 'signalSearchInput' && activeEl.id !== 'deviceSearchInput';
+      if (!wsConnected && !isTyping) {
+        connectWebSocket();
+        await loadSignals();
+        await loadDevices();
+      }
     }
 
     // -----------------------------------------------------------------------
@@ -1589,6 +1807,7 @@
         }
       });
 
+      syncMultiSelectBar();
       if (skipLoad) return;
       if (tab === 'signals') loadSignals();
       if (tab === 'devices') loadDevices();
@@ -1599,7 +1818,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // Signals Loading, Filtering & Grouping
+    // Signals Loading, Filtering & Real-Time DOM Updates
     // -----------------------------------------------------------------------
     async function loadModels() {
       try {
@@ -1630,7 +1849,7 @@
 
     function debouncedLoadSignals() {
       clearTimeout(searchDebounceTimer);
-      searchDebounceTimer = setTimeout(loadSignals, 200);
+      searchDebounceTimer = setTimeout(loadSignals, 180);
     }
 
     function clearSignalFilters() {
@@ -1718,37 +1937,73 @@
 
       if (model && sig.model !== model) return false;
       if (onlyAliased && (!sig.alias || !sig.alias.trim())) return false;
-      if (freqBand === '433' && !(sig.freq >= 430 && sig.freq <= 440)) return false;
-      if (freqBand === '868' && !(sig.freq >= 860 && sig.freq <= 875)) return false;
+
+      if (freqBand === '433' || freqBand === '868') {
+        const radio = extractRadioMetadata(sig, sig.payload);
+        const f = radio.freqMHz;
+        if (freqBand === '433' && !(f >= 430 && f <= 440)) return false;
+        if (freqBand === '868' && !(f >= 860 && f <= 875)) return false;
+      }
+
       if (!matchesQuickPill(sig)) return false;
 
       if (search) {
-        const hay = `${sig.model} ${sig.device_id} ${sig.alias || ''} ${sig.category || ''} ${JSON.stringify(sig.payload || {})}`.toLowerCase();
+        const hay = `${sig.model || ''} ${sig.device_id || ''} ${sig.alias || ''} ${sig.group_name || ''} ${sig.category || ''} ${JSON.stringify(sig.payload || {})}`.toLowerCase();
         if (!hay.includes(search)) return false;
       }
       return true;
     }
 
-    function handleIncomingSignal(sig, dev) {
+    function pulseElement(el) {
+      if (!el) return;
+      el.classList.add('ring-2', 'ring-sky-500', 'transition-all', 'duration-500');
+      clearTimeout(el._pulseTimer);
+      el._pulseTimer = setTimeout(() => {
+        el.classList.remove('ring-2', 'ring-sky-500');
+      }, 900);
+    }
+
+    function handleIncomingSignal(sig, dev, counts, totalSignalsCount, totalDevicesCount) {
       if (sig.model && !knownModels.has(sig.model)) {
         knownModels.add(sig.model);
         renderModelOptions(document.getElementById('signalModelSelect').value);
       }
 
-      if (dev && dev.hit_count) {
-        sig.hit_count = dev.hit_count;
+      if (dev) {
+        sig.hit_count = dev.hit_count || sig.hit_count || 1;
+        sig.alias = dev.alias ?? sig.alias ?? '';
+        sig.group_name = dev.group_name ?? sig.group_name ?? '';
+        sig.category = dev.category ?? sig.category ?? 'Sensor';
       }
 
-      const navSig = document.getElementById('navCountSignals');
-      navSig.textContent = (parseInt(navSig.textContent || '0', 10) + 1).toString();
+      // 1. Update total counters in tab header and System KPIs
+      if (counts) {
+        document.getElementById('navCountSignals').textContent = counts.signals_today ?? totalSignalsCount ?? 0;
+        document.getElementById('navCountDevices').textContent = counts.active_devices ?? totalDevicesCount ?? 0;
+        document.getElementById('statSignalsToday').textContent = counts.signals_today ?? 0;
+        document.getElementById('statSignalsTotal').textContent = counts.total_signals ?? 0;
+        document.getElementById('statActiveDevices').textContent = counts.active_devices ?? 0;
+        document.getElementById('statIgnoredDevices').textContent = counts.ignored_devices ?? 0;
+      } else {
+        const navSig = document.getElementById('navCountSignals');
+        navSig.textContent = totalSignalsCount ?? (parseInt(navSig.textContent || '0', 10) + 1);
+        if (totalDevicesCount !== undefined) {
+          document.getElementById('navCountDevices').textContent = totalDevicesCount;
+        }
+      }
+
+      // 2. Always keep devicesList cache & Enheter DOM updated in real-time
+      if (dev) {
+        updateDeviceFromSignal(dev, sig);
+      }
 
       if (isPaused) return;
 
-      highlightedDeviceKey = sig.device_key;
-
+      // 3. Update rawSignalsList cache
+      const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       if (groupDevices) {
         const existingIdx = rawSignalsList.findIndex(
-          (item) => item.device_key === sig.device_key || (item.model === sig.model && String(item.device_id) === String(sig.device_id))
+          (item) => (item.device_key || `${item.model}_${item.device_id}`) === devKey
         );
         if (existingIdx !== -1) {
           const prevHits = rawSignalsList[existingIdx].hit_count || 1;
@@ -1760,17 +2015,84 @@
         }
       } else {
         rawSignalsList.unshift(sig);
-        if (rawSignalsList.length > 250) rawSignalsList.pop();
+        if (rawSignalsList.length > 100) rawSignalsList.length = 100;
       }
 
-      if (activeTab === 'signals') {
-        renderSignalsView();
+      // 4. Live DOM update in Signaler tab (even when filters are active!)
+      if (activeTab === 'signals' && signalMatchesActiveFilters(sig)) {
+        const container = viewMode === 'table'
+          ? document.getElementById('signalsTableBody')
+          : document.getElementById('signalsGridContainer');
+        const emptyEl = document.getElementById('signalsEmptyState');
+        const gridEl = document.getElementById('signalsGridContainer');
+        const tableWrap = document.getElementById('signalsTableContainer');
+
+        if (emptyEl && !emptyEl.classList.contains('hidden')) {
+          emptyEl.classList.add('hidden');
+          if (viewMode === 'table') tableWrap.classList.remove('hidden');
+          else gridEl.classList.remove('hidden');
+        }
+
+        if (groupDevices && container) {
+          const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
+          if (existingEl) {
+            // Update existing card or row in place without full re-render
+            const { badgesHtml } = extractAndFormatMetrics(sig.payload || {}, sig);
+            const badgesTarget = existingEl.querySelector('[data-sig-badges]');
+            if (badgesTarget) badgesTarget.innerHTML = badgesHtml;
+
+            const strengthTarget = existingEl.querySelector('[data-sig-strength]');
+            if (strengthTarget) strengthTarget.innerHTML = buildFooterSignalStrength(sig.rssi, sig.snr);
+
+            const hitsTarget = existingEl.querySelector('[data-sig-hits]');
+            if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${sig.hit_count || 1}`;
+
+            const tsTarget = existingEl.querySelector('[data-timestamp]');
+            if (tsTarget) {
+              tsTarget.setAttribute('data-timestamp', sig.timestamp);
+              tsTarget.setAttribute('data-ts', sig.timestamp);
+              tsTarget.setAttribute('title', formatTimestamp(sig.timestamp));
+              const relLabel = tsTarget.querySelector('.rel-time-label');
+              if (relLabel) relLabel.textContent = formatRelativeTime(sig.timestamp);
+            }
+
+            pulseElement(existingEl);
+          } else {
+            // Device not in DOM yet -> insert at top
+            const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
+            temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig) : buildSignalCardHtml(sig)).trim();
+            const newEl = temp.firstElementChild;
+            if (newEl) {
+              container.insertBefore(newEl, container.firstChild);
+              pulseElement(newEl);
+            }
+          }
+        } else if (!groupDevices && container) {
+          // Ungrouped stream -> insert at top and trim > 100
+          const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
+          temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig) : buildSignalCardHtml(sig)).trim();
+          const newEl = temp.firstElementChild;
+          if (newEl) {
+            container.insertBefore(newEl, container.firstChild);
+            pulseElement(newEl);
+            while (container.children.length > 100) {
+              container.removeChild(container.lastElementChild);
+            }
+          }
+        }
+
+        document.getElementById('visibleSignalCount').textContent = container ? container.children.length : getFilteredSignals().length;
+      }
+
+      // 5. Live update Detail Modal if open for this device
+      if (currentModalDeviceKey && currentModalDeviceKey === devKey) {
+        liveUpdateOpenModal(sig, dev);
       }
     }
 
     function getFilteredSignals() {
       const filtered = rawSignalsList.filter(signalMatchesActiveFilters);
-      if (!groupDevices) return filtered;
+      if (!groupDevices) return filtered.slice(0, 100);
 
       const seen = new Map();
       for (const sig of filtered) {
@@ -1792,6 +2114,8 @@
       const emptyEl = document.getElementById('signalsEmptyState');
 
       if (!items.length) {
+        gridEl.innerHTML = '';
+        tableBody.innerHTML = '';
         gridEl.classList.add('hidden');
         tableWrap.classList.add('hidden');
         emptyEl.classList.remove('hidden');
@@ -1808,15 +2132,6 @@
         tableWrap.classList.add('hidden');
         gridEl.classList.remove('hidden');
         gridEl.innerHTML = items.map((sig) => buildSignalCardHtml(sig)).join('');
-      }
-
-      if (highlightedDeviceKey) {
-        const keyToClear = highlightedDeviceKey;
-        highlightedDeviceKey = null;
-        setTimeout(() => {
-          const el = document.getElementById(`sigcard_${CSS.escape(keyToClear)}`);
-          if (el) el.classList.remove('ring-2', 'ring-sky-500');
-        }, 1100);
       }
     }
 
@@ -1837,13 +2152,16 @@
       const p = sig.payload || {};
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       const hasAlias = Boolean(sig.alias && sig.alias.trim());
+      const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
       const catIcon = getCategoryIcon(sig.category);
-      const isHighlighted = highlightedDeviceKey === devKey;
-      const highlightCls = isHighlighted ? 'ring-2 ring-sky-500' : '';
 
       const titleHtml = hasAlias
         ? `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(sig.alias)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 truncate">(${escapeHtml(sig.model)})</span>`
         : `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(sig.model)}</span>`;
+
+      const groupBadgeHtml = hasGroup
+        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25 truncate max-w-[130px]"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`
+        : '';
 
       const channelPart = sig.channel !== null && sig.channel !== undefined && sig.channel !== ''
         ? `<span>K:<strong class="text-slate-700 dark:text-slate-200">${escapeHtml(sig.channel)}</strong></span>`
@@ -1874,8 +2192,9 @@
       return `
         <div
           id="sigcard_${escapeHtml(devKey)}"
+          data-device-key="${escapeHtml(devKey)}"
           onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})"
-          class="${highlightCls} cursor-pointer group bg-white dark:bg-slate-900 hover:bg-slate-50/90 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-sky-500/50 rounded-xl p-2.5 transition duration-200 shadow-sm flex flex-col justify-between gap-2"
+          class="cursor-pointer group bg-white dark:bg-slate-900 hover:bg-slate-50/90 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-sky-500/50 rounded-xl p-2.5 transition duration-200 shadow-sm flex flex-col justify-between gap-2"
         >
           <!-- Row 1: Header -->
           <div class="flex items-center justify-between gap-1.5">
@@ -1884,8 +2203,9 @@
               <div class="text-xs truncate flex items-baseline gap-1 min-w-0">${titleHtml}</div>
             </div>
             <div class="flex items-center gap-0.5 shrink-0">
+              ${groupBadgeHtml}
               <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
-              <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias & Kategori">
+              <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias, Grupp & Kategori">
                 <i class="mdi mdi-pencil-outline text-sm"></i>
               </button>
               ${haButtonHtml}
@@ -1903,24 +2223,24 @@
               ${freqBadge}
               ${protoBadge}
             </div>
-            <span class="inline-flex items-center gap-0.5 text-slate-400 dark:text-slate-500" title="${escapeHtml(exactTime)}" data-ts="${escapeHtml(sig.timestamp)}">
+            <span class="inline-flex items-center gap-0.5 text-slate-400 dark:text-slate-500" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}">
               <i class="mdi mdi-clock-outline text-xs"></i>
               <span class="rel-time-label">${escapeHtml(relTime)}</span>
             </span>
           </div>
 
           <!-- Row 3: Smart Analyzed Metrics -->
-          <div class="flex flex-wrap items-center gap-1 py-0.5">
+          <div data-sig-badges class="flex flex-wrap items-center gap-1 py-0.5">
             ${badgesHtml}
           </div>
 
           <!-- Row 4: Footer (RSSI/SNR + Counter) -->
           <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/80 text-[11px] font-mono">
-            ${footerSignalHtml}
+            <div data-sig-strength>${footerSignalHtml}</div>
             <div class="flex items-center gap-1">
               ${radio.mic ? `<span class="text-[10px] text-slate-400 dark:text-slate-500">${escapeHtml(radio.mic)}</span>` : ''}
-              <span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700" title="Antal mottagna paket från denna enhet">
-                <i class="mdi mdi-counter text-xs text-sky-500"></i>${hitCount}
+              <span data-sig-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700" title="Antal mottagna paket från denna enhet">
+                <i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}
               </span>
             </div>
           </div>
@@ -1932,6 +2252,7 @@
       const p = sig.payload || {};
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       const hasAlias = Boolean(sig.alias && sig.alias.trim());
+      const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
       const catIcon = getCategoryIcon(sig.category);
       const exactTime = formatTimestamp(sig.timestamp);
       const relTime = formatRelativeTime(sig.timestamp);
@@ -1948,8 +2269,8 @@
         : '';
 
       return `
-        <tr onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})" class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
-          <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400" title="${escapeHtml(exactTime)}" data-ts="${escapeHtml(sig.timestamp)}">
+        <tr data-device-key="${escapeHtml(devKey)}" onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})" class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
+          <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}">
             <i class="mdi mdi-clock-outline mr-0.5"></i><span class="rel-time-label">${escapeHtml(relTime)}</span>
           </td>
           <td class="py-1.5 px-2.5 whitespace-nowrap">
@@ -1957,7 +2278,8 @@
               <i class="mdi ${catIcon} text-sm"></i>
               <span class="font-bold text-slate-900 dark:text-white">${escapeHtml(hasAlias ? sig.alias : sig.model)}</span>
               ${hasAlias ? `<span class="text-[11px] text-slate-400">(${escapeHtml(sig.model)})</span>` : ''}
-              <span class="ml-1 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500"><i class="mdi mdi-counter mr-0.5"></i>${hitCount}</span>
+              ${hasGroup ? `<span class="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</span>` : ''}
+              <span data-sig-hits class="ml-1 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}</span>
             </div>
           </td>
           <td class="py-1.5 px-2.5 whitespace-nowrap">
@@ -1967,12 +2289,12 @@
             ${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ` <span class="text-slate-400">/ K${escapeHtml(sig.channel)}</span>` : ''}
           </td>
           <td class="py-1.5 px-2.5">
-            <div class="flex flex-wrap items-center gap-1">${badgesHtml}</div>
+            <div data-sig-badges class="flex flex-wrap items-center gap-1">${badgesHtml}</div>
           </td>
           <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-600 dark:text-slate-300">
             <i class="mdi mdi-sine-wave mr-0.5 text-slate-400"></i>${escapeHtml(radio.freqLabel)} ${radio.proto ? `<span class="text-slate-400">${escapeHtml(radio.proto)}</span>` : ''}
           </td>
-          <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap">
+          <td data-sig-strength class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap">
             ${footerSignalHtml}
           </td>
           <td class="py-1.5 px-2.5 whitespace-nowrap text-right">
@@ -2103,86 +2425,111 @@
         document.getElementById('modalPacketTime').textContent = formatTimestamp(currentModalPayload.time || dev.last_seen);
 
         document.getElementById('modalAliasInput').value = dev.alias || '';
+        document.getElementById('modalGroupInput').value = dev.group_name || '';
         document.getElementById('modalCategorySelect').value = dev.category || 'Sensor';
         document.getElementById('modalMqttToggle').checked = Boolean(dev.mqtt_enabled);
         document.getElementById('modalHaDiscoveryToggle').checked = Boolean(dev.ha_discovery);
         document.getElementById('modalIgnoredToggle').checked = Boolean(dev.ignored);
         syncHaDiscoveryUiVisibility();
 
-        // 1. Build Visual KPI Cards Grid ("AKTUELLA MÄTVÄRDEN & TELEMETRI")
-        const analyzed = extractAndFormatMetrics(currentModalPayload, matchingSig);
-        const radio = extractRadioMetadata(matchingSig, currentModalPayload);
-        const kpiCardsHtml = analyzed.kpis.map((k) => `
-          <div class="p-2.5 rounded-xl border ${k.cls} flex flex-col justify-between">
-            <div class="flex items-center justify-between text-[11px] opacity-85">
-              <span class="font-semibold uppercase tracking-wider truncate">${escapeHtml(k.label)}</span>
-              <i class="mdi ${k.icon} text-base"></i>
-            </div>
-            <div class="mt-1">
-              <div class="text-sm sm:text-base font-bold font-mono leading-tight">${escapeHtml(k.primary)}</div>
-              ${k.secondary ? `<div class="text-[11px] font-mono opacity-80 mt-0.5">${escapeHtml(k.secondary)}</div>` : ''}
-            </div>
-          </div>
-        `);
-
-        // Add Radio / FSK KPI Card (shows dual freq1 / freq2 for FSK like 867.96 / 868.04 MHz)
-        const radioParts = [radio.mod ? `Mod: ${radio.mod}` : '', radio.proto ? `Protokoll ${radio.proto}` : '', radio.mic].filter(Boolean);
-        kpiCardsHtml.push(`
-          <div class="p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-            <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-              <span class="font-semibold uppercase tracking-wider">Radio${radio.mod ? ' / ' + escapeHtml(radio.mod) : ''}</span>
-              <i class="mdi mdi-sine-wave text-base text-sky-500"></i>
-            </div>
-            <div class="mt-1">
-              <div class="text-sm sm:text-base font-bold font-mono text-slate-900 dark:text-white leading-tight">${escapeHtml(radio.dualFreqLabel)}</div>
-              <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(radioParts.join(' • ') || 'Standard RF')}</div>
-            </div>
-          </div>
-        `);
-
-        // Add Signal Quality KPI Card
-        if (currentModalPayload.rssi !== undefined) {
-          const rssiVal = Number(currentModalPayload.rssi).toFixed(2);
-          const snrVal = currentModalPayload.snr !== undefined ? `${Number(currentModalPayload.snr).toFixed(1)} dB SNR` : '';
-          kpiCardsHtml.push(`
-            <div class="p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-              <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                <span class="font-semibold uppercase tracking-wider">Signal</span>
-                <i class="mdi mdi-wifi-strength-4 text-base text-emerald-500"></i>
-              </div>
-              <div class="mt-1">
-                <div class="text-sm sm:text-base font-bold font-mono text-slate-900 dark:text-white leading-tight">${rssiVal} dB RSSI</div>
-                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(snrVal)}${currentModalPayload.noise !== undefined ? ` • Brus: ${Number(currentModalPayload.noise).toFixed(1)} dB` : ''}</div>
-              </div>
-            </div>
-          `);
-        }
-
-        document.getElementById('modalKpiGrid').innerHTML = kpiCardsHtml.join('');
-
-        // 2. Build Last 20 Measurements Table using extractAndFormatMetrics()
-        const tbody = document.getElementById('modalHistoryBody');
-        tbody.innerHTML = history.map((h) => {
-          const hp = h.payload || {};
-          const hMetrics = extractAndFormatMetrics(hp, h);
-          const hRadio = extractRadioMetadata(h, hp);
-
-          return `
-            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-              <td class="py-2 px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">${formatTimestamp(h.timestamp)}</td>
-              <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${escapeHtml(hRadio.freqLabel)}</td>
-              <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${h.rssi !== null ? h.rssi + ' dB' : '-'}</td>
-              <td class="py-2 px-3"><div class="flex flex-wrap items-center gap-1">${hMetrics.badgesHtml}</div></td>
-            </tr>
-          `;
-        }).join('');
-
-        // 3. Syntax-highlighted Raw JSON
-        document.getElementById('modalRawJson').innerHTML = syntaxHighlightJson(currentModalPayload);
-
+        renderModalTelemetryAndHistory(currentModalPayload, matchingSig, history);
         document.getElementById('detailModal').classList.remove('hidden');
       } catch (e) {
         console.error(e);
+      }
+    }
+
+    function renderModalTelemetryAndHistory(payload, sig, historyList) {
+      const analyzed = extractAndFormatMetrics(payload, sig);
+      const radio = extractRadioMetadata(sig, payload);
+      const kpiCardsHtml = analyzed.kpis.map((k) => `
+        <div class="p-2.5 rounded-xl border ${k.cls} flex flex-col justify-between">
+          <div class="flex items-center justify-between text-[11px] opacity-85">
+            <span class="font-semibold uppercase tracking-wider truncate">${escapeHtml(k.label)}</span>
+            <i class="mdi ${k.icon} text-base"></i>
+          </div>
+          <div class="mt-1">
+            <div class="text-sm sm:text-base font-bold font-mono leading-tight">${escapeHtml(k.primary)}</div>
+            ${k.secondary ? `<div class="text-[11px] font-mono opacity-80 mt-0.5">${escapeHtml(k.secondary)}</div>` : ''}
+          </div>
+        </div>
+      `);
+
+      const radioParts = [radio.mod ? `Mod: ${radio.mod}` : '', radio.proto ? `Protokoll ${radio.proto}` : '', radio.mic].filter(Boolean);
+      kpiCardsHtml.push(`
+        <div class="p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+            <span class="font-semibold uppercase tracking-wider">Radio${radio.mod ? ' / ' + escapeHtml(radio.mod) : ''}</span>
+            <i class="mdi mdi-sine-wave text-base text-sky-500"></i>
+          </div>
+          <div class="mt-1">
+            <div class="text-sm sm:text-base font-bold font-mono text-slate-900 dark:text-white leading-tight">${escapeHtml(radio.dualFreqLabel)}</div>
+            <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(radioParts.join(' • ') || 'Standard RF')}</div>
+          </div>
+        </div>
+      `);
+
+      if (payload.rssi !== undefined) {
+        const rssiVal = Number(payload.rssi).toFixed(2);
+        const snrVal = payload.snr !== undefined ? `${Number(payload.snr).toFixed(1)} dB SNR` : '';
+        kpiCardsHtml.push(`
+          <div class="p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+              <span class="font-semibold uppercase tracking-wider">Signal</span>
+              <i class="mdi mdi-wifi-strength-4 text-base text-emerald-500"></i>
+            </div>
+            <div class="mt-1">
+              <div class="text-sm sm:text-base font-bold font-mono text-slate-900 dark:text-white leading-tight">${rssiVal} dB RSSI</div>
+              <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(snrVal)}${payload.noise !== undefined ? ` • Brus: ${Number(payload.noise).toFixed(1)} dB` : ''}</div>
+            </div>
+          </div>
+        `);
+      }
+
+      document.getElementById('modalKpiGrid').innerHTML = kpiCardsHtml.join('');
+
+      if (Array.isArray(historyList)) {
+        const tbody = document.getElementById('modalHistoryBody');
+        tbody.innerHTML = historyList.map((h) => buildModalHistoryRowHtml(h)).join('');
+      }
+
+      document.getElementById('modalRawJson').innerHTML = syntaxHighlightJson(payload);
+    }
+
+    function buildModalHistoryRowHtml(h) {
+      const hp = h.payload || {};
+      const hMetrics = extractAndFormatMetrics(hp, h);
+      const hRadio = extractRadioMetadata(h, hp);
+      return `
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+          <td class="py-2 px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">${formatTimestamp(h.timestamp)}</td>
+          <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${escapeHtml(hRadio.freqLabel)}</td>
+          <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${h.rssi !== null && h.rssi !== undefined ? h.rssi + ' dB' : '-'}</td>
+          <td class="py-2 px-3"><div class="flex flex-wrap items-center gap-1">${hMetrics.badgesHtml}</div></td>
+        </tr>
+      `;
+    }
+
+    function liveUpdateOpenModal(sig, dev) {
+      currentModalPayload = sig.payload || {};
+      if (dev) {
+        document.getElementById('modalSubtitle').textContent = `Key: ${dev.device_key} • ID: ${dev.device_id} • Träffar: ${dev.hit_count}`;
+      }
+      document.getElementById('modalPacketTime').textContent = formatTimestamp(sig.timestamp);
+      renderModalTelemetryAndHistory(currentModalPayload, sig, null);
+
+      const tbody = document.getElementById('modalHistoryBody');
+      if (tbody) {
+        const temp = document.createElement('tbody');
+        temp.innerHTML = buildModalHistoryRowHtml(sig).trim();
+        const newRow = temp.firstElementChild;
+        if (newRow) {
+          tbody.insertBefore(newRow, tbody.firstChild);
+          pulseElement(newRow);
+          while (tbody.children.length > 20) {
+            tbody.removeChild(tbody.lastElementChild);
+          }
+        }
       }
     }
 
@@ -2194,6 +2541,7 @@
     async function saveModalDevice() {
       if (!currentModalDeviceKey) return;
       const alias = document.getElementById('modalAliasInput').value.trim();
+      const group_name = document.getElementById('modalGroupInput').value.trim();
       const category = document.getElementById('modalCategorySelect').value;
       const mqtt_enabled = document.getElementById('modalMqttToggle').checked ? 1 : 0;
       const ha_discovery = document.getElementById('modalHaDiscoveryToggle').checked ? 1 : 0;
@@ -2203,7 +2551,7 @@
         const res = await fetch(`/api/devices/${encodeURIComponent(currentModalDeviceKey)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ alias, category, mqtt_enabled, ha_discovery, ignored })
+          body: JSON.stringify({ alias, group_name, category, mqtt_enabled, ha_discovery, ignored })
         });
         if (res.ok) {
           const data = await res.json();
@@ -2226,37 +2574,170 @@
     }
 
     // -----------------------------------------------------------------------
-    // Devices Tab (Enhetsregister - 3-5 Column Grid WITH Telemetry Badges)
+    // Devices Tab: Grouping, Sorting, Multi-Select & Live In-Place DOM Update
     // -----------------------------------------------------------------------
+    function syncDeviceToolbarControls() {
+      const grpSel = document.getElementById('deviceGroupBySelect');
+      const srtSel = document.getElementById('deviceSortBySelect');
+      if (grpSel) grpSel.value = deviceGroupBy;
+      if (srtSel) srtSel.value = deviceSortBy;
+      syncDeviceQuickPillButtons();
+    }
+
+    function setDeviceGroupBy(val) {
+      deviceGroupBy = val || 'custom_group';
+      localStorage.setItem('ss_dev_group_by', deviceGroupBy);
+      renderDevicesList();
+    }
+
+    function setDeviceSortBy(val) {
+      deviceSortBy = val || 'name';
+      localStorage.setItem('ss_dev_sort_by', deviceSortBy);
+      renderDevicesList();
+    }
+
+    function setDeviceQuickPill(pill) {
+      activeDevicePill = pill || 'all';
+      syncDeviceQuickPillButtons();
+      renderDevicesList();
+    }
+
+    function syncDeviceQuickPillButtons() {
+      const pills = ['all', 'grouped', 'ungrouped', 'weather', 'tpms', 'meter', 'low_battery'];
+      pills.forEach((p) => {
+        const el = document.getElementById(`devPill_${p}`);
+        if (!el) return;
+        if (p === activeDevicePill) {
+          el.className = 'whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition bg-sky-600 text-white border-sky-600 shadow-sm';
+        } else {
+          el.className = 'whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800';
+        }
+      });
+    }
+
+    function clearDeviceFilters() {
+      document.getElementById('deviceSearchInput').value = '';
+      activeDevicePill = 'all';
+      syncDeviceQuickPillButtons();
+      renderDevicesList();
+    }
+
+    function updateExistingGroupsDatalist() {
+      const datalist = document.getElementById('existing-groups');
+      if (!datalist) return;
+      const groups = new Set();
+      devicesList.forEach((d) => {
+        const g = (d.group_name || '').trim();
+        if (g) groups.add(g);
+      });
+      const sorted = Array.from(groups).sort((a, b) => a.localeCompare(b, 'sv'));
+      datalist.innerHTML = sorted.map((g) => `<option value="${escapeHtml(g)}"></option>`).join('');
+    }
+
     function debouncedLoadDevices() {
       clearTimeout(deviceDebounceTimer);
       deviceDebounceTimer = setTimeout(loadDevices, 200);
     }
 
     async function loadDevices() {
-      const search = document.getElementById('deviceSearchInput').value.trim();
       const includeIgnored = document.getElementById('deviceShowIgnored').checked;
       const params = new URLSearchParams({ include_ignored: includeIgnored ? 'true' : 'false' });
-      if (search) params.set('search', search);
 
       try {
         const res = await fetch(`/api/devices?${params.toString()}`);
         if (!res.ok) return;
         const data = await res.json();
         devicesList = data.devices || [];
+        updateExistingGroupsDatalist();
         renderDevicesList();
       } catch (e) {
         console.error(e);
       }
     }
 
-    function handleDeviceUpdated(dev) {
+    function updateDeviceFromSignal(dev, sig) {
+      const devKey = dev.device_key;
+      const idx = devicesList.findIndex((d) => d.device_key === devKey);
+      const isNewDevice = idx === -1;
+
+      if (isNewDevice) {
+        devicesList.unshift(dev);
+        updateExistingGroupsDatalist();
+      } else {
+        devicesList[idx] = { ...devicesList[idx], ...dev };
+      }
+
+      // Live DOM update in Enheter tab WITHOUT overwriting active inputs!
+      const cardEl = document.querySelector(`[data-device-card="${CSS.escape(devKey)}"]`);
+      if (cardEl) {
+        const lastPayload = dev.last_payload || sig.payload || {};
+        const { badgesHtml } = extractAndFormatMetrics(lastPayload, sig);
+        const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi ?? sig.rssi, lastPayload.snr ?? sig.snr);
+        const radio = extractRadioMetadata(sig, lastPayload);
+
+        const badgesEl = cardEl.querySelector('[data-dev-badges]');
+        if (badgesEl) {
+          badgesEl.innerHTML = badgesHtml || '<span class="text-[11px] text-slate-400">Inga mätvärden</span>';
+        }
+
+        const hitsEl = cardEl.querySelector('[data-dev-hits]');
+        if (hitsEl) {
+          hitsEl.innerHTML = `<i class="mdi mdi-counter text-sky-500 mr-0.5"></i>${dev.hit_count || 1}`;
+        }
+
+        const lastSeenEl = cardEl.querySelector('[data-dev-lastseen]');
+        if (lastSeenEl) {
+          lastSeenEl.setAttribute('data-timestamp', dev.last_seen);
+          lastSeenEl.setAttribute('data-ts', dev.last_seen);
+          lastSeenEl.setAttribute('title', formatTimestamp(dev.last_seen));
+          const relLabel = lastSeenEl.querySelector('.rel-time-label');
+          if (relLabel) relLabel.textContent = formatRelativeTime(dev.last_seen);
+        }
+
+        const sigEl = cardEl.querySelector('[data-dev-signal]');
+        if (sigEl) {
+          sigEl.innerHTML = signalStrengthHtml;
+        }
+
+        const freqEl = cardEl.querySelector('[data-dev-freq]');
+        if (freqEl && radio.freqMHz) {
+          freqEl.textContent = `• ${radio.freqLabel}`;
+        }
+
+        pulseElement(cardEl);
+
+        // If user chose to sort by last_seen/hits/rssi and is not typing in any input, re-order smoothly
+        const container = document.getElementById('devicesContainer');
+        const userIsEditing = container && container.contains(document.activeElement) &&
+          (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT');
+        if (activeTab === 'devices' && deviceSortBy !== 'name' && !userIsEditing) {
+          renderDevicesList();
+        }
+      } else if (isNewDevice && activeTab === 'devices') {
+        const container = document.getElementById('devicesContainer');
+        const userIsEditing = container && container.contains(document.activeElement) &&
+          (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT');
+        if (!userIsEditing) {
+          renderDevicesList();
+        }
+      }
+    }
+
+    function syncDeviceToCaches(dev) {
+      const idx = devicesList.findIndex((d) => d.device_key === dev.device_key);
+      if (idx !== -1) {
+        devicesList[idx] = { ...devicesList[idx], ...dev };
+      } else {
+        devicesList.unshift(dev);
+      }
+
       if (Number(dev.ignored) === 1) {
         rawSignalsList = rawSignalsList.filter((s) => s.device_key !== dev.device_key);
       } else {
         rawSignalsList.forEach((s) => {
           if (s.device_key === dev.device_key) {
             s.alias = dev.alias;
+            s.group_name = dev.group_name || '';
             s.category = dev.category;
             s.mqtt_enabled = dev.mqtt_enabled;
             s.ha_discovery = dev.ha_discovery;
@@ -2264,94 +2745,297 @@
           }
         });
       }
+    }
+
+    function handleDeviceUpdated(dev) {
+      syncDeviceToCaches(dev);
+      updateExistingGroupsDatalist();
       if (activeTab === 'signals') renderSignalsView();
-      if (activeTab === 'devices') loadDevices();
+      if (activeTab === 'devices') renderDevicesList();
+    }
+
+    function handleDevicesBulkUpdated(devs) {
+      devs.forEach((d) => syncDeviceToCaches(d));
+      updateExistingGroupsDatalist();
+      if (activeTab === 'signals') renderSignalsView();
+      if (activeTab === 'devices') renderDevicesList();
+    }
+
+    function deviceMatchesFilters(dev) {
+      const showIgnored = document.getElementById('deviceShowIgnored').checked;
+      if (!showIgnored && Number(dev.ignored) === 1) return false;
+
+      const p = dev.last_payload || {};
+      const cat = (dev.category || 'Sensor').toLowerCase();
+      const grp = (dev.group_name || '').trim();
+
+      if (activeDevicePill === 'grouped' && !grp) return false;
+      if (activeDevicePill === 'ungrouped' && grp) return false;
+      if (activeDevicePill === 'weather' && cat !== 'weather') return false;
+      if (activeDevicePill === 'tpms' && cat !== 'tpms') return false;
+      if (activeDevicePill === 'meter' && cat !== 'meter') return false;
+      if (activeDevicePill === 'low_battery') {
+        const isLow = (p.battery_ok !== undefined && Number(p.battery_ok) === 0) || Number(p.battery_low) === 1;
+        if (!isLow) return false;
+      }
+
+      const search = document.getElementById('deviceSearchInput').value.trim().toLowerCase();
+      if (search) {
+        const hay = `${dev.model || ''} ${dev.device_id || ''} ${dev.alias || ''} ${dev.group_name || ''} ${dev.category || ''} ${JSON.stringify(p)}`.toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    }
+
+    function sortDevicesArray(arr) {
+      return arr.slice().sort((a, b) => {
+        if (deviceSortBy === 'last_seen') {
+          return String(b.last_seen || '').localeCompare(String(a.last_seen || ''));
+        }
+        if (deviceSortBy === 'hits') {
+          return (Number(b.hit_count) || 0) - (Number(a.hit_count) || 0);
+        }
+        if (deviceSortBy === 'rssi') {
+          const ra = a.last_payload && a.last_payload.rssi !== undefined ? Number(a.last_payload.rssi) : -999;
+          const rb = b.last_payload && b.last_payload.rssi !== undefined ? Number(b.last_payload.rssi) : -999;
+          return rb - ra;
+        }
+        // Default 'name' (Alias / Modell A-Ö) -> keeps cards rock-solid in place during live updates!
+        const nameA = (a.alias && a.alias.trim()) ? a.alias.trim() : `${a.model}_${a.device_id}`;
+        const nameB = (b.alias && b.alias.trim()) ? b.alias.trim() : `${b.model}_${b.device_id}`;
+        return nameA.localeCompare(nameB, 'sv', { numeric: true, sensitivity: 'base' });
+      });
+    }
+
+    function toggleCollapseGroup(groupId) {
+      if (collapsedGroups.has(groupId)) {
+        collapsedGroups.delete(groupId);
+      } else {
+        collapsedGroups.add(groupId);
+      }
+      renderDevicesList();
     }
 
     function renderDevicesList() {
       const container = document.getElementById('devicesContainer');
       const empty = document.getElementById('devicesEmptyState');
+      const filtered = devicesList.filter(deviceMatchesFilters);
 
-      if (!devicesList.length) {
+      const visCountEl = document.getElementById('visibleDeviceCount');
+      if (visCountEl) visCountEl.textContent = filtered.length;
+
+      if (!filtered.length) {
         container.innerHTML = '';
         empty.classList.remove('hidden');
         return;
       }
 
       empty.classList.add('hidden');
-      container.innerHTML = devicesList.map((dev) => {
-        const isIgnored = Number(dev.ignored) === 1;
-        const isMqtt = Number(dev.mqtt_enabled) === 1;
-        const isHa = Number(dev.ha_discovery) === 1;
-        const catIcon = getCategoryIcon(dev.category);
-        const lastPayload = dev.last_payload || {};
-        const { badgesHtml } = extractAndFormatMetrics(lastPayload);
-        const radio = extractRadioMetadata(null, lastPayload);
-        const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi, lastPayload.snr);
 
-        const borderClass = isIgnored
-          ? 'border-rose-300 dark:border-rose-900/60 opacity-75'
-          : 'border-slate-200 dark:border-slate-800';
+      if (deviceGroupBy === 'none') {
+        const sorted = sortDevicesArray(filtered);
+        container.innerHTML = `
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+            ${sorted.map((dev) => buildDeviceCardHtml(dev)).join('')}
+          </div>
+        `;
+        return;
+      }
 
-        const haCheckboxHtml = haDiscoveryEnabled
-          ? `<label class="inline-flex items-center gap-1 cursor-pointer select-none" title="Publicera eller radera Home Assistant MQTT Auto-Discovery för enheten">
-              <input
-                type="checkbox"
-                ${isHa ? 'checked' : ''}
-                onchange="toggleDeviceFlag('${escapeHtml(dev.device_key)}', 'ha_discovery', this.checked ? 1 : 0)"
-                class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500"
-              />
-              <span class="text-slate-600 dark:text-slate-300"><i class="mdi mdi-home-assistant text-sky-500"></i> HA</span>
-            </label>`
-          : '';
+      // Group devices by custom_group, category, or model
+      const groupsMap = new Map();
+      const ungroupedKey = '__UNGROUPED__';
+
+      filtered.forEach((dev) => {
+        let gKey = '';
+        if (deviceGroupBy === 'custom_group') {
+          const g = (dev.group_name || '').trim();
+          gKey = g ? g : ungroupedKey;
+        } else if (deviceGroupBy === 'category') {
+          gKey = dev.category || 'Sensor';
+        } else if (deviceGroupBy === 'model') {
+          gKey = dev.model || 'Unknown';
+        }
+        if (!groupsMap.has(gKey)) groupsMap.set(gKey, []);
+        groupsMap.get(gKey).push(dev);
+      });
+
+      const sortedGroupKeys = Array.from(groupsMap.keys()).sort((a, b) => {
+        if (a === ungroupedKey) return 1;
+        if (b === ungroupedKey) return -1;
+        return a.localeCompare(b, 'sv', { numeric: true, sensitivity: 'base' });
+      });
+
+      container.innerHTML = sortedGroupKeys.map((gKey) => {
+        const groupDevs = sortDevicesArray(groupsMap.get(gKey));
+        const isUngrouped = gKey === ungroupedKey;
+        const groupTitle = isUngrouped ? 'Ogrupperade enheter' : gKey;
+        const groupIcon = isUngrouped
+          ? 'mdi-folder-open-outline text-slate-400'
+          : (deviceGroupBy === 'category' ? getCategoryIcon(gKey) : 'mdi-folder-outline text-sky-500');
+        const isCollapsed = collapsedGroups.has(gKey);
+        const totalHits = groupDevs.reduce((acc, d) => acc + (Number(d.hit_count) || 0), 0);
+        const allSelected = groupDevs.length > 0 && groupDevs.every((d) => selectedDeviceKeys.has(d.device_key));
 
         return `
-          <div class="bg-white dark:bg-slate-900 border ${borderClass} rounded-xl p-3 shadow-sm flex flex-col justify-between gap-2">
-            <!-- Header -->
-            <div class="flex items-start justify-between gap-1.5">
+          <div class="bg-white/70 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/90 rounded-xl overflow-hidden shadow-sm">
+            <div class="px-3.5 py-2 bg-slate-50/90 dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-2">
+              <div onclick="toggleCollapseGroup('${escapeHtml(gKey)}')" class="flex items-center gap-2 cursor-pointer select-none min-w-0 flex-1">
+                <i class="mdi ${isCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'} text-base text-slate-400"></i>
+                <i class="mdi ${groupIcon} text-base"></i>
+                <h3 class="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(groupTitle)}</h3>
+                <span class="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
+                  ${groupDevs.length} ${groupDevs.length === 1 ? 'enhet' : 'enheter'}
+                </span>
+                <span class="hidden sm:inline-flex items-center gap-1 text-[11px] font-mono text-slate-400 dark:text-slate-500">
+                  • <i class="mdi mdi-counter"></i>${totalHits} träffar
+                </span>
+              </div>
+
+              <div class="flex items-center gap-2 shrink-0">
+                <button
+                  onclick="toggleSelectGroup('${escapeHtml(gKey)}')"
+                  class="px-2 py-0.5 rounded text-[11px] font-medium border transition ${
+                    allSelected
+                      ? 'bg-sky-600 text-white border-sky-600'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-sky-500'
+                  }"
+                >
+                  <i class="mdi ${allSelected ? 'mdi-checkbox-multiple-marked' : 'mdi-checkbox-multiple-blank-outline'} mr-0.5"></i>
+                  ${allSelected ? 'Avmarkera grupp' : 'Välj grupp'}
+                </button>
+              </div>
+            </div>
+
+            ${
+              isCollapsed
+                ? ''
+                : `<div class="p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+                    ${groupDevs.map((dev) => buildDeviceCardHtml(dev)).join('')}
+                  </div>`
+            }
+          </div>
+        `;
+      }).join('');
+    }
+
+    function buildDeviceCardHtml(dev) {
+      const devKey = dev.device_key;
+      const isIgnored = Number(dev.ignored) === 1;
+      const isMqtt = Number(dev.mqtt_enabled) === 1;
+      const isHa = Number(dev.ha_discovery) === 1;
+      const isSelected = selectedDeviceKeys.has(devKey);
+      const catIcon = getCategoryIcon(dev.category);
+      const lastPayload = dev.last_payload || {};
+      const { badgesHtml } = extractAndFormatMetrics(lastPayload);
+      const radio = extractRadioMetadata(null, lastPayload);
+      const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi, lastPayload.snr);
+      const hasGroup = Boolean(dev.group_name && dev.group_name.trim());
+
+      let borderClass = 'border-slate-200 dark:border-slate-800';
+      if (isSelected) {
+        borderClass = 'border-sky-500 ring-2 ring-sky-500/40';
+      } else if (isIgnored) {
+        borderClass = 'border-rose-300 dark:border-rose-900/60 opacity-75';
+      }
+
+      const haCheckboxHtml = haDiscoveryEnabled
+        ? `<label class="inline-flex items-center gap-1 cursor-pointer select-none" title="Publicera eller radera Home Assistant MQTT Auto-Discovery för enheten">
+            <input
+              type="checkbox"
+              ${isHa ? 'checked' : ''}
+              onchange="toggleDeviceFlag('${escapeHtml(devKey)}', 'ha_discovery', this.checked ? 1 : 0)"
+              class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500"
+            />
+            <span class="text-slate-600 dark:text-slate-300"><i class="mdi mdi-home-assistant text-sky-500"></i> HA</span>
+          </label>`
+        : '';
+
+      return `
+        <div
+          data-device-card="${escapeHtml(devKey)}"
+          class="bg-white dark:bg-slate-900 border ${borderClass} rounded-xl p-2.5 shadow-sm flex flex-col justify-between gap-2 transition duration-200"
+        >
+          <!-- Header with Multi-Select Checkbox -->
+          <div class="flex items-start justify-between gap-1.5">
+            <div class="flex items-start gap-2 min-w-0">
+              <input
+                type="checkbox"
+                ${isSelected ? 'checked' : ''}
+                onchange="toggleSelectDevice('${escapeHtml(devKey)}', this.checked)"
+                class="mt-0.5 w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 cursor-pointer shrink-0"
+                title="Markera enhet för gruppåtgärd"
+              />
               <div class="min-w-0">
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center gap-1.5 flex-wrap">
                   <i class="mdi ${catIcon} text-base shrink-0"></i>
                   <span class="text-xs font-bold text-slate-900 dark:text-white truncate">${escapeHtml(dev.alias || dev.model)}</span>
                   <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700">${escapeHtml(dev.category || 'Sensor')}</span>
                 </div>
                 <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                  ${escapeHtml(dev.model)} • ID: <strong class="text-slate-700 dark:text-slate-200">${escapeHtml(dev.device_id)}</strong> ${radio.freqMHz ? `• ${escapeHtml(radio.freqLabel)}` : ''}
+                  ${escapeHtml(dev.model)} • ID: <strong class="text-slate-700 dark:text-slate-200">${escapeHtml(dev.device_id)}</strong>
+                  <span data-dev-freq>${radio.freqMHz ? `• ${escapeHtml(radio.freqLabel)}` : ''}</span>
                 </div>
               </div>
-              <div class="text-right font-mono text-[11px] shrink-0">
-                <span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold">
-                  <i class="mdi mdi-counter text-sky-500"></i>${dev.hit_count}
-                </span>
-                <div class="text-slate-400 text-[10px] mt-0.5" title="${escapeHtml(formatTimestamp(dev.last_seen))}">${escapeHtml(formatRelativeTime(dev.last_seen))}</div>
-              </div>
             </div>
 
-            <!-- Latest Telemetry Badges Row -->
-            <div onclick="openDeviceModalByKey('${escapeHtml(dev.device_key)}')" class="cursor-pointer py-1.5 px-2 rounded-lg bg-slate-50/80 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/70 space-y-1.5 hover:border-sky-500/40 transition">
-              <div class="flex flex-wrap items-center gap-1">
-                ${badgesHtml || '<span class="text-[11px] text-slate-400">Inga mätvärden</span>'}
-              </div>
-              <div class="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
-                ${signalStrengthHtml}
-                <span class="text-sky-600 dark:text-sky-400 hover:underline">Detaljer <i class="mdi mdi-arrow-right"></i></span>
+            <div class="text-right font-mono text-[11px] shrink-0">
+              <span data-dev-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold" title="Totalt antal mottagna träffar">
+                <i class="mdi mdi-counter text-sky-500 mr-0.5"></i>${dev.hit_count}
+              </span>
+              <div
+                data-dev-lastseen
+                data-timestamp="${escapeHtml(dev.last_seen)}"
+                data-ts="${escapeHtml(dev.last_seen)}"
+                class="text-slate-400 text-[10px] mt-0.5"
+                title="${escapeHtml(formatTimestamp(dev.last_seen))}"
+              >
+                <span class="rel-time-label">${escapeHtml(formatRelativeTime(dev.last_seen))}</span>
               </div>
             </div>
+          </div>
 
-            <!-- Inline Edit Alias & Category -->
-            <div class="grid grid-cols-12 gap-1.5 items-center pt-1 text-xs">
+          <!-- Latest Telemetry Badges Row (Updated live via WebSocket!) -->
+          <div onclick="openDeviceModalByKey('${escapeHtml(devKey)}')" class="cursor-pointer py-1.5 px-2 rounded-lg bg-slate-50/80 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/70 space-y-1.5 hover:border-sky-500/40 transition">
+            <div data-dev-badges class="flex flex-wrap items-center gap-1">
+              ${badgesHtml || '<span class="text-[11px] text-slate-400">Inga mätvärden</span>'}
+            </div>
+            <div class="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
+              <div data-dev-signal>${signalStrengthHtml}</div>
+              <span class="text-sky-600 dark:text-sky-400 hover:underline">Detaljer <i class="mdi mdi-arrow-right"></i></span>
+            </div>
+          </div>
+
+          <!-- Inline Edit Alias, Group & Category (Untouched during live WebSocket telemetry updates!) -->
+          <div class="space-y-1.5 pt-0.5 text-xs">
+            <div class="grid grid-cols-12 gap-1.5 items-center">
               <div class="col-span-6">
                 <input
                   type="text"
-                  id="devAlias_${escapeHtml(dev.device_key)}"
+                  id="devAlias_${escapeHtml(devKey)}"
                   value="${escapeHtml(dev.alias || '')}"
-                  placeholder="Sätt eget alias..."
+                  onkeydown="if(event.key==='Enter') saveDeviceInline('${escapeHtml(devKey)}')"
+                  placeholder="Alias (namn)..."
                   class="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none text-xs"
                 />
               </div>
-              <div class="col-span-4">
+              <div class="col-span-6 relative">
+                <input
+                  type="text"
+                  id="devGroup_${escapeHtml(devKey)}"
+                  list="existing-groups"
+                  value="${escapeHtml(dev.group_name || '')}"
+                  onkeydown="if(event.key==='Enter') saveDeviceInline('${escapeHtml(devKey)}')"
+                  placeholder="Grupp..."
+                  class="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border ${hasGroup ? 'border-sky-500/40' : 'border-slate-200 dark:border-slate-800'} rounded text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none text-xs"
+                />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-12 gap-1.5 items-center">
+              <div class="col-span-9">
                 <select
-                  id="devCat_${escapeHtml(dev.device_key)}"
+                  id="devCat_${escapeHtml(devKey)}"
                   class="w-full px-1.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-800 dark:text-slate-200 text-xs"
                 >
                   ${['Meter', 'Weather', 'TPMS', 'Switch', 'Security', 'Sensor'].map(
@@ -2359,77 +3043,199 @@
                   ).join('')}
                 </select>
               </div>
-              <div class="col-span-2">
+              <div class="col-span-3">
                 <button
-                  onclick="saveDeviceInline('${escapeHtml(dev.device_key)}')"
-                  class="w-full py-1 px-2 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold transition text-xs flex items-center justify-center"
-                  title="Spara Alias & Kategori"
+                  onclick="saveDeviceInline('${escapeHtml(devKey)}')"
+                  class="w-full py-1 px-2 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold transition text-xs flex items-center justify-center gap-0.5"
+                  title="Spara Alias, Grupp & Kategori"
                 >
-                  <i class="mdi mdi-check"></i>
-                </button>
-              </div>
-            </div>
-
-            <!-- Action Switches & Buttons -->
-            <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[11px]">
-              <div class="flex items-center gap-2.5 flex-wrap">
-                <label class="inline-flex items-center gap-1 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    ${isMqtt ? 'checked' : ''}
-                    onchange="toggleDeviceFlag('${escapeHtml(dev.device_key)}', 'mqtt_enabled', this.checked ? 1 : 0)"
-                    class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500"
-                  />
-                  <span class="text-slate-600 dark:text-slate-300">MQTT</span>
-                </label>
-
-                ${haCheckboxHtml}
-
-                <label class="inline-flex items-center gap-1 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    ${isIgnored ? 'checked' : ''}
-                    onchange="toggleDeviceFlag('${escapeHtml(dev.device_key)}', 'ignored', this.checked ? 1 : 0)"
-                    class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-rose-500"
-                  />
-                  <span class="text-slate-600 dark:text-slate-300">Ignorera</span>
-                </label>
-              </div>
-
-              <div class="flex items-center gap-1">
-                <button
-                  onclick="openDeviceModalByKey('${escapeHtml(dev.device_key)}')"
-                  class="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
-                  title="Visa telemetri och historik"
-                >
-                  <i class="mdi mdi-chart-box-outline"></i>
-                </button>
-                <button
-                  onclick="deleteDevice('${escapeHtml(dev.device_key)}')"
-                  class="px-2 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/30"
-                  title="Radera enhet och historik"
-                >
-                  <i class="mdi mdi-trash-can-outline"></i>
+                  <i class="mdi mdi-check"></i><span>Spara</span>
                 </button>
               </div>
             </div>
           </div>
-        `;
-      }).join('');
+
+          <!-- Action Switches & Buttons -->
+          <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[11px]">
+            <div class="flex items-center gap-2.5 flex-wrap">
+              <label class="inline-flex items-center gap-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  ${isMqtt ? 'checked' : ''}
+                  onchange="toggleDeviceFlag('${escapeHtml(devKey)}', 'mqtt_enabled', this.checked ? 1 : 0)"
+                  class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500"
+                />
+                <span class="text-slate-600 dark:text-slate-300">MQTT</span>
+              </label>
+
+              ${haCheckboxHtml}
+
+              <label class="inline-flex items-center gap-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  ${isIgnored ? 'checked' : ''}
+                  onchange="toggleDeviceFlag('${escapeHtml(devKey)}', 'ignored', this.checked ? 1 : 0)"
+                  class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-rose-500"
+                />
+                <span class="text-slate-600 dark:text-slate-300">Ignorera</span>
+              </label>
+            </div>
+
+            <div class="flex items-center gap-1">
+              <button
+                onclick="openDeviceModalByKey('${escapeHtml(devKey)}')"
+                class="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+                title="Visa telemetri och historik"
+              >
+                <i class="mdi mdi-chart-box-outline"></i>
+              </button>
+              <button
+                onclick="deleteDevice('${escapeHtml(devKey)}')"
+                class="px-2 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+                title="Radera enhet och historik"
+              >
+                <i class="mdi mdi-trash-can-outline"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // -----------------------------------------------------------------------
+    // Multi-Select & Bulk Group Actions
+    // -----------------------------------------------------------------------
+    function toggleSelectDevice(deviceKey, checked) {
+      if (checked) {
+        selectedDeviceKeys.add(deviceKey);
+      } else {
+        selectedDeviceKeys.delete(deviceKey);
+      }
+      syncMultiSelectBar();
+      const cardEl = document.querySelector(`[data-device-card="${CSS.escape(deviceKey)}"]`);
+      if (cardEl) {
+        if (checked) {
+          cardEl.classList.add('border-sky-500', 'ring-2', 'ring-sky-500/40');
+        } else {
+          cardEl.classList.remove('border-sky-500', 'ring-2', 'ring-sky-500/40');
+        }
+      }
+    }
+
+    function toggleSelectGroup(groupKey) {
+      const filtered = devicesList.filter(deviceMatchesFilters);
+      const groupDevs = filtered.filter((dev) => {
+        if (deviceGroupBy === 'custom_group') {
+          const g = (dev.group_name || '').trim();
+          return (g ? g : '__UNGROUPED__') === groupKey;
+        }
+        if (deviceGroupBy === 'category') return (dev.category || 'Sensor') === groupKey;
+        if (deviceGroupBy === 'model') return (dev.model || 'Unknown') === groupKey;
+        return false;
+      });
+
+      const allSelected = groupDevs.length > 0 && groupDevs.every((d) => selectedDeviceKeys.has(d.device_key));
+      groupDevs.forEach((d) => {
+        if (allSelected) selectedDeviceKeys.delete(d.device_key);
+        else selectedDeviceKeys.add(d.device_key);
+      });
+      syncMultiSelectBar();
+      renderDevicesList();
+    }
+
+    function clearSelectedDevices() {
+      selectedDeviceKeys.clear();
+      syncMultiSelectBar();
+      renderDevicesList();
+    }
+
+    function syncMultiSelectBar() {
+      const bar = document.getElementById('multiSelectBar');
+      const badge = document.getElementById('multiSelectCountBadge');
+      if (!bar || !badge) return;
+
+      const count = selectedDeviceKeys.size;
+      if (count > 0 && activeTab === 'devices') {
+        badge.textContent = `${count} ${count === 1 ? 'enhet vald' : 'enheter valda'}`;
+        bar.classList.remove('hidden');
+      } else {
+        bar.classList.add('hidden');
+      }
+    }
+
+    async function applyBulkGroupSave() {
+      const keys = Array.from(selectedDeviceKeys);
+      if (!keys.length) return;
+      const group_name = document.getElementById('bulkGroupNameInput').value.trim();
+      const category = document.getElementById('bulkCategorySelect').value;
+
+      const payload = { device_keys: keys, group_name };
+      if (category) payload.category = category;
+
+      try {
+        const res = await fetch('/api/devices/bulk_group', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          handleDevicesBulkUpdated(data.devices || []);
+          selectedDeviceKeys.clear();
+          document.getElementById('bulkGroupNameInput').value = '';
+          document.getElementById('bulkCategorySelect').value = '';
+          syncMultiSelectBar();
+          showToast(`Uppdaterade ${keys.length} enheter`);
+        } else {
+          showToast('Kunde inte gruppuppdatera enheter', true);
+        }
+      } catch (e) {
+        showToast('Nätverksfel vid gruppuppdatering', true);
+      }
+    }
+
+    async function applyBulkIgnore() {
+      const keys = Array.from(selectedDeviceKeys);
+      if (!keys.length) return;
+      if (!confirm(`Vill du ignorera/svartlista ${keys.length} valda enheter?`)) return;
+
+      try {
+        const res = await fetch('/api/devices/bulk_group', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_keys: keys, ignored: 1 })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          handleDevicesBulkUpdated(data.devices || []);
+          selectedDeviceKeys.clear();
+          syncMultiSelectBar();
+          loadStatus();
+          showToast(`${keys.length} enheter har svartlistats`);
+        }
+      } catch (e) {
+        showToast('Kunde inte ignorera valda enheter', true);
+      }
     }
 
     async function saveDeviceInline(deviceKey) {
-      const alias = document.getElementById(`devAlias_${deviceKey}`).value.trim();
-      const category = document.getElementById(`devCat_${deviceKey}`).value;
+      const aliasEl = document.getElementById(`devAlias_${deviceKey}`);
+      const groupEl = document.getElementById(`devGroup_${deviceKey}`);
+      const catEl = document.getElementById(`devCat_${deviceKey}`);
+      const alias = aliasEl ? aliasEl.value.trim() : '';
+      const group_name = groupEl ? groupEl.value.trim() : '';
+      const category = catEl ? catEl.value : 'Sensor';
+
       try {
         const res = await fetch(`/api/devices/${encodeURIComponent(deviceKey)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ alias, category })
+          body: JSON.stringify({ alias, group_name, category })
         });
         if (res.ok) {
-          showToast('Enhet uppdaterad');
-          loadDevices();
+          const data = await res.json();
+          showToast('Enhet sparad');
+          handleDeviceUpdated(data.device);
         }
       } catch (e) {
         showToast('Fel vid uppdatering av enhet', true);
@@ -2444,12 +3250,13 @@
           body: JSON.stringify({ [field]: val })
         });
         if (res.ok) {
+          const data = await res.json();
           if (field === 'ha_discovery') {
             showToast(val ? 'HA Auto-Discovery publicerad' : 'HA Auto-Discovery raderad ur Home Assistant');
           } else {
             showToast('Inställning uppdaterad för enhet');
           }
-          loadDevices();
+          handleDeviceUpdated(data.device);
         }
       } catch (e) {
         showToast('Kunde inte ändra flagga', true);
@@ -2479,9 +3286,13 @@
           method: 'DELETE'
         });
         if (res.ok) {
+          devicesList = devicesList.filter((d) => d.device_key !== deviceKey);
+          rawSignalsList = rawSignalsList.filter((s) => s.device_key !== deviceKey);
+          selectedDeviceKeys.delete(deviceKey);
+          syncMultiSelectBar();
           showToast('Enhet och historik raderad');
-          loadDevices();
-          loadSignals();
+          renderDevicesList();
+          renderSignalsView();
         }
       } catch (e) {
         showToast('Kunde inte radera enhet', true);
@@ -2656,11 +3467,13 @@
     }
 
     function updateRelativeTimestampsInDom() {
-      document.querySelectorAll('[data-ts]').forEach((el) => {
-        const ts = el.getAttribute('data-ts');
+      document.querySelectorAll('[data-timestamp], [data-ts]').forEach((el) => {
+        const ts = el.getAttribute('data-timestamp') || el.getAttribute('data-ts');
         const label = el.querySelector('.rel-time-label');
         if (ts && label) {
           label.textContent = formatRelativeTime(ts);
+        } else if (ts && el.children.length === 0) {
+          el.textContent = formatRelativeTime(ts);
         }
       });
     }

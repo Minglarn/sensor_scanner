@@ -72,12 +72,16 @@ async def on_rtl_signal(payload: Dict[str, Any]) -> None:
         return
 
     await asyncio.to_thread(mqtt_manager.publish_signal, device_rec, signal_rec["payload"])
+    counts = await asyncio.to_thread(db.get_summary_counts)
 
     await ws_manager.broadcast(
         {
             "type": "signal",
             "data": signal_rec,
             "device": device_rec,
+            "counts": counts,
+            "total_signals_count": counts.get("signals_today", 0),
+            "total_devices_count": counts.get("active_devices", 0),
         }
     )
 
@@ -180,9 +184,17 @@ class ControlRequest(BaseModel):
 
 class DeviceUpdateRequest(BaseModel):
     alias: Optional[str] = None
+    group_name: Optional[str] = None
     category: Optional[str] = None
     mqtt_enabled: Optional[int] = None
     ha_discovery: Optional[int] = None
+    ignored: Optional[int] = None
+
+
+class BulkGroupRequest(BaseModel):
+    device_keys: List[str]
+    group_name: Optional[str] = None
+    category: Optional[str] = None
     ignored: Optional[int] = None
 
 
@@ -211,7 +223,14 @@ class SettingsUpdateRequest(BaseModel):
 # ==============================================================================
 @app.get("/", include_in_schema=False)
 async def serve_spa():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    return FileResponse(
+        os.path.join(STATIC_DIR, "index.html"),
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.websocket("/ws")
@@ -320,6 +339,23 @@ async def api_get_device_detail(device_key: str):
     return {"device": device, "history": history["items"]}
 
 
+@app.post("/api/devices/bulk_group")
+async def api_bulk_group_devices(req: BulkGroupRequest):
+    if not req.device_keys:
+        raise HTTPException(status_code=400, detail="Inga enheter valda.")
+
+    updated_devices = await asyncio.to_thread(
+        db.bulk_update_devices,
+        device_keys=req.device_keys,
+        group_name=req.group_name,
+        category=req.category,
+        ignored=req.ignored,
+    )
+    await ws_manager.broadcast({"type": "devices_bulk_updated", "devices": updated_devices})
+    await broadcast_full_status()
+    return {"ok": True, "devices": updated_devices, "count": len(updated_devices)}
+
+
 @app.put("/api/devices/{device_key}")
 async def api_update_device(device_key: str, req: DeviceUpdateRequest):
     prev_device = await asyncio.to_thread(db.get_device, device_key)
@@ -330,6 +366,7 @@ async def api_update_device(device_key: str, req: DeviceUpdateRequest):
         db.update_device,
         device_key=device_key,
         alias=req.alias,
+        group_name=req.group_name,
         category=req.category,
         mqtt_enabled=req.mqtt_enabled,
         ha_discovery=req.ha_discovery,
