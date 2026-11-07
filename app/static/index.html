@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.32</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.33</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -553,10 +553,10 @@
         onmouseleave="onSignalsScrollMouseLeave()"
         class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-3 sm:px-6 pt-2.5 pb-6"
       >
-        <!-- Signals Multi-Column Card Grid (3-5 Columns) -->
+        <!-- Signals Multi-Column Card Grid (Max 4 Columns) -->
         <div
           id="signalsGridContainer"
-          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3"
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5"
         >
           <!-- Rendered by JS -->
         </div>
@@ -2103,7 +2103,7 @@
       'time', 'protocol', 'model', 'type', 'id', 'device', 'sensor_id', 'node_id',
       'address', 'house_code', 'code', 'channel', 'mic', 'mod', 'freq', 'freq1',
       'freq2', 'rssi', 'snr', 'noise', 'alias', 'group_name', 'device_key',
-      'mode', 'pulses_per_kwh', 'calculated_power_W', 'mac', 'mac_type', 'local_name',
+      'mode', 'pulses_per_kwh', 'pulses_per_kWh', 'calculated_power_W', 'mac', 'mac_type', 'local_name',
       'manufacturer_data', 'manufacturer_id', 'manufacturer_name', 'service_data',
       'service_uuids', 'ble_service_name', 'apple_type', 'tx_power', 'distance_m',
       'beacon_hash', 'tesla_node', 'is_own_vehicle', 'vehicle_status',
@@ -2976,6 +2976,7 @@
 
       const lower = s.toLowerCase();
       if (lower.startsWith('telink')) return 'Telink';
+      if (lower.startsWith('texas instruments')) return 'TI';
       if (lower.startsWith('sjit')) return 'SJIT';
       if (lower.includes('xiaomi')) return 'Xiaomi';
       if (lower.includes('yeelink')) return 'Yeelink';
@@ -3177,7 +3178,7 @@
       // Always mark internal & BLE envelope metadata keys as consumed (handledKeys) so they NEVER create duplicate badges in MÄTVÄRDEN
       [
         'cumulative_kwh', 'cumulative_kWh', 'energy_kWh', 'total_kWh', 'energy_mWh',
-        'effect', 'pulses', 'pulse_count', 'pulses_per_kwh', 'sequence', 'mode',
+        'effect', 'pulses', 'pulse_count', 'pulses_per_kwh', 'pulses_per_kWh', 'sequence', 'mode',
         'calculated_power_W', 'local_name', 'manufacturer_name', 'manufacturer_id',
         'service_uuids', 'ble_service_name', 'mac_type', 'apple_type', 'tesla_node',
         'is_own_vehicle', 'tx_power', 'distance_m', 'measured_power_1m', 'beacon_hash', 'ibeacon_uuid',
@@ -5086,15 +5087,32 @@
                 subtitleTarget.classList.add('hidden');
               }
             }
+            const cardSubTarget = existingEl.querySelector('[data-sig-card-sub]');
+            if (cardSubTarget) {
+              const cardSubText = buildCardSubtitleWithId(sig, sig.payload || {}, primaryName, secondaryName);
+              cardSubTarget.textContent = cardSubText;
+              cardSubTarget.setAttribute('title', cardSubText);
+            }
 
             const { badgesHtml } = extractAndFormatMetrics(sig.payload || {}, sig);
             const badgesTarget = existingEl.querySelector('[data-sig-badges]');
-            if (badgesTarget) badgesTarget.innerHTML = badgesHtml;
+            if (badgesTarget) {
+              if (viewMode !== 'table' && sig.group_name && String(sig.group_name).trim()) {
+                const grpBadge = `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`;
+                badgesTarget.innerHTML = grpBadge + badgesHtml;
+              } else {
+                badgesTarget.innerHTML = badgesHtml;
+              }
+            }
 
             const radio = extractRadioMetadata(sig, sig.payload || {});
             const radioTarget = existingEl.querySelector('[data-sig-radio]');
             if (radioTarget) {
               radioTarget.innerHTML = renderTableRadioCellHtml(radio);
+            }
+            const cardRadioTarget = existingEl.querySelector('[data-sig-card-radio]');
+            if (cardRadioTarget) {
+              cardRadioTarget.textContent = formatCompactCardRadioLine(radio);
             }
 
             const strengthTarget = existingEl.querySelector('[data-sig-strength]');
@@ -5227,33 +5245,53 @@
     // -----------------------------------------------------------------------
     // Card & Table Builders for Signaler
     // -----------------------------------------------------------------------
+    function buildCardSubtitleWithId(sig, p, primaryName, secondaryName) {
+      const idPart = `${sig.device_id ?? ''}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? '/K' + sig.channel : ''}`.trim();
+      const baseSub = secondaryName && secondaryName.trim()
+        ? secondaryName.trim()
+        : (sig.model ? String(sig.model).trim() : primaryName);
+      if (idPart && !baseSub.toLowerCase().includes(idPart.toLowerCase())) {
+        return `${baseSub} • ${idPart}`;
+      }
+      return baseSub || idPart;
+    }
+
+    function formatCompactCardRadioLine(radio) {
+      if (radio.isBle) {
+        const bp = String(radio.bleProto || '');
+        let shortProto = 'BLE';
+        if (bp.includes('VCSEC')) shortProto = 'VCSEC';
+        else if (bp.includes('ATC')) shortProto = 'ATC';
+        else if (bp.includes('MiBeacon')) shortProto = 'MiBeacon';
+        else if (bp.includes('iBeacon')) shortProto = 'iBeacon';
+        else if (bp.includes('FindMy')) shortProto = 'FindMy';
+        else if (bp.includes('Continuity')) shortProto = 'Continuity';
+        else if (bp.includes('Govee')) shortProto = 'Govee';
+        else if (bp.includes('Ruuvi')) shortProto = 'Ruuvi';
+        else if (bp.includes('Mesh')) shortProto = 'Mesh';
+        else if (bp.includes('Digital Key')) shortProto = 'Digital Key';
+        else if (bp.includes('BTHome')) shortProto = 'BTHome';
+        return `2.4 GHz • ${shortProto}`;
+      }
+      const fStr = radio.freqMHz ? `${radio.freqMHz.toFixed(1)} MHz` : (radio.mod || 'RF');
+      const pStr = radio.protoNum ? `#${radio.protoNum}` : (radio.mod || '');
+      return pStr ? `${fStr} • ${pStr}` : fStr;
+    }
+
     function buildSignalCardHtml(sig, freshUntilMs = 0) {
       const p = sig.payload || {};
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
       const catMeta = getCategoryMeta(sig.category);
-      const catIcon = catMeta.iconClass;
       const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, p);
 
       const groupBadgeHtml = hasGroup
-        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25 break-words [overflow-wrap:anywhere]"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`
-        : '';
-
-      const channelPart = sig.channel !== null && sig.channel !== undefined && sig.channel !== ''
-        ? `<span>K:<strong class="text-slate-700 dark:text-slate-200">${escapeHtml(sig.channel)}</strong></span>`
+        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`
         : '';
 
       const radio = extractRadioMetadata(sig, p);
-      const freqBadge = radio.isBle
-        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30"><i class="mdi mdi-bluetooth text-xs"></i>2.4 GHz (BLE)</span>`
-        : (radio.freqMHz
-          ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"><i class="mdi mdi-sine-wave text-xs"></i>${escapeHtml(radio.freqLabel)}</span>`
-          : '');
-      const protoBadge = radio.protoNum
-        ? `<span class="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono text-[10px] font-semibold" title="rtl_433 Protokoll #${escapeHtml(radio.protoNum)}">Proto #${escapeHtml(radio.protoNum)}</span>`
-        : (radio.isBle && radio.bleProto
-          ? `<span class="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono text-[10px] font-semibold" title="BLE Protokoll">Proto: ${escapeHtml(radio.bleProto)}</span>`
-          : '');
+      const compactRadioLine = formatCompactCardRadioLine(radio);
+      const cardSubtitle = buildCardSubtitleWithId(sig, p, primaryName, secondaryName);
 
       const exactTime = formatTimestamp(sig.timestamp);
       const timeInnerHtml = renderSignalTimeInnerHtml(sig.timestamp, freshUntilMs);
@@ -5277,22 +5315,44 @@
           id="sigcard_${escapeHtml(devKey)}"
           data-device-key="${escapeHtml(devKey)}"
           onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})"
-          class="cursor-pointer group bg-white dark:bg-slate-900 hover:bg-slate-50/90 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 ${hasAliasOrOwn ? 'border-l-4 border-l-sky-500 dark:border-l-sky-400 ' : ''}hover:border-sky-500/50 rounded-xl p-2.5 transition duration-200 shadow-sm flex flex-col justify-between gap-2"
+          class="flex flex-col justify-between h-full p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 ${hasAliasOrOwn ? 'border-l-4 border-l-sky-500 dark:border-l-sky-400 ' : ''}hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer shadow-xs"
         >
-          <!-- Row 1: Header (Left: Name & Model stacked cleanly; Right: Fixed badge slot) -->
-          <div class="flex flex-col gap-1">
-            <div class="flex items-start justify-between gap-2 w-full">
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-1.5 min-w-0">
-                  <i class="mdi ${catIcon} text-base shrink-0"></i>
-                  <i data-sig-own-star class="${hasAliasOrOwn ? '' : 'hidden '}mdi mdi-star text-xs text-amber-500 dark:text-sky-400 shrink-0" title="Namngiven / Egen enhet"></i>
-                  <span data-sig-title class="text-xs ${hasAliasOrOwn ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-800 dark:text-slate-100'} leading-tight break-words [overflow-wrap:anywhere]" title="${escapeHtml(primaryName)}">${escapeHtml(primaryName)}</span>
-                </div>
-                <div data-sig-subtitle class="${secondaryName ? 'truncate max-w-[210px] block text-[11px] text-slate-400 leading-tight mt-0.5 pl-5' : 'hidden truncate max-w-[210px] block text-[11px] text-slate-400 leading-tight mt-0.5 pl-5'}" title="${escapeHtml(secondaryName || '')}">${secondaryName ? escapeHtml(secondaryName) : ''}</div>
+          <!-- ZONE 1: HEADER (Always strictly 2 rows high - never wraps!) -->
+          <div class="flex items-start justify-between gap-2 w-full">
+            <div class="flex items-center gap-2.5 min-w-0 flex-1">
+              <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${catMeta.badgeClass}" title="Kategori: ${escapeHtml(catMeta.label)}">
+                <i class="mdi ${catMeta.icon} text-base leading-none"></i>
               </div>
-              <div class="shrink-0 flex items-center gap-1 self-start">
-                <span data-sig-new class="${isNewDevice ? '' : 'hidden '}px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>
-                <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold border ${catMeta.badgeClass}"><i class="mdi ${catMeta.icon} text-xs leading-none"></i><span>${escapeHtml(catMeta.label)}</span></span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1 min-w-0">
+                  <i data-sig-own-star class="${hasAliasOrOwn ? '' : 'hidden '}mdi mdi-star text-xs text-amber-500 dark:text-sky-400 shrink-0" title="Namngiven / Egen enhet"></i>
+                  <span data-sig-title class="font-bold text-sm text-slate-800 dark:text-slate-100 truncate block" title="${escapeHtml(primaryName)}">${escapeHtml(primaryName)}</span>
+                  <span data-sig-new class="${isNewDevice ? '' : 'hidden '}px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shrink-0">NY</span>
+                </div>
+                <div data-sig-card-sub class="h-4 truncate block text-[11px] text-slate-400 font-mono leading-4 mt-0.5" title="${escapeHtml(cardSubtitle)}">${escapeHtml(cardSubtitle)}</div>
+              </div>
+            </div>
+            <div class="shrink-0 text-right font-mono pl-2 flex flex-col items-end">
+              <span data-sig-time class="inline-flex items-center justify-end gap-0.5 text-[11px] text-slate-400 dark:text-slate-500 leading-5 whitespace-nowrap" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
+                ${timeInnerHtml}
+              </span>
+              <span data-sig-card-radio class="h-4 text-[10px] text-slate-400 dark:text-slate-500 leading-4 mt-0.5 whitespace-nowrap">${escapeHtml(compactRadioLine)}</span>
+            </div>
+          </div>
+
+          <!-- ZONE 2: BODY (Strictly aligned metrics across all cards) -->
+          <div data-sig-badges class="my-3 flex flex-wrap items-center gap-1.5 min-h-[28px]">
+            ${groupBadgeHtml}${badgesHtml}
+          </div>
+
+          <!-- ZONE 3: FOOTER (Locked at bottom with Signal, Distance/SNR, Hits & Action buttons) -->
+          <div class="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2 text-xs font-mono">
+            <div data-sig-strength class="flex items-center gap-2.5 min-w-0">${footerSignalHtml}</div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <span data-sig-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 text-[11px]" title="Antal mottagna paket från denna enhet">
+                <i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}
+              </span>
+              <div class="inline-flex items-center gap-0.5">
                 <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias, Grupp & Kategori">
                   <i class="mdi mdi-pencil-outline text-sm"></i>
                 </button>
@@ -5301,36 +5361,6 @@
                   <i class="mdi mdi-eye-off-outline text-sm"></i>
                 </button>
               </div>
-            </div>
-            ${groupBadgeHtml ? `<div class="pl-5">${groupBadgeHtml}</div>` : ''}
-          </div>
-
-          <!-- Row 2: Metadata (Full ID, Channel, Frequency/Modulation, Protocol, Relative Time) -->
-          <div class="flex flex-wrap items-center justify-between gap-1 text-[11px] font-mono text-slate-500 dark:text-slate-400">
-            <div class="flex flex-wrap items-center gap-1.5 min-w-0">
-              <span class="break-words [overflow-wrap:anywhere]">ID:<strong class="text-slate-700 dark:text-slate-200 break-words [overflow-wrap:anywhere]">${escapeHtml(sig.device_id)}</strong></span>
-              ${channelPart}
-              ${freqBadge}
-              ${protoBadge}
-            </div>
-            <span data-sig-time class="inline-flex items-center gap-0.5 text-slate-400 dark:text-slate-500 shrink-0" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
-              ${timeInnerHtml}
-            </span>
-          </div>
-
-          <!-- Row 3: Smart Analyzed Metrics -->
-          <div data-sig-badges class="flex flex-wrap items-center gap-1 py-0.5">
-            ${badgesHtml}
-          </div>
-
-          <!-- Row 4: Footer (RSSI/SNR + Counter) -->
-          <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/80 text-[11px] font-mono">
-            <div data-sig-strength>${footerSignalHtml}</div>
-            <div class="flex items-center gap-1">
-              ${radio.mic ? `<span class="text-[10px] text-slate-400 dark:text-slate-500">${escapeHtml(radio.mic)}</span>` : ''}
-              <span data-sig-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700" title="Antal mottagna paket från denna enhet">
-                <i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}
-              </span>
             </div>
           </div>
         </div>
