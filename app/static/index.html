@@ -63,6 +63,21 @@
       background-color: rgba(14, 165, 233, 0.12) !important;
       border-color: rgba(14, 165, 233, 0.5) !important;
     }
+    tr[data-pulse="1"] {
+      background-color: rgba(16, 185, 129, 0.14) !important;
+      transition: background-color 0.6s ease;
+    }
+    html.dark tr[data-pulse="1"] {
+      background-color: rgba(16, 185, 129, 0.2) !important;
+    }
+    div[data-pulse="1"] {
+      background-color: rgba(16, 185, 129, 0.12) !important;
+      box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.45);
+      transition: background-color 0.6s ease, box-shadow 0.6s ease;
+    }
+    html.dark div[data-pulse="1"] {
+      background-color: rgba(16, 185, 129, 0.18) !important;
+    }
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -179,7 +194,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.35</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.36</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -2118,6 +2133,13 @@
     let collapsedGroups = new Set();
 
     let rawSignalsList = [];
+    let signalsCache = new Map(); // Stores ONLY the latest packet per device_key
+    let dirtyKeys = new Set(); // Throttled WebSocket signal keys pending UI flush
+    let dirtyDeviceKeys = new Set(); // Throttled WebSocket device keys pending Enheter UI flush
+    let uiFlushTimer = null;
+    let pendingCountsUpdate = null;
+    let needsFullRenderOnVisible = false;
+    let stderrLogBuffer = []; // Hard cap at 150 lines in RAM
     let devicesList = [];
     let knownModels = new Set();
     let hasInPlaceUpdates = false;
@@ -2168,8 +2190,7 @@
       syncToggleBeaconsButton();
       syncSignalSortUi();
       syncDeviceToolbarControls();
-      renderCategoryFilterDropdowns();
-      renderSignalModelDropdownList();
+      updateFilterDropdownBadges();
       switchTab('signals', true);
       loadStatus();
       checkVersion(false);
@@ -2181,7 +2202,9 @@
 
       // Check GitHub for updates every 10 minutes
       setInterval(() => {
-        checkVersion(false);
+        if (!document.hidden) {
+          checkVersion(false);
+        }
       }, 600000);
 
       // Close custom multi-select dropdowns when clicking outside
@@ -2199,33 +2222,47 @@
         });
       });
 
-      // Tick App Uptime, SDR Uptime, and Live Hop Countdown every 1 second
+      // Tick App Uptime, SDR Uptime, and Live Hop Countdown every 1 second (skip DOM work when hidden)
       setInterval(() => {
         appUptimeSeconds += 1;
         if (sdrIsRunning) {
           sdrUptimeSeconds += 1;
         }
-        renderUptimeCounters();
-        renderTopbarSdrStatusBadge();
+        if (!document.hidden) {
+          renderUptimeCounters();
+          renderTopbarSdrStatusBadge();
+        }
       }, 1000);
 
-      // Update relative timestamps every 2 seconds across the entire DOM
+      // Update relative timestamps every 5 seconds ONLY via leaf .textContent when visible
       setInterval(() => {
-        if (!isPaused) {
+        if (!isPaused && !document.hidden) {
           updateRelativeTimestampsInDom();
         }
-      }, 2000);
+      }, 5000);
 
-      // Silent background sync every 15 seconds (fallback for mobile/background tabs)
+      // Silent background sync every 15 seconds (only when visible)
       setInterval(() => {
-        if (!isPaused) {
+        if (!isPaused && !document.hidden) {
           silentBackgroundSync();
         }
       }, 15000);
 
-      // Immediate sync when returning to a backgrounded browser tab
+      // Immediate flush & sync when returning to a backgrounded browser tab
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && !isPaused) {
+        if (!document.hidden && !isPaused) {
+          renderUptimeCounters();
+          renderTopbarSdrStatusBadge();
+          if (needsFullRenderOnVisible || dirtyKeys.size > 25) {
+            needsFullRenderOnVisible = false;
+            dirtyKeys.clear();
+            dirtyDeviceKeys.clear();
+            if (activeTab === 'signals') renderSignalsView();
+            else if (activeTab === 'devices') renderDevicesList();
+          } else {
+            flushPendingUiUpdates();
+          }
+          updateRelativeTimestampsInDom();
           silentBackgroundSync();
         }
       });
@@ -2696,8 +2733,14 @@
     }
 
     function renderSignalModelDropdownList() {
+      updateFilterDropdownBadges();
       const listEl = document.getElementById('sigModelOptionsList');
+      const modelMenuEl = document.getElementById('sigModelMenu');
+      const sigMenuEl = document.getElementById('sigFilterMenu');
       if (!listEl) return;
+      if ((modelMenuEl && modelMenuEl.classList.contains('hidden')) || (sigMenuEl && sigMenuEl.classList.contains('hidden'))) {
+        return;
+      }
       const q = (document.getElementById('sigModelSearchInput')?.value || '').trim().toLowerCase();
 
       const modelCounts = new Map();
@@ -2721,7 +2764,6 @@
 
       if (!sorted.length) {
         listEl.innerHTML = '<div class="px-2 py-3 text-center text-slate-400 text-[11px]">Inga modeller matchar sökningen</div>';
-        updateFilterDropdownBadges();
         return;
       }
 
@@ -2743,8 +2785,6 @@
           </label>
         `;
       }).join('');
-
-      updateFilterDropdownBadges();
     }
 
     function toggleSignalModelFilter(model, checked) {
@@ -2767,11 +2807,18 @@
     }
 
     function renderCategoryFilterDropdowns() {
+      updateFilterDropdownBadges();
+      const sigMenuEl = document.getElementById('sigFilterMenu');
+      const devMenuEl = document.getElementById('devFilterMenu');
+      const sigOpen = Boolean(sigMenuEl && !sigMenuEl.classList.contains('hidden'));
+      const devOpen = Boolean(devMenuEl && !devMenuEl.classList.contains('hidden'));
+      if (!sigOpen && !devOpen) return;
+
       const catsWithCounts = getDiscoveredCategoriesWithCounts();
 
-      // Build Signaler Dropdown Content
+      // Build Signaler Dropdown Content (ONLY when sigFilterMenu is open)
       const sigListEl = document.getElementById('sigFilterOptionsList');
-      if (sigListEl) {
+      if (sigListEl && sigOpen) {
         const statusItemsSig = [
           { key: 'new', label: 'Nya fynd (NY)', icon: 'mdi-new-box text-emerald-500' },
           { key: 'low_battery', label: 'Lågt batteri', icon: 'mdi-battery-alert-variant-outline text-rose-500' },
@@ -2825,9 +2872,9 @@
         `;
       }
 
-      // Build Enheter Dropdown Content
+      // Build Enheter Dropdown Content (ONLY when devFilterMenu is open)
       const devListEl = document.getElementById('devFilterOptionsList');
-      if (devListEl) {
+      if (devListEl && devOpen) {
         const statusItemsDev = [
           { key: 'new', label: 'Nya fynd (NY)', icon: 'mdi-new-box text-emerald-500' },
           { key: 'low_battery', label: 'Lågt batteri', icon: 'mdi-battery-alert-variant-outline text-rose-500' },
@@ -2882,8 +2929,6 @@
           </div>
         `;
       }
-
-      updateFilterDropdownBadges();
     }
 
     function toggleSignalStatusFilter(key, checked) {
@@ -4120,6 +4165,9 @@
           } else if (msg.type === 'device_deleted' && msg.device_key) {
             rawSignalsList = rawSignalsList.filter((s) => s.device_key !== msg.device_key);
             devicesList = devicesList.filter((d) => d.device_key !== msg.device_key);
+            signalsCache.delete(msg.device_key);
+            dirtyKeys.delete(msg.device_key);
+            dirtyDeviceKeys.delete(msg.device_key);
             selectedDeviceKeys.delete(msg.device_key);
             syncMultiSelectBar();
             renderCategoryFilterDropdowns();
@@ -4130,7 +4178,12 @@
             const prunedSet = new Set(msg.device_keys);
             rawSignalsList = rawSignalsList.filter((s) => !prunedSet.has(s.device_key));
             devicesList = devicesList.filter((d) => !prunedSet.has(d.device_key));
-            msg.device_keys.forEach((k) => selectedDeviceKeys.delete(k));
+            msg.device_keys.forEach((k) => {
+              signalsCache.delete(k);
+              dirtyKeys.delete(k);
+              dirtyDeviceKeys.delete(k);
+              selectedDeviceKeys.delete(k);
+            });
             syncMultiSelectBar();
             renderCategoryFilterDropdowns();
             renderSignalsView();
@@ -4314,18 +4367,11 @@
         }
       }
 
-      const stderrBox = document.getElementById('terminalStderrBox');
-      if (Array.isArray(rtl.stderr_tail) && stderrBox && stderrBox.children.length === 0) {
-        stderrBox.innerHTML = '';
-        rtl.stderr_tail.forEach((line) => {
-          const div = document.createElement('div');
-          if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) {
-            div.className = 'text-rose-400';
-          }
-          div.textContent = line;
-          stderrBox.appendChild(div);
-        });
-        stderrBox.scrollTop = stderrBox.scrollHeight;
+      if (Array.isArray(rtl.stderr_tail) && stderrLogBuffer.length === 0) {
+        stderrLogBuffer = rtl.stderr_tail.slice(-150);
+        if (activeTab === 'logs') {
+          renderStderrBufferToDom();
+        }
       }
 
       document.getElementById('statSignalsToday').textContent = counts.signals_today ?? 0;
@@ -4593,7 +4639,39 @@
       }
     }
 
+    function renderStderrBufferToDom() {
+      const stderrBox = document.getElementById('terminalStderrBox');
+      if (!stderrBox) return;
+      stderrBox.innerHTML = '';
+      const searchQ = (document.getElementById('logSearchInput')?.value || '').trim().toLowerCase();
+      const frag = document.createDocumentFragment();
+      stderrLogBuffer.forEach((line) => {
+        const div = document.createElement('div');
+        if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) {
+          div.className = 'text-rose-400';
+        }
+        div.textContent = line;
+        if (searchQ && !line.toLowerCase().includes(searchQ)) {
+          div.classList.add('hidden');
+        }
+        frag.appendChild(div);
+      });
+      stderrBox.appendChild(frag);
+      stderrBox.scrollTop = stderrBox.scrollHeight;
+    }
+
     function appendStderrLine(line, lastError) {
+      stderrLogBuffer.push(line);
+      if (stderrLogBuffer.length > 150) {
+        stderrLogBuffer.splice(0, stderrLogBuffer.length - 150);
+      }
+
+      if (lastError) {
+        document.getElementById('sdrErrorText').textContent = lastError;
+        document.getElementById('sdrErrorBanner').classList.remove('hidden');
+      }
+
+      if (activeTab !== 'logs' || document.hidden) return;
       const stderrBox = document.getElementById('terminalStderrBox');
       if (!stderrBox) return;
       const div = document.createElement('div');
@@ -4606,17 +4684,12 @@
         div.classList.add('hidden');
       }
       stderrBox.appendChild(div);
-      while (stderrBox.children.length > 300) {
+      while (stderrBox.children.length > 150) {
         stderrBox.removeChild(stderrBox.firstChild);
       }
       const autoScroll = document.getElementById('logAutoScrollToggle');
       if (!autoScroll || autoScroll.checked) {
         stderrBox.scrollTop = stderrBox.scrollHeight;
-      }
-
-      if (lastError) {
-        document.getElementById('sdrErrorText').textContent = lastError;
-        document.getElementById('sdrErrorBanner').classList.remove('hidden');
       }
     }
 
@@ -4641,7 +4714,9 @@
     }
 
     function clearTerminalLog() {
-      document.getElementById('terminalStderrBox').innerHTML = '';
+      stderrLogBuffer = [];
+      const stderrBox = document.getElementById('terminalStderrBox');
+      if (stderrBox) stderrBox.innerHTML = '';
     }
 
     // -----------------------------------------------------------------------
@@ -4754,16 +4829,40 @@
 
       toggleMobileSidebar(false);
       syncMultiSelectBar();
+
+      // Free hidden tab DOM to keep browser RAM usage ultra-low (< 80 MB)
+      if (tab !== 'devices') {
+        const devCont = document.getElementById('devicesContainer');
+        if (devCont) devCont.innerHTML = '';
+      }
+      if (tab !== 'stats') {
+        if (statsHistoryChart) {
+          statsHistoryChart.destroy();
+          statsHistoryChart = null;
+        }
+        const hChart = document.getElementById('hourlyChartContainer');
+        if (hChart) hChart.innerHTML = '';
+        const topList = document.getElementById('topDevicesList');
+        if (topList) topList.innerHTML = '';
+      }
+      if (tab !== 'logs') {
+        const stderrBox = document.getElementById('terminalStderrBox');
+        if (stderrBox) stderrBox.innerHTML = '';
+      }
+
       if (skipLoad) return;
-      if (tab === 'signals') loadSignals();
-      if (tab === 'devices') loadDevices();
+      if (tab === 'signals') renderSignalsView();
+      if (tab === 'devices') renderDevicesList();
       if (tab === 'stats') loadStats();
       if (tab === 'settings') {
         switchSettingsSubTab(activeSettingsSubTab, true);
         loadSettingsForm();
         loadDbStats();
       }
-      if (tab === 'logs') loadStatus();
+      if (tab === 'logs') {
+        renderStderrBufferToDom();
+        loadStatus();
+      }
     }
 
     let activeSettingsSubTab = localStorage.getItem('ss_settings_subtab') || 'sdr';
@@ -4853,12 +4952,19 @@
         if (!res.ok) return;
         const data = await res.json();
         rawSignalsList = data.items || [];
+        signalsCache.clear();
         rawSignalsList.forEach((s) => {
           if (s.model) knownModels.add(s.model);
+          const dk = s.device_key || `${s.model}_${s.device_id}`;
+          if (!signalsCache.has(dk)) {
+            signalsCache.set(dk, s);
+          }
         });
         renderSignalModelDropdownList();
         renderCategoryFilterDropdowns();
-        renderSignalsView();
+        if (activeTab === 'signals') {
+          renderSignalsView();
+        }
       } catch (e) {
         console.error('Error loading signals:', e);
       }
@@ -5071,16 +5177,435 @@
     }
 
     function pulseElement(el) {
-      if (!el) return;
-      const isTableRow = el.tagName === 'TR';
-      const classesToAdd = isTableRow
-        ? ['!bg-emerald-500/15', 'dark:!bg-emerald-500/20', 'transition-colors', 'duration-700']
-        : ['bg-emerald-500/15', 'dark:bg-emerald-500/20', 'ring-1', 'ring-emerald-500/50', 'transition-all', 'duration-700'];
-      el.classList.add(...classesToAdd);
+      if (!el || document.hidden) return;
+      el.setAttribute('data-pulse', '1');
       clearTimeout(el._pulseTimer);
       el._pulseTimer = setTimeout(() => {
-        el.classList.remove(...classesToAdd);
-      }, 3000);
+        el.removeAttribute('data-pulse');
+      }, 2200);
+    }
+
+    function computeTelemetryFingerprint(sig) {
+      const p = sig.payload || {};
+      const parts = [
+        sig.alias || '',
+        sig.group_name || '',
+        sig.category || '',
+        sig.ha_discovery ?? '',
+        sig.temperature_c ?? '',
+        sig.humidity ?? '',
+        sig.battery_ok ?? ''
+      ];
+      const keys = Object.keys(p).sort();
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (k === 'time' || k === 'rssi' || k === 'snr' || k === 'noise' || k === 'distance_m' || k === 'hit_count' || k === 'timestamp') {
+          continue;
+        }
+        const v = p[k];
+        if (v !== null && typeof v === 'object') continue;
+        parts.push(`${k}:${v}`);
+      }
+      return parts.join('|');
+    }
+
+    function updateSignalStrengthLeafInPlace(strengthContainer, rssi, snr, mod = '', freq = null, payload = null, isTable = true) {
+      if (!strengthContainer) return false;
+      const rssiValEl = strengthContainer.querySelector('[data-sig-rssi-val]');
+      const rssiWrapEl = strengthContainer.querySelector('[data-sig-rssi-wrap]');
+      const rssiIconEl = strengthContainer.querySelector('[data-sig-rssi-icon]');
+      const distWrapEl = strengthContainer.querySelector('[data-sig-dist-wrap]');
+      const distValEl = strengthContainer.querySelector('[data-sig-dist-val]');
+      if (!rssiValEl || !rssiWrapEl || !rssiIconEl) return false;
+
+      if (rssi === null || rssi === undefined || Number.isNaN(Number(rssi))) {
+        return false;
+      }
+      const val = Number(rssi);
+      const isBle =
+        String(mod || '').toUpperCase() === 'BLE' ||
+        (freq !== null && freq !== undefined && Number(freq) >= 2400) ||
+        ((snr === null || snr === undefined) && val <= -28);
+
+      let icon = 'mdi-wifi-strength-4';
+      let color = 'text-emerald-600 dark:text-emerald-400';
+
+      if (isBle) {
+        if (val >= -68) {
+          icon = 'mdi-wifi-strength-4';
+          color = 'text-emerald-600 dark:text-emerald-400';
+        } else if (val >= -84) {
+          icon = 'mdi-wifi-strength-3';
+          color = 'text-sky-600 dark:text-sky-400';
+        } else if (val >= -96) {
+          icon = 'mdi-wifi-strength-2';
+          color = 'text-amber-600 dark:text-amber-400';
+        } else {
+          icon = 'mdi-wifi-strength-1';
+          color = 'text-rose-500 dark:text-rose-400';
+        }
+        const newRssiText = `${val.toFixed(0)} dBm`;
+        if (rssiValEl.textContent !== newRssiText) rssiValEl.textContent = newRssiText;
+        const nextIconCls = `mdi ${icon} text-sm leading-none`;
+        if (rssiIconEl.className !== nextIconCls) rssiIconEl.className = nextIconCls;
+        const nextWrapCls = isTable
+          ? `inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap`
+          : `inline-flex items-center gap-1 ${color}`;
+        if (rssiWrapEl.className !== nextWrapCls) rssiWrapEl.className = nextWrapCls;
+
+        if (distValEl && distWrapEl) {
+          const distInfo = computeOrExtractBleDistance(payload, { rssi: val });
+          const distText = distInfo ? formatBleDistanceText(distInfo.distanceM) : '';
+          if (distText) {
+            if (distValEl.textContent !== distText) distValEl.textContent = distText;
+            distWrapEl.classList.remove('hidden');
+          } else {
+            distWrapEl.classList.add('hidden');
+          }
+        }
+        return true;
+      }
+
+      if (val >= -6) {
+        icon = 'mdi-wifi-strength-4';
+        color = 'text-emerald-600 dark:text-emerald-400';
+      } else if (val >= -14) {
+        icon = 'mdi-wifi-strength-3';
+        color = 'text-sky-600 dark:text-sky-400';
+      } else if (val >= -22) {
+        icon = 'mdi-wifi-strength-2';
+        color = 'text-amber-600 dark:text-amber-400';
+      } else {
+        icon = 'mdi-wifi-strength-1';
+        color = 'text-rose-500 dark:text-rose-400';
+      }
+      const newRssiText = `${val.toFixed(1)} dB`;
+      if (rssiValEl.textContent !== newRssiText) rssiValEl.textContent = newRssiText;
+      const nextIconCls = `mdi ${icon} text-sm leading-none`;
+      if (rssiIconEl.className !== nextIconCls) rssiIconEl.className = nextIconCls;
+      const nextWrapCls = isTable
+        ? `inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap`
+        : `inline-flex items-center gap-1 ${color}`;
+      if (rssiWrapEl.className !== nextWrapCls) rssiWrapEl.className = nextWrapCls;
+
+      if (distValEl && distWrapEl) {
+        const hasSnr = snr !== null && snr !== undefined && !Number.isNaN(Number(snr));
+        if (hasSnr) {
+          const snrStr = isTable ? `SNR: ${Number(snr).toFixed(1)} dB` : `/ SNR ${Number(snr).toFixed(1)}`;
+          if (distValEl.textContent !== snrStr) distValEl.textContent = snrStr;
+          distWrapEl.classList.remove('hidden');
+        } else {
+          distWrapEl.classList.add('hidden');
+        }
+      }
+      return true;
+    }
+
+    function updateSignalTimestampLeafInPlace(tsTarget, ts, freshUntilMs) {
+      if (!tsTarget) return;
+      tsTarget.setAttribute('data-timestamp', ts);
+      tsTarget.setAttribute('data-ts', ts);
+      tsTarget.setAttribute('data-fresh-until', String(freshUntilMs));
+      const exactTitle = formatTimestamp(ts);
+      if (tsTarget.getAttribute('title') !== exactTitle) {
+        tsTarget.setAttribute('title', exactTitle);
+      }
+      const isFresh = isTimestampFresh10s(ts, freshUntilMs);
+      const relTime = isFresh ? 'Just nu' : formatRelativeTime(ts);
+      const dotEl = tsTarget.querySelector('.live-fresh-dot');
+      const clockEl = tsTarget.querySelector('.live-clock-icon');
+      const labelEl = tsTarget.querySelector('.live-rel-time');
+      if (labelEl) {
+        labelEl.setAttribute('data-timestamp', ts);
+        labelEl.setAttribute('data-fresh-until', String(freshUntilMs));
+        if (labelEl.textContent !== relTime) {
+          labelEl.textContent = relTime;
+        }
+        const wasFresh = labelEl.getAttribute('data-is-fresh') === '1';
+        if (wasFresh !== isFresh) {
+          labelEl.setAttribute('data-is-fresh', isFresh ? '1' : '0');
+          labelEl.className = isFresh
+            ? 'live-rel-time rel-time-label font-semibold text-emerald-600 dark:text-emerald-400'
+            : 'live-rel-time rel-time-label';
+          if (dotEl) {
+            if (isFresh) dotEl.classList.remove('hidden');
+            else dotEl.classList.add('hidden');
+          }
+          if (clockEl) {
+            if (isFresh) clockEl.classList.add('hidden');
+            else clockEl.classList.remove('hidden');
+          }
+        }
+      } else {
+        tsTarget.innerHTML = renderSignalTimeInnerHtml(ts, freshUntilMs);
+      }
+    }
+
+    function patchExistingSignalElement(existingEl, sig, dev) {
+      const p = sig.payload || {};
+      const radio = extractRadioMetadata(sig, p);
+      const newFingerprint = computeTelemetryFingerprint(sig);
+      const prevFingerprint = existingEl.getAttribute('data-metrics-sig') || '';
+      const telemetryChanged = newFingerprint !== prevFingerprint;
+
+      if (telemetryChanged) {
+        existingEl.setAttribute('data-metrics-sig', newFingerprint);
+        const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, p);
+        const { hasAliasOrOwn } = isDeviceNamedOrOwn(sig, p, dev);
+        const titleTarget = existingEl.querySelector('[data-sig-title]');
+        if (titleTarget) {
+          if (titleTarget.textContent !== primaryName) titleTarget.textContent = primaryName;
+          titleTarget.setAttribute('title', primaryName);
+          if (viewMode === 'table') {
+            titleTarget.className = `truncate max-w-[210px] block ${hasAliasOrOwn ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-800 dark:text-slate-100'} leading-tight`;
+          }
+        }
+        const starTarget = existingEl.querySelector('[data-sig-own-star]');
+        if (starTarget) {
+          if (hasAliasOrOwn) starTarget.classList.remove('hidden');
+          else starTarget.classList.add('hidden');
+        }
+        const firstTd = existingEl.querySelector('td[data-sig-time]');
+        if (firstTd) {
+          firstTd.classList.remove('border-l-sky-500', 'dark:border-l-sky-400', 'border-l-transparent');
+          if (hasAliasOrOwn) {
+            firstTd.classList.add('border-l-sky-500', 'dark:border-l-sky-400');
+          } else {
+            firstTd.classList.add('border-l-transparent');
+          }
+        }
+        const subtitleTarget = existingEl.querySelector('[data-sig-subtitle]');
+        if (subtitleTarget) {
+          if (secondaryName) {
+            if (subtitleTarget.textContent !== secondaryName) subtitleTarget.textContent = secondaryName;
+            subtitleTarget.setAttribute('title', secondaryName);
+            subtitleTarget.classList.remove('hidden');
+          } else {
+            subtitleTarget.textContent = '';
+            subtitleTarget.removeAttribute('title');
+            subtitleTarget.classList.add('hidden');
+          }
+        }
+        const cardSubTarget = existingEl.querySelector('[data-sig-card-sub]');
+        if (cardSubTarget) {
+          const cardSubText = buildCardSubtitleWithId(sig, p, primaryName, secondaryName);
+          if (cardSubTarget.textContent !== cardSubText) cardSubTarget.textContent = cardSubText;
+          cardSubTarget.setAttribute('title', cardSubText);
+        }
+
+        const { badgesHtml } = extractAndFormatMetrics(p, sig);
+        const badgesTarget = existingEl.querySelector('[data-sig-badges]');
+        if (badgesTarget) {
+          if (viewMode !== 'table' && sig.group_name && String(sig.group_name).trim()) {
+            const grpBadge = `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`;
+            badgesTarget.innerHTML = grpBadge + badgesHtml;
+          } else {
+            badgesTarget.innerHTML = badgesHtml;
+          }
+        }
+
+        const radioTarget = existingEl.querySelector('[data-sig-radio]');
+        if (radioTarget) {
+          radioTarget.innerHTML = renderTableRadioCellHtml(radio);
+        }
+        const cardRadioTarget = existingEl.querySelector('[data-sig-card-radio]');
+        if (cardRadioTarget) {
+          const nextRadLine = formatCompactCardRadioLine(radio);
+          if (cardRadioTarget.textContent !== nextRadLine) cardRadioTarget.textContent = nextRadLine;
+        }
+      }
+
+      // Fast leaf-node updates (RSSI, Distance/SNR, Hits, NY badge, and Relative Time) without rebuilding .innerHTML
+      const strengthTarget = existingEl.querySelector('[data-sig-strength]');
+      if (strengthTarget) {
+        const updatedInPlace = updateSignalStrengthLeafInPlace(
+          strengthTarget,
+          sig.rssi,
+          sig.snr,
+          radio.mod,
+          radio.freqMHz,
+          p,
+          viewMode === 'table'
+        );
+        if (!updatedInPlace) {
+          strengthTarget.innerHTML = viewMode === 'table'
+            ? buildTableSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz, p)
+            : buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz, p);
+        }
+      }
+
+      const hitsValTarget = existingEl.querySelector('[data-sig-hits-val]');
+      const nextHitsStr = String(sig.hit_count || 1);
+      if (hitsValTarget) {
+        if (hitsValTarget.textContent !== nextHitsStr) hitsValTarget.textContent = nextHitsStr;
+      } else {
+        const hitsTarget = existingEl.querySelector('[data-sig-hits]');
+        if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i><span data-sig-hits-val>${nextHitsStr}</span>`;
+      }
+
+      const newBadgeTarget = existingEl.querySelector('[data-sig-new]');
+      if (newBadgeTarget) {
+        const shouldShowNew = isDeviceTrulyNew(sig, dev);
+        const isHiddenNow = newBadgeTarget.classList.contains('hidden');
+        if (shouldShowNew && isHiddenNow) newBadgeTarget.classList.remove('hidden');
+        else if (!shouldShowNew && !isHiddenNow) newBadgeTarget.classList.add('hidden');
+      }
+
+      const tsTarget = existingEl.querySelector('[data-sig-time]');
+      if (tsTarget) {
+        updateSignalTimestampLeafInPlace(tsTarget, sig.timestamp, Date.now() + 10000);
+      }
+
+      pulseElement(existingEl);
+    }
+
+    function scheduleUiFlush() {
+      if (uiFlushTimer || document.hidden) return;
+      uiFlushTimer = setTimeout(() => {
+        uiFlushTimer = null;
+        flushPendingUiUpdates();
+      }, 500);
+    }
+
+    function flushPendingUiUpdates() {
+      if (uiFlushTimer) {
+        clearTimeout(uiFlushTimer);
+        uiFlushTimer = null;
+      }
+      if (document.hidden) return;
+
+      // 1. Flush header & KPI counters once per batch
+      if (pendingCountsUpdate) {
+        const { counts, totalSignalsCount, totalDevicesCount } = pendingCountsUpdate;
+        pendingCountsUpdate = null;
+        if (counts) {
+          document.getElementById('navCountSignals').textContent = counts.signals_today ?? totalSignalsCount ?? 0;
+          document.getElementById('navCountDevices').textContent = counts.active_devices ?? totalDevicesCount ?? 0;
+          document.getElementById('statSignalsToday').textContent = counts.signals_today ?? 0;
+          document.getElementById('statSignalsTotal').textContent = counts.total_signals ?? 0;
+          document.getElementById('statActiveDevices').textContent = counts.active_devices ?? 0;
+          document.getElementById('statIgnoredDevices').textContent = counts.ignored_devices ?? 0;
+        } else {
+          const navSig = document.getElementById('navCountSignals');
+          if (navSig) {
+            navSig.textContent = totalSignalsCount ?? (parseInt(navSig.textContent || '0', 10) + 1);
+          }
+          if (totalDevicesCount !== undefined) {
+            document.getElementById('navCountDevices').textContent = totalDevicesCount;
+          }
+        }
+        updateNewDevicesNavBadge();
+      }
+
+      if (isPaused) {
+        dirtyKeys.clear();
+        dirtyDeviceKeys.clear();
+        return;
+      }
+
+      // 2. Flush Signaler view ONLY if activeTab === 'signals' and ONLY for the active viewMode
+      if (activeTab === 'signals' && dirtyKeys.size > 0) {
+        const container = viewMode === 'table'
+          ? document.getElementById('signalsTableBody')
+          : document.getElementById('signalsGridContainer');
+        const emptyEl = document.getElementById('signalsEmptyState');
+        const gridEl = document.getElementById('signalsGridContainer');
+        const tableWrap = document.getElementById('signalsTableContainer');
+        let needsReorder = false;
+
+        for (const devKey of dirtyKeys) {
+          const sig = signalsCache.get(devKey);
+          if (!sig || !signalMatchesActiveFilters(sig)) continue;
+
+          if (emptyEl && !emptyEl.classList.contains('hidden')) {
+            emptyEl.classList.add('hidden');
+            if (viewMode === 'table') tableWrap.classList.remove('hidden');
+            else gridEl.classList.remove('hidden');
+          }
+
+          const devObj = devicesList.find((d) => d.device_key === devKey);
+
+          if (groupDevices && container) {
+            const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
+            if (existingEl) {
+              patchExistingSignalElement(existingEl, sig, devObj);
+              if (isHoveringList) {
+                hasInPlaceUpdates = true;
+                pendingHoverReorder = true;
+              } else if (signalSort.field === 'time' && signalSort.dir === 'desc') {
+                if (container.firstElementChild !== existingEl) {
+                  container.prepend(existingEl);
+                }
+              } else {
+                needsReorder = true;
+              }
+            } else {
+              const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
+              temp.innerHTML = (viewMode === 'table'
+                ? buildSignalTableRowHtml(sig, Date.now() + 10000)
+                : buildSignalCardHtml(sig, Date.now() + 10000)).trim();
+              const newEl = temp.firstElementChild;
+              if (newEl) {
+                container.prepend(newEl);
+                pulseElement(newEl);
+                if (!isHoveringList && !(signalSort.field === 'time' && signalSort.dir === 'desc')) {
+                  needsReorder = true;
+                } else if (isHoveringList) {
+                  pendingHoverReorder = true;
+                }
+              }
+            }
+          } else if (!groupDevices && container) {
+            const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
+            temp.innerHTML = (viewMode === 'table'
+              ? buildSignalTableRowHtml(sig, Date.now() + 10000)
+              : buildSignalCardHtml(sig, Date.now() + 10000)).trim();
+            const newEl = temp.firstElementChild;
+            if (newEl) {
+              container.prepend(newEl);
+              pulseElement(newEl);
+              while (container.children.length > 100) {
+                container.removeChild(container.lastElementChild);
+              }
+            }
+          }
+        }
+
+        if (needsReorder && !isHoveringList) {
+          reorderSignalsDomInPlace();
+        }
+        document.getElementById('visibleSignalCount').textContent = getFilteredSignals().length;
+      }
+
+      // 3. Flush Enheter view ONLY if activeTab === 'devices'
+      if (activeTab === 'devices' && dirtyDeviceKeys.size > 0) {
+        let needsFullDeviceRender = false;
+        for (const devKey of dirtyDeviceKeys) {
+          const dev = devicesList.find((d) => d.device_key === devKey);
+          const sig = signalsCache.get(devKey);
+          if (!dev) continue;
+          const patched = patchDeviceCardInDom(dev, sig);
+          if (!patched && deviceMatchesFilters(dev)) {
+            needsFullDeviceRender = true;
+          }
+        }
+        const container = document.getElementById('devicesContainer');
+        const userIsEditing = container && container.contains(document.activeElement) &&
+          (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT');
+        if ((needsFullDeviceRender || deviceSortBy !== 'name') && !userIsEditing) {
+          renderDevicesList();
+        }
+      }
+
+      // 4. Live update Detail Modal if open for a dirty device
+      if (currentModalDeviceKey && dirtyKeys.has(currentModalDeviceKey)) {
+        const sig = signalsCache.get(currentModalDeviceKey);
+        const dev = devicesList.find((d) => d.device_key === currentModalDeviceKey);
+        if (sig) liveUpdateOpenModal(sig, dev);
+      }
+
+      dirtyKeys.clear();
+      dirtyDeviceKeys.clear();
     }
 
     function handleIncomingSignal(sig, dev, counts, totalSignalsCount, totalDevicesCount) {
@@ -5097,208 +5622,50 @@
         if (dev.is_new !== undefined) sig.is_new = dev.is_new;
       }
 
-      // 1. Update total counters in tab header and System KPIs
-      if (counts) {
-        document.getElementById('navCountSignals').textContent = counts.signals_today ?? totalSignalsCount ?? 0;
-        document.getElementById('navCountDevices').textContent = counts.active_devices ?? totalDevicesCount ?? 0;
-        document.getElementById('statSignalsToday').textContent = counts.signals_today ?? 0;
-        document.getElementById('statSignalsTotal').textContent = counts.total_signals ?? 0;
-        document.getElementById('statActiveDevices').textContent = counts.active_devices ?? 0;
-        document.getElementById('statIgnoredDevices').textContent = counts.ignored_devices ?? 0;
-      } else {
-        const navSig = document.getElementById('navCountSignals');
-        navSig.textContent = totalSignalsCount ?? (parseInt(navSig.textContent || '0', 10) + 1);
-        if (totalDevicesCount !== undefined) {
-          document.getElementById('navCountDevices').textContent = totalDevicesCount;
-        }
-      }
+      pendingCountsUpdate = { counts, totalSignalsCount, totalDevicesCount };
 
-      // 2. Always keep devicesList cache & Enheter DOM updated in real-time
+      // Update devicesList in memory only (no immediate DOM churn)
       if (dev) {
-        updateDeviceFromSignal(dev, sig);
+        updateDeviceInMemoryOnly(dev, sig);
+        dirtyDeviceKeys.add(dev.device_key);
       }
 
       if (isPaused) return;
 
-      // 3. Always update rawSignalsList cache in background (newest signal at index 0)
+      // Store ONLY the single latest packet per device_key in signalsCache & rawSignalsList
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
+      const prevCached = signalsCache.get(devKey);
+      if (prevCached && !sig.hit_count) {
+        sig.hit_count = (prevCached.hit_count || 1) + 1;
+      } else {
+        sig.hit_count = sig.hit_count || 1;
+      }
+      signalsCache.set(devKey, sig);
+
       if (groupDevices) {
         const existingIdx = rawSignalsList.findIndex(
           (item) => (item.device_key || `${item.model}_${item.device_id}`) === devKey
         );
         if (existingIdx !== -1) {
-          const prevHits = rawSignalsList[existingIdx].hit_count || 1;
-          sig.hit_count = sig.hit_count || prevHits + 1;
           rawSignalsList.splice(existingIdx, 1);
-          rawSignalsList.unshift(sig);
-        } else {
-          sig.hit_count = sig.hit_count || 1;
-          rawSignalsList.unshift(sig);
         }
+        rawSignalsList.unshift(sig);
+        if (rawSignalsList.length > 500) rawSignalsList.length = 500;
       } else {
         rawSignalsList.unshift(sig);
         if (rawSignalsList.length > 100) rawSignalsList.length = 100;
       }
 
-      // 4. Live DOM update in Signaler tab (Move updated sensors to position 1 when sorted by TID desc, with Hover-Pause!)
-      if (activeTab === 'signals' && signalMatchesActiveFilters(sig)) {
-        const container = viewMode === 'table'
-          ? document.getElementById('signalsTableBody')
-          : document.getElementById('signalsGridContainer');
-        const emptyEl = document.getElementById('signalsEmptyState');
-        const gridEl = document.getElementById('signalsGridContainer');
-        const tableWrap = document.getElementById('signalsTableContainer');
+      dirtyKeys.add(devKey);
 
-        if (emptyEl && !emptyEl.classList.contains('hidden')) {
-          emptyEl.classList.add('hidden');
-          if (viewMode === 'table') tableWrap.classList.remove('hidden');
-          else gridEl.classList.remove('hidden');
+      if (document.hidden) {
+        if (dirtyKeys.size > 25) {
+          needsFullRenderOnVisible = true;
         }
-
-        if (groupDevices && container) {
-          const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
-          if (existingEl) {
-            const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, sig.payload || {});
-            const { hasAliasOrOwn } = isDeviceNamedOrOwn(sig, sig.payload || {}, dev);
-            const titleTarget = existingEl.querySelector('[data-sig-title]');
-            if (titleTarget) {
-              titleTarget.textContent = primaryName;
-              titleTarget.setAttribute('title', primaryName);
-              if (viewMode === 'table') {
-                titleTarget.className = `truncate max-w-[210px] block ${hasAliasOrOwn ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-800 dark:text-slate-100'} leading-tight`;
-              }
-            }
-            const starTarget = existingEl.querySelector('[data-sig-own-star]');
-            if (starTarget) {
-              if (hasAliasOrOwn) starTarget.classList.remove('hidden');
-              else starTarget.classList.add('hidden');
-            }
-            const firstTd = existingEl.querySelector('td[data-sig-time]');
-            if (firstTd) {
-              firstTd.classList.remove('border-l-sky-500', 'dark:border-l-sky-400', 'border-l-transparent');
-              if (hasAliasOrOwn) {
-                firstTd.classList.add('border-l-sky-500', 'dark:border-l-sky-400');
-              } else {
-                firstTd.classList.add('border-l-transparent');
-              }
-            }
-            const subtitleTarget = existingEl.querySelector('[data-sig-subtitle]');
-            if (subtitleTarget) {
-              if (secondaryName) {
-                subtitleTarget.textContent = secondaryName;
-                subtitleTarget.setAttribute('title', secondaryName);
-                subtitleTarget.classList.remove('hidden');
-              } else {
-                subtitleTarget.textContent = '';
-                subtitleTarget.removeAttribute('title');
-                subtitleTarget.classList.add('hidden');
-              }
-            }
-            const cardSubTarget = existingEl.querySelector('[data-sig-card-sub]');
-            if (cardSubTarget) {
-              const cardSubText = buildCardSubtitleWithId(sig, sig.payload || {}, primaryName, secondaryName);
-              cardSubTarget.textContent = cardSubText;
-              cardSubTarget.setAttribute('title', cardSubText);
-            }
-
-            const { badgesHtml } = extractAndFormatMetrics(sig.payload || {}, sig);
-            const badgesTarget = existingEl.querySelector('[data-sig-badges]');
-            if (badgesTarget) {
-              if (viewMode !== 'table' && sig.group_name && String(sig.group_name).trim()) {
-                const grpBadge = `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`;
-                badgesTarget.innerHTML = grpBadge + badgesHtml;
-              } else {
-                badgesTarget.innerHTML = badgesHtml;
-              }
-            }
-
-            const radio = extractRadioMetadata(sig, sig.payload || {});
-            const radioTarget = existingEl.querySelector('[data-sig-radio]');
-            if (radioTarget) {
-              radioTarget.innerHTML = renderTableRadioCellHtml(radio);
-            }
-            const cardRadioTarget = existingEl.querySelector('[data-sig-card-radio]');
-            if (cardRadioTarget) {
-              cardRadioTarget.textContent = formatCompactCardRadioLine(radio);
-            }
-
-            const strengthTarget = existingEl.querySelector('[data-sig-strength]');
-            if (strengthTarget) {
-              strengthTarget.innerHTML = viewMode === 'table'
-                ? buildTableSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz, sig.payload || {})
-                : buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz, sig.payload || {});
-            }
-
-            const hitsTarget = existingEl.querySelector('[data-sig-hits]');
-            if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${sig.hit_count || 1}`;
-
-            const newBadgeTarget = existingEl.querySelector('[data-sig-new]');
-            if (newBadgeTarget) {
-              if (isDeviceTrulyNew(sig, dev)) {
-                newBadgeTarget.classList.remove('hidden');
-              } else {
-                newBadgeTarget.classList.add('hidden');
-              }
-            }
-
-            const tsTarget = existingEl.querySelector('[data-timestamp]');
-            if (tsTarget) {
-              const freshUntil = Date.now() + 10000;
-              tsTarget.setAttribute('data-timestamp', sig.timestamp);
-              tsTarget.setAttribute('data-ts', sig.timestamp);
-              tsTarget.setAttribute('data-fresh-until', String(freshUntil));
-              tsTarget.setAttribute('title', formatTimestamp(sig.timestamp));
-              tsTarget.innerHTML = renderSignalTimeInnerHtml(sig.timestamp, freshUntil);
-            }
-
-            pulseElement(existingEl);
-
-            if (isHoveringList) {
-              // Hover-lock active: keep rows/cards in their current position while mouse is inside #signals-scroll-container
-              hasInPlaceUpdates = true;
-              pendingHoverReorder = true;
-            } else if (signalSort.field === 'time' && signalSort.dir === 'desc') {
-              // Immediately move the updated row/card to position 1 at the top!
-              container.prepend(existingEl);
-            } else {
-              reorderSignalsDomInPlace();
-            }
-          } else {
-            // Brand new device not in DOM yet -> insert at top (or sorted position)
-            const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
-            temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig, Date.now() + 10000) : buildSignalCardHtml(sig, Date.now() + 10000)).trim();
-            const newEl = temp.firstElementChild;
-            if (newEl) {
-              container.prepend(newEl);
-              pulseElement(newEl);
-              if (!isHoveringList && !(signalSort.field === 'time' && signalSort.dir === 'desc')) {
-                reorderSignalsDomInPlace();
-              } else if (isHoveringList) {
-                pendingHoverReorder = true;
-              }
-            }
-          }
-        } else if (!groupDevices && container) {
-          // Ungrouped stream -> insert at top and trim > 100
-          const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
-          temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig, Date.now() + 10000) : buildSignalCardHtml(sig, Date.now() + 10000)).trim();
-          const newEl = temp.firstElementChild;
-          if (newEl) {
-            container.prepend(newEl);
-            pulseElement(newEl);
-            while (container.children.length > 100) {
-              container.removeChild(container.lastElementChild);
-            }
-          }
-        }
-
-        document.getElementById('visibleSignalCount').textContent = getFilteredSignals().length;
+        return;
       }
 
-      // 5. Live update Detail Modal if open for this device
-      if (currentModalDeviceKey && currentModalDeviceKey === devKey) {
-        liveUpdateOpenModal(sig, dev);
-      }
+      scheduleUiFlush();
     }
 
     function getFilteredSignals() {
@@ -5321,6 +5688,7 @@
       hasInPlaceUpdates = false;
       const items = getFilteredSignals();
       document.getElementById('visibleSignalCount').textContent = items.length;
+      if (activeTab !== 'signals') return;
 
       const gridEl = document.getElementById('signalsGridContainer');
       const tableWrap = document.getElementById('signalsTableContainer');
@@ -5339,10 +5707,14 @@
       emptyEl.classList.add('hidden');
 
       if (viewMode === 'table') {
+        // Strictly empty the hidden card container so zero hidden card DOM nodes stay in RAM
+        gridEl.innerHTML = '';
         gridEl.classList.add('hidden');
         tableWrap.classList.remove('hidden');
         tableBody.innerHTML = items.map((sig) => buildSignalTableRowHtml(sig)).join('');
       } else {
+        // Strictly empty the hidden table body so zero hidden table row DOM nodes stay in RAM
+        tableBody.innerHTML = '';
         tableWrap.classList.add('hidden');
         gridEl.classList.remove('hidden');
         gridEl.innerHTML = items.map((sig) => buildSignalCardHtml(sig)).join('');
@@ -5410,6 +5782,7 @@
       const devObj = devicesList.find((d) => d.device_key === devKey);
       const isNewDevice = isDeviceTrulyNew(sig, devObj);
       const { hasAliasOrOwn } = isDeviceNamedOrOwn(sig, p, devObj);
+      const metricsSig = computeTelemetryFingerprint(sig);
 
       const haButtonHtml = haDiscoveryEnabled
         ? `<button onclick="quickHaDiscovery(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 ${isHaActive ? 'text-sky-500' : 'text-slate-400'} hover:text-sky-500 flex items-center justify-center transition" title="Home Assistant Auto-Discovery">
@@ -5421,6 +5794,7 @@
         <div
           id="sigcard_${escapeHtml(devKey)}"
           data-device-key="${escapeHtml(devKey)}"
+          data-metrics-sig="${escapeHtml(metricsSig)}"
           onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})"
           class="flex flex-col justify-between h-full p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 ${hasAliasOrOwn ? 'border-l-4 border-l-sky-500 dark:border-l-sky-400 ' : ''}hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer shadow-xs"
         >
@@ -5457,7 +5831,7 @@
             <div data-sig-strength class="flex items-center gap-2.5 min-w-0">${footerSignalHtml}</div>
             <div class="flex items-center gap-1.5 shrink-0">
               <span data-sig-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 text-[11px]" title="Antal mottagna paket från denna enhet">
-                <i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}
+                <i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i><span data-sig-hits-val>${hitCount}</span>
               </span>
               <div class="inline-flex items-center gap-0.5">
                 <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias, Grupp & Kategori">
@@ -5580,11 +5954,11 @@
         const distText = distInfo ? formatBleDistanceText(distInfo.distanceM) : '';
         return `
           <div class="flex flex-col items-end leading-tight">
-            <span class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
-              <i class="mdi ${icon} text-sm leading-none"></i>
-              <span>${val.toFixed(0)} dBm</span>
+            <span data-sig-rssi-wrap class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
+              <i data-sig-rssi-icon class="mdi ${icon} text-sm leading-none"></i>
+              <span data-sig-rssi-val>${val.toFixed(0)} dBm</span>
             </span>
-            ${distText ? `<span class="inline-flex items-center justify-end gap-0.5 text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5 whitespace-nowrap"><i class="mdi mdi-map-marker-distance text-xs leading-none"></i><span>${escapeHtml(distText)}</span></span>` : ''}
+            <span data-sig-dist-wrap class="${distText ? '' : 'hidden '}inline-flex items-center justify-end gap-0.5 text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5 whitespace-nowrap"><i class="mdi mdi-map-marker-distance text-xs leading-none"></i><span data-sig-dist-val>${escapeHtml(distText)}</span></span>
           </div>
         `;
       }
@@ -5606,11 +5980,11 @@
       const hasSnr = snr !== null && snr !== undefined && !Number.isNaN(Number(snr));
       return `
         <div class="flex flex-col items-end leading-tight">
-          <span class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
-            <i class="mdi ${icon} text-sm leading-none"></i>
-            <span>${val.toFixed(1)} dB</span>
+          <span data-sig-rssi-wrap class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
+            <i data-sig-rssi-icon class="mdi ${icon} text-sm leading-none"></i>
+            <span data-sig-rssi-val>${val.toFixed(1)} dB</span>
           </span>
-          ${hasSnr ? `<span class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 whitespace-nowrap">SNR: ${Number(snr).toFixed(1)} dB</span>` : ''}
+          <span data-sig-dist-wrap class="${hasSnr ? '' : 'hidden '}text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 whitespace-nowrap"><span data-sig-dist-val>${hasSnr ? `SNR: ${Number(snr).toFixed(1)} dB` : ''}</span></span>
         </div>
       `;
     }
@@ -5633,6 +6007,7 @@
       const isHaActive = Number(sig.ha_discovery) === 1;
       const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, p);
       const { hasAliasOrOwn } = isDeviceNamedOrOwn(sig, p, devObj);
+      const metricsSig = computeTelemetryFingerprint(sig);
 
       const haButtonHtml = haDiscoveryEnabled
         ? `<button onclick="quickHaDiscovery(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 ${isHaActive ? 'text-sky-500' : 'text-slate-400'} hover:text-sky-500 flex items-center justify-center" title="HA Discovery">
@@ -5641,7 +6016,7 @@
         : '';
 
       return `
-        <tr data-device-key="${escapeHtml(devKey)}" onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})" class="cursor-pointer odd:bg-white dark:odd:bg-slate-900 even:bg-slate-50/90 dark:even:bg-slate-800/45 hover:bg-sky-50/80 dark:hover:bg-sky-900/25 transition-colors">
+        <tr data-device-key="${escapeHtml(devKey)}" data-metrics-sig="${escapeHtml(metricsSig)}" onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})" class="cursor-pointer odd:bg-white dark:odd:bg-slate-900 even:bg-slate-50/90 dark:even:bg-slate-800/45 hover:bg-sky-50/80 dark:hover:bg-sky-900/25 transition-colors">
           <td data-sig-time class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400 align-middle border-l-4 ${hasAliasOrOwn ? 'border-l-sky-500 dark:border-l-sky-400' : 'border-l-transparent'}" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
             ${timeInnerHtml}
           </td>
@@ -5658,7 +6033,7 @@
               </div>
               <div class="shrink-0 flex items-center gap-1 self-center">
                 <span data-sig-new class="${isNewDevice ? '' : 'hidden '}px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>
-                <span data-sig-hits class="inline-flex items-center px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500 border border-slate-200/70 dark:border-slate-700/70 self-center"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}</span>
+                <span data-sig-hits class="inline-flex items-center px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500 border border-slate-200/70 dark:border-slate-700/70 self-center"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i><span data-sig-hits-val>${hitCount}</span></span>
               </div>
             </div>
           </td>
@@ -5722,19 +6097,14 @@
         const distInfo = computeOrExtractBleDistance(payload, { rssi: val });
         const distText = distInfo ? formatBleDistanceText(distInfo.distanceM) : '';
         return `
-          <span class="inline-flex items-center gap-1 ${color}">
-            <i class="mdi ${icon} text-sm leading-none"></i>
-            <span>${val.toFixed(0)} dBm</span>
-            ${distText ? `<span class="text-slate-400 dark:text-slate-500 ml-1 inline-flex items-center gap-0.5"><i class="mdi mdi-map-marker-distance text-xs leading-none"></i><span>${escapeHtml(distText)}</span></span>` : ''}
+          <span data-sig-rssi-wrap class="inline-flex items-center gap-1 ${color}">
+            <i data-sig-rssi-icon class="mdi ${icon} text-sm leading-none"></i>
+            <span data-sig-rssi-val>${val.toFixed(0)} dBm</span>
+            <span data-sig-dist-wrap class="${distText ? '' : 'hidden '}text-slate-400 dark:text-slate-500 ml-1 inline-flex items-center gap-0.5"><i class="mdi mdi-map-marker-distance text-xs leading-none"></i><span data-sig-dist-val>${escapeHtml(distText)}</span></span>
           </span>
         `;
       }
 
-      // 2. SDR 433/868 MHz RSSI in dB:
-      // >= -6 dB: Strong (Green, mdi-wifi-strength-4)
-      // -6 to -14 dB: Good (Sky/Blue, mdi-wifi-strength-3)
-      // -14 to -22 dB: Medium (Amber, mdi-wifi-strength-2)
-      // < -22 dB: Weak (Rose, mdi-wifi-strength-1)
       if (val >= -6) {
         icon = 'mdi-wifi-strength-4';
         color = 'text-emerald-600 dark:text-emerald-400';
@@ -5749,11 +6119,12 @@
         color = 'text-rose-500 dark:text-rose-400';
       }
 
-      const snrText = snr !== null && snr !== undefined ? ` <span class="text-slate-400 dark:text-slate-500">/ SNR ${Number(snr).toFixed(1)}</span>` : '';
+      const hasSnr = snr !== null && snr !== undefined && !Number.isNaN(Number(snr));
       return `
-        <span class="inline-flex items-center gap-1 ${color}">
-          <i class="mdi ${icon} text-sm leading-none"></i>
-          <span>${val.toFixed(1)} dB${snrText}</span>
+        <span data-sig-rssi-wrap class="inline-flex items-center gap-1 ${color}">
+          <i data-sig-rssi-icon class="mdi ${icon} text-sm leading-none"></i>
+          <span data-sig-rssi-val>${val.toFixed(1)} dB</span>
+          <span data-sig-dist-wrap class="${hasSnr ? '' : 'hidden '}text-slate-400 dark:text-slate-500"><span data-sig-dist-val>${hasSnr ? `/ SNR ${Number(snr).toFixed(1)}` : ''}</span></span>
         </span>
       `;
     }
@@ -6452,6 +6823,15 @@
       resetModalDeleteButton();
       document.getElementById('detailModal').classList.add('hidden');
       currentModalDeviceKey = null;
+      currentModalPayload = null;
+      const kpiEl = document.getElementById('modalKpiGrid');
+      if (kpiEl) kpiEl.innerHTML = '';
+      const histEl = document.getElementById('modalHistoryBody');
+      if (histEl) histEl.innerHTML = '';
+      const rawJsonEl = document.getElementById('modalRawJson');
+      if (rawJsonEl) rawJsonEl.innerHTML = '';
+      const gattCont = document.getElementById('modalGattServicesContainer');
+      if (gattCont) gattCont.innerHTML = '';
     }
 
     async function saveModalDevice() {
@@ -6560,13 +6940,18 @@
         updateNewDevicesNavBadge();
         renderSignalModelDropdownList();
         renderCategoryFilterDropdowns();
-        renderDevicesList();
+        if (activeTab === 'devices') {
+          renderDevicesList();
+        } else {
+          const visCountEl = document.getElementById('visibleDeviceCount');
+          if (visCountEl) visCountEl.textContent = devicesList.filter(deviceMatchesFilters).length;
+        }
       } catch (e) {
         console.error(e);
       }
     }
 
-    function updateDeviceFromSignal(dev, sig) {
+    function updateDeviceInMemoryOnly(dev, sig) {
       const devKey = dev.device_key;
       const idx = devicesList.findIndex((d) => d.device_key === devKey);
       const isNewDevice = idx === -1;
@@ -6579,65 +6964,81 @@
       } else {
         devicesList[idx] = { ...devicesList[idx], ...dev };
       }
-      updateNewDevicesNavBadge();
+    }
 
-      // Live DOM update in Enheter tab WITHOUT overwriting active inputs!
+    function patchDeviceCardInDom(dev, sig) {
+      const devKey = dev.device_key;
       const cardEl = document.querySelector(`[data-device-card="${CSS.escape(devKey)}"]`);
-      if (cardEl) {
-        const lastPayload = dev.last_payload || sig.payload || {};
-        const { badgesHtml } = extractAndFormatMetrics(lastPayload, sig);
-        const radio = extractRadioMetadata(sig, lastPayload);
-        const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi ?? sig.rssi, lastPayload.snr ?? sig.snr, radio.mod, radio.freqMHz, lastPayload);
+      if (!cardEl) return false;
 
-        const badgesEl = cardEl.querySelector('[data-dev-badges]');
-        if (badgesEl) {
-          badgesEl.innerHTML = badgesHtml || '<span class="text-[11px] text-slate-400">Inga mätvärden</span>';
+      const lastPayload = dev.last_payload || (sig && sig.payload) || {};
+      const { badgesHtml } = extractAndFormatMetrics(lastPayload, sig || dev);
+      const radio = extractRadioMetadata(sig, lastPayload);
+
+      const badgesEl = cardEl.querySelector('[data-dev-badges]');
+      if (badgesEl) {
+        const nextBadges = badgesHtml || '<span class="text-[11px] text-slate-400">Inga mätvärden</span>';
+        if (badgesEl.innerHTML !== nextBadges) {
+          badgesEl.innerHTML = nextBadges;
         }
+      }
 
-        const hitsEl = cardEl.querySelector('[data-dev-hits]');
-        if (hitsEl) {
-          hitsEl.innerHTML = `<i class="mdi mdi-counter text-sky-500 mr-0.5"></i>${dev.hit_count || 1}`;
+      const hitsEl = cardEl.querySelector('[data-dev-hits]');
+      if (hitsEl) {
+        hitsEl.innerHTML = `<i class="mdi mdi-counter text-sky-500 mr-0.5"></i>${dev.hit_count || 1}`;
+      }
+
+      const lastSeenEl = cardEl.querySelector('[data-dev-lastseen]');
+      if (lastSeenEl) {
+        lastSeenEl.setAttribute('data-timestamp', dev.last_seen);
+        lastSeenEl.setAttribute('data-ts', dev.last_seen);
+        lastSeenEl.setAttribute('title', formatTimestamp(dev.last_seen));
+        const relLabel = lastSeenEl.querySelector('.rel-time-label');
+        if (relLabel) {
+          const nextRel = formatRelativeTime(dev.last_seen);
+          if (relLabel.textContent !== nextRel) relLabel.textContent = nextRel;
         }
+      }
 
-        const lastSeenEl = cardEl.querySelector('[data-dev-lastseen]');
-        if (lastSeenEl) {
-          lastSeenEl.setAttribute('data-timestamp', dev.last_seen);
-          lastSeenEl.setAttribute('data-ts', dev.last_seen);
-          lastSeenEl.setAttribute('title', formatTimestamp(dev.last_seen));
-          const relLabel = lastSeenEl.querySelector('.rel-time-label');
-          if (relLabel) relLabel.textContent = formatRelativeTime(dev.last_seen);
+      const sigEl = cardEl.querySelector('[data-dev-signal]');
+      if (sigEl) {
+        const updatedSig = updateSignalStrengthLeafInPlace(
+          sigEl,
+          lastPayload.rssi ?? (sig && sig.rssi),
+          lastPayload.snr ?? (sig && sig.snr),
+          radio.mod,
+          radio.freqMHz,
+          lastPayload,
+          false
+        );
+        if (!updatedSig) {
+          sigEl.innerHTML = buildFooterSignalStrength(lastPayload.rssi ?? (sig && sig.rssi), lastPayload.snr ?? (sig && sig.snr), radio.mod, radio.freqMHz, lastPayload);
         }
+      }
 
-        const sigEl = cardEl.querySelector('[data-dev-signal]');
-        if (sigEl) {
-          sigEl.innerHTML = signalStrengthHtml;
-        }
+      const subEl = cardEl.querySelector('[data-dev-subtitle]');
+      if (subEl) {
+        const { secondaryName } = resolveSignalDisplayNames(dev, lastPayload);
+        const nextSub = secondaryName || dev.model;
+        if (subEl.textContent !== nextSub) subEl.textContent = nextSub;
+      }
 
-        const subEl = cardEl.querySelector('[data-dev-subtitle]');
-        if (subEl) {
-          const { secondaryName } = resolveSignalDisplayNames(dev, lastPayload);
-          subEl.textContent = secondaryName || dev.model;
-        }
+      const freqEl = cardEl.querySelector('[data-dev-freq]');
+      if (freqEl && radio.freqMHz) {
+        const nextFreq = `• ${radio.freqLabel}`;
+        if (freqEl.textContent !== nextFreq) freqEl.textContent = nextFreq;
+      }
 
-        const freqEl = cardEl.querySelector('[data-dev-freq]');
-        if (freqEl && radio.freqMHz) {
-          freqEl.textContent = `• ${radio.freqLabel}`;
-        }
+      pulseElement(cardEl);
+      return true;
+    }
 
-        pulseElement(cardEl);
-
-        // If user chose to sort by last_seen/hits/rssi and is not typing in any input, re-order smoothly
-        const container = document.getElementById('devicesContainer');
-        const userIsEditing = container && container.contains(document.activeElement) &&
-          (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT');
-        if (activeTab === 'devices' && deviceSortBy !== 'name' && !userIsEditing) {
-          renderDevicesList();
-        }
-      } else if (isNewDevice && activeTab === 'devices') {
-        const container = document.getElementById('devicesContainer');
-        const userIsEditing = container && container.contains(document.activeElement) &&
-          (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT');
-        if (!userIsEditing) {
+    function updateDeviceFromSignal(dev, sig) {
+      updateDeviceInMemoryOnly(dev, sig);
+      updateNewDevicesNavBadge();
+      if (activeTab === 'devices') {
+        const patched = patchDeviceCardInDom(dev, sig);
+        if (!patched && deviceMatchesFilters(dev)) {
           renderDevicesList();
         }
       }
@@ -6653,7 +7054,18 @@
 
       if (Number(dev.ignored) === 1) {
         rawSignalsList = rawSignalsList.filter((s) => s.device_key !== dev.device_key);
+        signalsCache.delete(dev.device_key);
+        dirtyKeys.delete(dev.device_key);
       } else {
+        const cachedSig = signalsCache.get(dev.device_key);
+        if (cachedSig) {
+          cachedSig.alias = dev.alias;
+          cachedSig.group_name = dev.group_name || '';
+          cachedSig.category = dev.category;
+          cachedSig.mqtt_enabled = dev.mqtt_enabled;
+          cachedSig.ha_discovery = dev.ha_discovery;
+          cachedSig.ignored = dev.ignored;
+        }
         rawSignalsList.forEach((s) => {
           if (s.device_key === dev.device_key) {
             s.alias = dev.alias;
@@ -6781,6 +7193,12 @@
 
       const visCountEl = document.getElementById('visibleDeviceCount');
       if (visCountEl) visCountEl.textContent = filtered.length;
+
+      // Never render Enheter card DOM nodes if Enheter tab is not active!
+      if (activeTab !== 'devices') {
+        if (container) container.innerHTML = '';
+        return;
+      }
 
       if (!filtered.length) {
         container.innerHTML = '';
@@ -7544,6 +7962,9 @@
 
     function handleDatabaseResetEvent(msg) {
       rawSignalsList = [];
+      signalsCache.clear();
+      dirtyKeys.clear();
+      dirtyDeviceKeys.clear();
       selectedDeviceKeys.clear();
       syncMultiSelectBar();
 
@@ -7879,28 +8300,62 @@
     }
 
     function renderSignalTimeInnerHtml(ts, freshUntilMs = 0) {
-      const relTime = formatRelativeTime(ts);
       const isFresh = isTimestampFresh10s(ts, freshUntilMs);
-      if (isFresh) {
-        return `<span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-1.5"></span><span class="rel-time-label font-semibold text-emerald-600 dark:text-emerald-400">Just nu</span>`;
-      }
-      return `<i class="mdi mdi-clock-outline mr-0.5"></i><span class="rel-time-label">${escapeHtml(relTime)}</span>`;
+      const relTime = isFresh ? 'Just nu' : formatRelativeTime(ts);
+      const dotCls = isFresh
+        ? 'live-fresh-dot inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-1.5'
+        : 'live-fresh-dot hidden inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-1.5';
+      const clockCls = isFresh
+        ? 'live-clock-icon hidden mdi mdi-clock-outline mr-0.5'
+        : 'live-clock-icon mdi mdi-clock-outline mr-0.5';
+      const labelCls = isFresh
+        ? 'live-rel-time rel-time-label font-semibold text-emerald-600 dark:text-emerald-400'
+        : 'live-rel-time rel-time-label';
+      return `<span class="${dotCls}"></span><i class="${clockCls}"></i><span class="${labelCls}" data-timestamp="${escapeHtml(ts)}" data-fresh-until="${freshUntilMs || 0}" data-is-fresh="${isFresh ? '1' : '0'}">${escapeHtml(relTime)}</span>`;
     }
 
     function updateRelativeTimestampsInDom() {
-      document.querySelectorAll('[data-timestamp], [data-ts]').forEach((el) => {
+      if (document.hidden) return;
+      document.querySelectorAll('.live-rel-time[data-timestamp], [data-dev-lastseen][data-timestamp]').forEach((el) => {
         const ts = el.getAttribute('data-timestamp') || el.getAttribute('data-ts');
         if (!ts) return;
-        if (el.hasAttribute('data-sig-time')) {
+
+        if (el.classList.contains('live-rel-time')) {
           const freshUntil = Number(el.getAttribute('data-fresh-until') || 0);
-          el.innerHTML = renderSignalTimeInnerHtml(ts, freshUntil);
+          const isFresh = isTimestampFresh10s(ts, freshUntil);
+          const newText = isFresh ? 'Just nu' : formatRelativeTime(ts);
+          if (el.textContent !== newText) {
+            el.textContent = newText;
+          }
+          const wasFresh = el.getAttribute('data-is-fresh') === '1';
+          if (wasFresh !== isFresh) {
+            el.setAttribute('data-is-fresh', isFresh ? '1' : '0');
+            el.className = isFresh
+              ? 'live-rel-time rel-time-label font-semibold text-emerald-600 dark:text-emerald-400'
+              : 'live-rel-time rel-time-label';
+            const parent = el.parentElement;
+            if (parent) {
+              const dotEl = parent.querySelector('.live-fresh-dot');
+              const clockEl = parent.querySelector('.live-clock-icon');
+              if (dotEl) {
+                if (isFresh) dotEl.classList.remove('hidden');
+                else dotEl.classList.add('hidden');
+              }
+              if (clockEl) {
+                if (isFresh) clockEl.classList.add('hidden');
+                else clockEl.classList.remove('hidden');
+              }
+            }
+          }
           return;
         }
+
         const label = el.querySelector('.rel-time-label');
+        const newText = formatRelativeTime(ts);
         if (label) {
-          label.textContent = formatRelativeTime(ts);
+          if (label.textContent !== newText) label.textContent = newText;
         } else if (el.children.length === 0) {
-          el.textContent = formatRelativeTime(ts);
+          if (el.textContent !== newText) el.textContent = newText;
         }
       });
     }
