@@ -339,6 +339,24 @@ def parse_govee_mfg(data: bytes) -> Dict[str, Any]:
     return out
 
 
+def parse_ibeacon_004c(data: bytes) -> Dict[str, Any]:
+    """
+    Parses Apple iBeacon frame (Company ID 0x004C, Type 0x02, Length 0x15 = 21 bytes).
+    """
+    out: Dict[str, Any] = {}
+    if len(data) >= 23 and data[0] == 0x02 and data[1] == 0x15:
+        uuid_hex = data[2:18].hex().upper()
+        beacon_uuid = f"{uuid_hex[0:8]}-{uuid_hex[8:12]}-{uuid_hex[12:16]}-{uuid_hex[16:20]}-{uuid_hex[20:32]}"
+        major = struct.unpack_from(">H", data, 18)[0]
+        minor = struct.unpack_from(">H", data, 20)[0]
+        tx_cal = struct.unpack_from("b", data, 22)[0]
+        out["ibeacon_uuid"] = beacon_uuid
+        out["major"] = int(major)
+        out["minor"] = int(minor)
+        out["tx_power"] = int(tx_cal)
+    return out
+
+
 class BLEManager:
     def __init__(
         self,
@@ -676,6 +694,14 @@ class BLEManager:
                 payload.update({k: v for k, v in parsed.items() if k not in payload})
                 has_decoded_sensor = True
 
+        if 0x004C in mfg_data:
+            parsed = parse_ibeacon_004c(bytes(mfg_data[0x004C]))
+            if parsed:
+                payload.update({k: v for k, v in parsed.items() if k not in payload})
+                has_decoded_sensor = True
+                if not theengs_model:
+                    theengs_model = "iBeacon-BLE"
+
         # -------------------------------------------------------------------
         # 2. Smart Identification of Specific BLE Device Types & Models
         # -------------------------------------------------------------------
@@ -805,3 +831,4 @@ class BLEManager:
             await self._on_signal(payload)
         except Exception as exc:
             logger.error("Error forwarding BLE signal to pipeline: %s", exc)
+
