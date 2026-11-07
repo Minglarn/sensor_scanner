@@ -6,16 +6,23 @@ services:
     restart: unless-stopped
     ports:
       - "8085:8080"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     devices:
       - /dev/bus/usb:/dev/bus/usb
     volumes:
       - ./data:/app/data
+      - /run/dbus:/run/dbus:ro
     environment:
       - TZ=Europe/Stockholm
       - DEVICE_INDEX=0
       - DEFAULT_MODE=hop
       - RTL_GAIN=auto
       - RTL_PPM=0
+      - BLE_ENABLED=true
+      - BLE_MODE=smart
+      - BLE_DEBOUNCE_SECONDS=15
       - MQTT_HOST=192.168.1.121
       - MQTT_PORT=1883
       - MQTT_USER=

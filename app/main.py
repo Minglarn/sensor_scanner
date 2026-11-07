@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app import __app_name__, __version__
+from app.ble_manager import BLEManager
 from app.database import Database
 from app.mqtt_client import MQTTManager
 from app.rtl_manager import RTLManager
@@ -120,15 +121,30 @@ rtl_manager = RTLManager(
 )
 
 
+async def on_ble_status_change(ble_status: Dict[str, Any]) -> None:
+    await broadcast_full_status()
+
+
+ble_manager = BLEManager(
+    get_settings_fn=db.get_settings,
+    is_known_aliased_fn=db.is_device_known_and_named,
+    on_signal_fn=on_rtl_signal,
+    on_status_change_fn=on_ble_status_change,
+    on_log_line_fn=on_rtl_stderr_line,
+)
+
+
 def build_status_payload() -> Dict[str, Any]:
     counts = db.get_summary_counts()
     rtl_st = rtl_manager.get_status()
+    ble_st = ble_manager.get_status()
     mqtt_st = mqtt_manager.get_status()
     return {
         "app_name": __app_name__,
         "version": __version__,
         "app_uptime_seconds": int(max(0.0, time.time() - APP_STARTED_AT)),
         "rtl": rtl_st,
+        "ble": ble_st,
         "mqtt": mqtt_st,
         "counts": counts,
     }
@@ -156,6 +172,7 @@ async def lifespan(app: FastAPI):
     settings = db.get_settings()
     mqtt_manager.configure_and_connect(settings)
     await rtl_manager.start()
+    await ble_manager.start()
     retention_task = asyncio.create_task(retention_worker(), name="retention_worker")
 
     try:
@@ -166,6 +183,7 @@ async def lifespan(app: FastAPI):
             await retention_task
         except asyncio.CancelledError:
             pass
+        await ble_manager.stop()
         await rtl_manager.stop()
         mqtt_manager.disconnect()
 
@@ -193,6 +211,9 @@ class ControlRequest(BaseModel):
     hop_interval: Optional[str] = None
     custom_freqs: Optional[str] = None
     custom_sample_rate: Optional[str] = None
+    ble_enabled: Optional[str] = None
+    ble_mode: Optional[str] = None
+    ble_debounce_seconds: Optional[str] = None
 
 
 class DeviceUpdateRequest(BaseModel):
@@ -224,6 +245,9 @@ class SettingsUpdateRequest(BaseModel):
     gain: Optional[str] = None
     ppm: Optional[str] = None
     debounce_seconds: Optional[str] = None
+    ble_enabled: Optional[str] = None
+    ble_mode: Optional[str] = None
+    ble_debounce_seconds: Optional[str] = None
     retention_days: Optional[str] = None
     mqtt_enabled: Optional[str] = None
     mqtt_host: Optional[str] = None
@@ -290,27 +314,56 @@ async def api_get_status():
 @app.post("/api/control")
 async def api_control(req: ControlRequest):
     updates: Dict[str, str] = {}
+    sdr_touched = False
+    ble_touched = False
     if req.mode is not None:
         if req.mode not in ("433", "868", "hop", "custom"):
             raise HTTPException(status_code=400, detail="Ogiltigt frekvensläge. Tillåtna: 433, 868, hop, custom.")
         updates["mode"] = req.mode
+        sdr_touched = True
     if req.device_index is not None:
         updates["device_index"] = str(req.device_index).strip()
+        sdr_touched = True
     if req.gain is not None:
         updates["gain"] = str(req.gain).strip() or "auto"
+        sdr_touched = True
     if req.ppm is not None:
         updates["ppm"] = str(req.ppm).strip() or "0"
+        sdr_touched = True
     if req.hop_interval is not None:
         updates["hop_interval"] = str(req.hop_interval).strip() or "60"
+        sdr_touched = True
     if req.custom_freqs is not None:
         updates["custom_freqs"] = str(req.custom_freqs).strip()
+        sdr_touched = True
     if req.custom_sample_rate is not None:
         updates["custom_sample_rate"] = str(req.custom_sample_rate).strip()
+        sdr_touched = True
+    if req.ble_enabled is not None:
+        updates["ble_enabled"] = "1" if str(req.ble_enabled).strip().lower() in ("1", "true", "yes", "on") else "0"
+        ble_touched = True
+    if req.ble_mode is not None:
+        if req.ble_mode not in ("smart", "all"):
+            raise HTTPException(status_code=400, detail="Ogiltigt BLE-läge. Tillåtna: smart, all.")
+        updates["ble_mode"] = req.ble_mode
+        ble_touched = True
+    if req.ble_debounce_seconds is not None:
+        updates["ble_debounce_seconds"] = str(req.ble_debounce_seconds).strip() or "15"
+        ble_touched = True
 
     if updates:
         await asyncio.to_thread(db.update_settings, updates)
 
-    await rtl_manager.restart()
+    if req.action == "restart_ble" or (ble_touched and not sdr_touched):
+        await ble_manager.restart()
+    elif req.action == "restart_all":
+        await rtl_manager.restart()
+        await ble_manager.restart()
+    else:
+        await rtl_manager.restart()
+        if ble_touched:
+            await ble_manager.restart()
+
     status = await asyncio.to_thread(build_status_payload)
     await ws_manager.broadcast({"type": "status", "data": status})
     return {"ok": True, "status": status}
@@ -462,10 +515,12 @@ async def api_update_settings(req: SettingsUpdateRequest):
     new_settings = await asyncio.to_thread(db.update_settings, payload)
 
     sdr_keys = ("device_index", "mode", "custom_freqs", "custom_sample_rate", "hop_interval", "gain", "ppm")
+    ble_keys = ("ble_enabled", "ble_mode", "ble_debounce_seconds")
     mqtt_broker_keys = ("mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_user", "mqtt_pass", "mqtt_prefix")
     ha_keys = ("ha_discovery_enabled", "ha_discovery_prefix")
 
     sdr_changed = any(old_settings.get(k) != new_settings.get(k) for k in sdr_keys)
+    ble_changed = any(old_settings.get(k) != new_settings.get(k) for k in ble_keys)
     mqtt_broker_changed = any(old_settings.get(k) != new_settings.get(k) for k in mqtt_broker_keys)
     ha_changed = any(old_settings.get(k) != new_settings.get(k) for k in ha_keys)
 
@@ -487,6 +542,9 @@ async def api_update_settings(req: SettingsUpdateRequest):
 
     if sdr_changed:
         await rtl_manager.restart()
+
+    if ble_changed:
+        await ble_manager.restart()
 
     if old_settings.get("retention_days") != new_settings.get("retention_days"):
         try:
@@ -529,6 +587,7 @@ async def api_reset_database(req: Optional[DatabaseResetRequest] = None, keep_al
     keep = req.keep_aliases if req is not None else bool(keep_aliases)
     result = await asyncio.to_thread(db.reset_database, keep)
     rtl_manager.reset_stats_and_cache()
+    ble_manager.reset_stats_and_cache()
     status_data = await asyncio.to_thread(build_status_payload)
     await ws_manager.broadcast(
         {

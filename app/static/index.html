@@ -79,7 +79,7 @@
           <img src="/static/icon.svg" alt="SensorScanner" class="w-8 h-8 rounded-lg shadow-xs shrink-0" />
           <div class="sidebar-label min-w-0">
             <h1 class="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate leading-tight">SensorScanner</h1>
-            <p class="text-[10px] text-slate-500 dark:text-slate-400 truncate leading-tight">RTL-SDR V4 &amp; rtl_433</p>
+            <p class="text-[10px] text-slate-500 dark:text-slate-400 truncate leading-tight">RTL-SDR V4 &amp; BLE 2.4GHz</p>
           </div>
         </div>
         <button onclick="toggleMobileSidebar(false)" class="lg:hidden w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center">
@@ -168,7 +168,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.8</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.9</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -236,6 +236,11 @@
                     <div id="sdrHopProgressBar" class="h-full bg-sky-500 transition-all duration-500" style="width: 100%"></div>
                   </div>
                 </div>
+
+                <button id="bleStatusBadge" type="button" onclick="toggleBLE()" class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:opacity-90 transition cursor-pointer" title="Klicka för att växla Bluetooth Low Energy (BLE 2.4 GHz) PÅ/AV">
+                  <i id="bleStatusIcon" class="mdi mdi-bluetooth text-xs leading-none"></i>
+                  <span id="bleStatusText" class="whitespace-nowrap">BLE: Initierar</span>
+                </button>
 
                 <div id="mqttStatusBadge" class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400" title="Status för MQTT-anslutning">
                   <span id="mqttStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
@@ -406,6 +411,7 @@
               <option value="">Alla frekvensband</option>
               <option value="433">433 MHz-bandet</option>
               <option value="868">868 MHz-bandet</option>
+              <option value="2400">2.4 GHz (Bluetooth BLE)</option>
             </select>
           </div>
 
@@ -654,6 +660,7 @@
             class="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-sky-400 text-xs"
           >
             <option value="">Behåll kategori</option>
+            <option value="Vehicle">Vehicle</option>
             <option value="Meter">Meter</option>
             <option value="Weather">Weather</option>
             <option value="TPMS">TPMS</option>
@@ -714,16 +721,18 @@
 
             <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
               <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Bandfördelning (433 vs 868 MHz)</span>
+                <span>Bandfördelning (433 / 868 / BLE)</span>
                 <i class="mdi mdi-sine-wave text-base text-indigo-500"></i>
               </div>
-              <div class="mt-1 flex items-center justify-between text-xs font-mono">
+              <div class="mt-1 flex items-center justify-between text-xs font-mono gap-1">
                 <span class="text-sky-600 dark:text-sky-400">433: <strong id="statBand433">0</strong></span>
                 <span class="text-indigo-600 dark:text-indigo-400">868: <strong id="statBand868">0</strong></span>
+                <span class="text-blue-600 dark:text-blue-400">BLE: <strong id="statBand2400">0</strong></span>
               </div>
               <div class="mt-2 w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden flex">
-                <div id="statBandBar433" class="bg-sky-500 h-full transition-all" style="width: 50%"></div>
-                <div id="statBandBar868" class="bg-indigo-500 h-full transition-all" style="width: 50%"></div>
+                <div id="statBandBar433" class="bg-sky-500 h-full transition-all" style="width: 34%"></div>
+                <div id="statBandBar868" class="bg-indigo-500 h-full transition-all" style="width: 33%"></div>
+                <div id="statBandBar2400" class="bg-blue-500 h-full transition-all" style="width: 33%"></div>
               </div>
             </div>
 
@@ -866,6 +875,33 @@
                     <div>
                       <label class="block text-slate-500 dark:text-slate-400 mb-1">Retention (dagar)</label>
                       <input type="number" min="1" max="3650" id="set_retention_days" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Bluetooth Low Energy (BLE 2.4 GHz) Section -->
+                <div class="space-y-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                      <i class="mdi mdi-bluetooth-audio mr-1"></i>Bluetooth Low Energy (BLE 2.4 GHz)
+                    </span>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" id="set_ble_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-indigo-500" />
+                      <span class="text-slate-700 dark:text-slate-300 font-medium">Aktivera BLE-skanning (2.4 GHz)</span>
+                    </label>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div class="sm:col-span-2">
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">BLE Filterläge</label>
+                      <select id="set_ble_mode" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100">
+                        <option value="smart">Smart läge – Endast namngivna enheter, fordon &amp; sensorer (Filtrera bort anonyma MAC)</option>
+                        <option value="all">Alla BLE-enheter – Inklusive anonyma MAC-adresser</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">BLE Debounce (sek)</label>
+                      <input type="number" step="1" min="2" max="600" id="set_ble_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="15" />
                     </div>
                   </div>
                 </div>
@@ -1031,10 +1067,10 @@
           
           <!-- Process Status & Active Command Card -->
           <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm space-y-3">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
               <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div>
-                  <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Process-status</div>
+                  <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">SDR Process-status</div>
                   <div id="logRtlState" class="font-mono font-bold text-slate-800 dark:text-slate-100 mt-0.5">Initierar...</div>
                 </div>
                 <i class="mdi mdi-cpu-64-bit text-xl text-sky-500"></i>
@@ -1050,10 +1086,18 @@
 
               <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div>
-                  <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Mottagna paket / Debounce</div>
+                  <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">SDR Paket / Debounce</div>
                   <div id="logRtlPackets" class="font-mono font-bold text-slate-800 dark:text-slate-100 mt-0.5">0 / 0</div>
                 </div>
                 <i class="mdi mdi-access-point-check text-xl text-emerald-500"></i>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                  <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Bluetooth (BLE 2.4 GHz)</div>
+                  <div id="logBleState" class="font-mono font-bold text-slate-800 dark:text-slate-100 mt-0.5">Initierar...</div>
+                </div>
+                <i class="mdi mdi-bluetooth-audio text-xl text-indigo-500"></i>
               </div>
             </div>
 
@@ -1162,6 +1206,7 @@
               <select id="modalCategorySelect" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100">
                 <option value="Weather">Weather</option>
                 <option value="TPMS">TPMS</option>
+                <option value="Vehicle">Vehicle</option>
                 <option value="Meter">Meter</option>
                 <option value="Switch">Switch</option>
                 <option value="Security">Security</option>
@@ -1329,6 +1374,12 @@
     let sdrHopInterval = 60;
     let sdrActiveFreqs = ['433.92 MHz', '868.30 MHz'];
 
+    let bleEnabled = true;
+    let bleRunning = false;
+    let bleMode = 'smart';
+    let bleState = 'initializing';
+    let bleDevicesCount = 0;
+
     let statsHistoryChart = null;
     let cachedHourly24h = [];
 
@@ -1336,6 +1387,7 @@
     const BASE_CATEGORIES = [
       'Weather',
       'TPMS',
+      'Vehicle',
       'Meter',
       'Switch',
       'Security',
@@ -1373,7 +1425,10 @@
       'time', 'protocol', 'model', 'type', 'id', 'device', 'sensor_id', 'node_id',
       'address', 'house_code', 'code', 'channel', 'mic', 'mod', 'freq', 'freq1',
       'freq2', 'rssi', 'snr', 'noise', 'alias', 'group_name', 'device_key',
-      'mode', 'pulses_per_kwh', 'calculated_power_W'
+      'mode', 'pulses_per_kwh', 'calculated_power_W', 'mac', 'local_name',
+      'manufacturer_data', 'manufacturer_id', 'manufacturer_name', 'service_data',
+      'service_uuids', 'tx_power', 'distance_m', 'beacon_hash', 'vehicle_status',
+      'category'
     ]);
 
     // -----------------------------------------------------------------------
@@ -2008,6 +2063,35 @@
       // Always mark IKEA Sparsnäs & energy meter internal keys as consumed so they never appear as raw fallback tags
       ['cumulative_kwh', 'cumulative_kWh', 'energy_kWh', 'total_kWh', 'energy_mWh', 'effect', 'pulses', 'pulse_count', 'pulses_per_kwh', 'sequence', 'mode', 'calculated_power_W'].forEach((k) => consumed.add(k));
 
+      // 0. BLE & Vehicle Telemetry (Tesla BLE, Enhauto S3XY, BLE Local Name, Manufacturer, Illuminance, Distance)
+      const isTeslaModel = (sig && sig.model === 'Tesla-Vehicle-BLE') || p.model === 'Tesla-Vehicle-BLE';
+      if (p.vehicle_status || isTeslaModel) {
+        consumed.add('vehicle_status');
+        const vStatus = p.vehicle_status ? String(p.vehicle_status) : 'Tesla Närvarande (BLE)';
+        addMetric('mdi-car-wireless', isTeslaModel ? 'Tesla Närvarande' : vStatus, 'emerald', 'Fordonsstatus', vStatus, p.mac ? `MAC: ${p.mac}` : '');
+      }
+      if (p.beacon_hash) {
+        consumed.add('beacon_hash');
+        addMetric('mdi-key-wireless', `Beacon: ${p.beacon_hash}`, 'teal', 'Tesla BLE Beacon', String(p.beacon_hash));
+      }
+      if (p.local_name && !p.beacon_hash) {
+        consumed.add('local_name');
+        addMetric('mdi-broadcast', `Namn: ${p.local_name}`, 'indigo', 'BLE Advertised Name', String(p.local_name));
+      }
+      if (p.manufacturer_name) {
+        consumed.add('manufacturer_name');
+        addMetric('mdi-domain', `Tillverkare: ${p.manufacturer_name}`, 'sky', 'BLE Tillverkare', String(p.manufacturer_name), p.manufacturer_id ? `ID: ${p.manufacturer_id}` : '');
+      }
+      if (p.lux !== undefined && p.lux !== null && !Number.isNaN(Number(p.lux))) {
+        consumed.add('lux');
+        addMetric('mdi-brightness-6', `${Number(p.lux).toFixed(0)} lx`, 'amber', 'Ljusstyrka', `${Number(p.lux).toFixed(0)} lx`);
+      }
+      if (p.distance_m !== undefined && p.distance_m !== null && !Number.isNaN(Number(p.distance_m))) {
+        consumed.add('distance_m');
+        const txSub = p.tx_power !== undefined && p.tx_power !== null ? `TX: ${p.tx_power} dBm` : '';
+        addMetric('mdi-map-marker-distance', `~${Number(p.distance_m).toFixed(1)} m`, 'teal', 'Uppskattat Avstånd', `~${Number(p.distance_m).toFixed(1)} m`, txSub);
+      }
+
       // 1. Energy / Cumulative Consumption (cumulative_kwh, energy_kWh, total_kWh, energy_mWh)
       let kwhVal = null;
       if (p.cumulative_kwh !== undefined && p.cumulative_kwh !== null) {
@@ -2408,7 +2492,8 @@
         addMetric('mdi-pound', `Seq: ${p.sequence}`, 'neutral', 'Sekvens', `#${p.sequence}`);
       }
 
-      // 12. Battery (battery_ok, battery_low, battery_mV, battery_V)
+      // 12. Battery (battery_pct, battery_ok, battery_low, battery_mV, battery_V)
+      const batPct = p.battery_pct !== undefined && p.battery_pct !== null ? Number(p.battery_pct) : null;
       const batOk = p.battery_ok !== undefined ? p.battery_ok : (sig ? sig.battery_ok : undefined);
       const batLow = p.battery_low;
       let voltStr = '';
@@ -2420,7 +2505,21 @@
         voltStr = `${Number(p.battery_V).toFixed(2)} V`;
       }
 
-      if (batOk !== undefined && batOk !== null) {
+      if (batPct !== null && !Number.isNaN(batPct)) {
+        consumed.add('battery_pct');
+        consumed.add('battery_ok');
+        consumed.add('battery_low');
+        const isLowPct = batPct <= 15 || Number(batLow) === 1 || (batOk !== undefined && batOk !== null && Number(batOk) === 0);
+        const vSuffix = voltStr ? ` (${voltStr})` : '';
+        addMetric(
+          isLowPct ? 'mdi-battery-alert-variant-outline' : 'mdi-battery-check',
+          `Batteri: ${batPct.toFixed(0)} %${vSuffix}`,
+          isLowPct ? 'rose' : 'emerald',
+          'Batterinivå',
+          `${batPct.toFixed(0)} %`,
+          voltStr
+        );
+      } else if (batOk !== undefined && batOk !== null) {
         consumed.add('battery_ok');
         consumed.add('battery_low');
         const isLow = Number(batOk) === 0 || Number(batLow) === 1;
@@ -2472,15 +2571,20 @@
       if (freqMHz && freqMHz > 1000000) freqMHz = freqMHz / 1000000;
 
       const mod = p.mod ? String(p.mod).toUpperCase() : (freq1MHz && freq2MHz ? 'FSK' : '');
+      const isBle = mod === 'BLE' || (freqMHz !== null && freqMHz >= 2400);
       const proto = p.protocol !== undefined ? `#${p.protocol}` : '';
       const mic = p.mic ? String(p.mic) : '';
 
-      const freqLabel = freqMHz ? `${freqMHz.toFixed(2)} MHz${mod ? ' (' + mod + ')' : ''}` : (mod || '-');
-      const dualFreqLabel = freq1MHz && freq2MHz
-        ? `${freq1MHz.toFixed(2)} / ${freq2MHz.toFixed(2)} MHz`
-        : (freqMHz ? `${freqMHz.toFixed(2)} MHz` : '-');
+      const freqLabel = isBle
+        ? '2.4 GHz (BLE)'
+        : (freqMHz ? `${freqMHz.toFixed(2)} MHz${mod ? ' (' + mod + ')' : ''}` : (mod || '-'));
+      const dualFreqLabel = isBle
+        ? '2.4 GHz (BLE 2402 MHz)'
+        : (freq1MHz && freq2MHz
+          ? `${freq1MHz.toFixed(2)} / ${freq2MHz.toFixed(2)} MHz`
+          : (freqMHz ? `${freqMHz.toFixed(2)} MHz` : '-'));
 
-      return { freqMHz, freq1MHz, freq2MHz, mod, proto, mic, freqLabel, dualFreqLabel };
+      return { freqMHz, freq1MHz, freq2MHz, mod, isBle, proto, mic, freqLabel, dualFreqLabel };
     }
 
     // -----------------------------------------------------------------------
@@ -2595,8 +2699,16 @@
       }
 
       const rtl = status.rtl || {};
+      const ble = status.ble || {};
       const mqtt = status.mqtt || {};
       const counts = status.counts || {};
+
+      bleEnabled = Boolean(ble.enabled);
+      bleRunning = Boolean(ble.running);
+      bleMode = ble.mode || 'smart';
+      bleState = ble.state || (ble.enabled ? 'running' : 'disabled');
+      bleDevicesCount = Number(counts.ble_devices ?? ble.unique_macs_seen ?? 0);
+      renderTopbarBleStatusBadge(ble);
 
       if (status.app_uptime_seconds !== undefined) {
         appUptimeSeconds = Number(status.app_uptime_seconds) || 0;
@@ -2679,6 +2791,7 @@
       const logStateEl = document.getElementById('logRtlState');
       const logModeEl = document.getElementById('logRtlMode');
       const logPacketsEl = document.getElementById('logRtlPackets');
+      const logBleEl = document.getElementById('logBleState');
       if (logStateEl) {
         logStateEl.textContent = rtl.running ? `Körs (Omstarter: ${rtl.restart_count ?? 0})` : (rtl.state || 'Stoppad');
       }
@@ -2693,6 +2806,15 @@
       }
       if (logPacketsEl) {
         logPacketsEl.textContent = `${rtl.received_count ?? 0} mottagna / ${rtl.debounced_count ?? 0} debouncade`;
+      }
+      if (logBleEl) {
+        if (!ble.enabled) {
+          logBleEl.textContent = 'Avstängd';
+        } else if (ble.running) {
+          logBleEl.textContent = `Aktiv (${(ble.mode || 'smart').toUpperCase()} • ${ble.received_count ?? 0} pkt)`;
+        } else {
+          logBleEl.textContent = ble.last_error ? `Ej tillgänglig (${ble.state || 'fel'})` : (ble.state || 'Stoppad');
+        }
       }
 
       const stderrBox = document.getElementById('terminalStderrBox');
@@ -2781,6 +2903,55 @@
       }
 
       sdrText.innerHTML = `<i class="mdi mdi-sine-wave text-xs leading-none"></i><span>Lyssnar: <strong>${escapeHtml(sdrCurrentFreq)}</strong> <span class="text-[10px] opacity-80 font-mono">(skiftar om ${remainingSec}s)</span></span>`;
+    }
+
+    function renderTopbarBleStatusBadge(ble = {}) {
+      const badge = document.getElementById('bleStatusBadge');
+      const icon = document.getElementById('bleStatusIcon');
+      const text = document.getElementById('bleStatusText');
+      if (!badge || !icon || !text) return;
+
+      if (!bleEnabled) {
+        icon.className = 'mdi mdi-bluetooth-off text-xs leading-none';
+        text.textContent = 'BLE: Av';
+        badge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:opacity-90 transition cursor-pointer';
+        return;
+      }
+
+      if (bleRunning) {
+        const modeLabel = bleMode === 'all' ? 'Alla' : 'Smart';
+        icon.className = 'mdi mdi-bluetooth-audio text-xs leading-none animate-pulse-subtle';
+        text.innerHTML = `<span>BLE: Aktiv (${modeLabel}${bleDevicesCount > 0 ? ' • ' + bleDevicesCount : ''})</span>`;
+        badge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-300 dark:border-indigo-700/70 text-indigo-800 dark:text-indigo-200 hover:opacity-90 transition cursor-pointer';
+        return;
+      }
+
+      icon.className = 'mdi mdi-bluetooth-settings text-xs leading-none';
+      text.textContent = bleState === 'unavailable' ? 'BLE: Saknar adapter' : 'BLE: Startar';
+      badge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-300 hover:opacity-90 transition cursor-pointer';
+      if (ble.last_error) {
+        badge.title = `BLE: ${ble.last_error} (Klicka för att växla PÅ/AV)`;
+      }
+    }
+
+    async function toggleBLE() {
+      const nextState = bleEnabled ? '0' : '1';
+      try {
+        const res = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'restart_ble', ble_enabled: nextState })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status) applyStatusUpdate(data.status);
+          const chk = document.getElementById('set_ble_enabled');
+          if (chk) chk.checked = nextState === '1';
+          showToast(nextState === '1' ? 'Bluetooth (BLE 2.4 GHz) aktiverad' : 'Bluetooth (BLE 2.4 GHz) avstängd');
+        }
+      } catch (e) {
+        showToast('Kunde inte växla BLE-läge', true);
+      }
     }
 
     function syncHaDiscoveryUiVisibility() {
@@ -3056,11 +3227,12 @@
       }
 
       // 4. Frequency band filter
-      if (freqBand === '433' || freqBand === '868') {
+      if (freqBand === '433' || freqBand === '868' || freqBand === '2400') {
         const radio = extractRadioMetadata(sig, p);
         const f = radio.freqMHz;
         if (freqBand === '433' && !(f >= 430 && f <= 440)) return false;
         if (freqBand === '868' && !(f >= 860 && f <= 875)) return false;
+        if (freqBand === '2400' && !(radio.isBle || (f !== null && f >= 2400))) return false;
       }
 
       // 5. Free-text search
@@ -3159,7 +3331,7 @@
             if (badgesTarget) badgesTarget.innerHTML = badgesHtml;
 
             const strengthTarget = existingEl.querySelector('[data-sig-strength]');
-            if (strengthTarget) strengthTarget.innerHTML = buildFooterSignalStrength(sig.rssi, sig.snr);
+            if (strengthTarget) strengthTarget.innerHTML = buildFooterSignalStrength(sig.rssi, sig.snr, (sig.payload || {}).mod);
 
             const hitsTarget = existingEl.querySelector('[data-sig-hits]');
             if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${sig.hit_count || 1}`;
@@ -3259,6 +3431,7 @@
       const c = (category || '').toLowerCase();
       if (c === 'weather') return 'mdi-weather-partly-cloudy text-sky-500';
       if (c === 'tpms') return 'mdi-car-tire-alert text-purple-500';
+      if (c === 'vehicle') return 'mdi-car-connected text-emerald-500';
       if (c === 'meter') return 'mdi-lightning-bolt text-emerald-500';
       if (c === 'switch') return 'mdi-toggle-switch-outline text-indigo-500';
       if (c === 'security') return 'mdi-shield-alert-outline text-rose-500';
@@ -3289,9 +3462,11 @@
         : '';
 
       const radio = extractRadioMetadata(sig, p);
-      const freqBadge = radio.freqMHz
-        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"><i class="mdi mdi-sine-wave text-xs"></i>${escapeHtml(radio.freqLabel)}</span>`
-        : '';
+      const freqBadge = radio.isBle
+        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30"><i class="mdi mdi-bluetooth text-xs"></i>2.4 GHz (BLE)</span>`
+        : (radio.freqMHz
+          ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"><i class="mdi mdi-sine-wave text-xs"></i>${escapeHtml(radio.freqLabel)}</span>`
+          : '');
       const protoBadge = radio.proto
         ? `<span class="px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/70" title="rtl_433 Protokoll">${escapeHtml(radio.proto)}</span>`
         : '';
@@ -3300,7 +3475,7 @@
       const relTime = formatRelativeTime(sig.timestamp);
 
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
-      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr);
+      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod);
       const hitCount = sig.hit_count || 1;
       const isHaActive = Number(sig.ha_discovery) === 1;
 
@@ -3379,7 +3554,7 @@
       const relTime = formatRelativeTime(sig.timestamp);
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
       const radio = extractRadioMetadata(sig, p);
-      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr);
+      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod);
       const hitCount = sig.hit_count || 1;
       const isHaActive = Number(sig.ha_discovery) === 1;
 
@@ -3413,7 +3588,7 @@
             <div data-sig-badges class="flex flex-wrap items-center gap-1">${badgesHtml}</div>
           </td>
           <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-600 dark:text-slate-300">
-            <i class="mdi mdi-sine-wave mr-0.5 text-slate-400"></i>${escapeHtml(radio.freqLabel)} ${radio.proto ? `<span class="text-slate-400">${escapeHtml(radio.proto)}</span>` : ''}
+            <i class="mdi ${radio.isBle ? 'mdi-bluetooth text-indigo-500' : 'mdi-sine-wave text-slate-400'} mr-0.5"></i>${escapeHtml(radio.freqLabel)} ${radio.proto ? `<span class="text-slate-400">${escapeHtml(radio.proto)}</span>` : ''}
           </td>
           <td data-sig-strength class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap">
             ${footerSignalHtml}
@@ -3433,13 +3608,33 @@
       `;
     }
 
-    function buildFooterSignalStrength(rssi, snr) {
+    function buildFooterSignalStrength(rssi, snr, mod = '') {
       if (rssi === null || rssi === undefined) {
         return `<span class="text-slate-400"><i class="mdi mdi-wifi-strength-outline mr-1"></i>RSSI -</span>`;
       }
       const val = Number(rssi);
+      const isBle = String(mod || '').toUpperCase() === 'BLE' || (snr === null || snr === undefined) && val <= -28;
       let icon = 'mdi-wifi-strength-4';
       let color = 'text-emerald-600 dark:text-emerald-400';
+
+      if (isBle) {
+        if (val < -82) {
+          icon = 'mdi-wifi-strength-1';
+          color = 'text-rose-600 dark:text-rose-400';
+        } else if (val < -72) {
+          icon = 'mdi-wifi-strength-2';
+          color = 'text-amber-600 dark:text-amber-400';
+        } else if (val < -62) {
+          icon = 'mdi-wifi-strength-3';
+          color = 'text-sky-600 dark:text-sky-400';
+        }
+        return `
+          <span class="inline-flex items-center gap-1 ${color}">
+            <i class="mdi ${icon} text-sm leading-none"></i>
+            <span>${val.toFixed(0)} dBm</span>
+          </span>
+        `;
+      }
 
       if (val < -20) {
         icon = 'mdi-wifi-strength-1';
@@ -3784,8 +3979,8 @@
       if (cardEl) {
         const lastPayload = dev.last_payload || sig.payload || {};
         const { badgesHtml } = extractAndFormatMetrics(lastPayload, sig);
-        const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi ?? sig.rssi, lastPayload.snr ?? sig.snr);
         const radio = extractRadioMetadata(sig, lastPayload);
+        const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi ?? sig.rssi, lastPayload.snr ?? sig.snr, radio.mod);
 
         const badgesEl = cardEl.querySelector('[data-dev-badges]');
         if (badgesEl) {
@@ -4055,7 +4250,7 @@
       const lastPayload = dev.last_payload || {};
       const { badgesHtml } = extractAndFormatMetrics(lastPayload);
       const radio = extractRadioMetadata(null, lastPayload);
-      const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi, lastPayload.snr);
+      const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi, lastPayload.snr, radio.mod);
       const hasGroup = Boolean(dev.group_name && dev.group_name.trim());
 
       let borderClass = 'border-slate-200 dark:border-slate-800';
@@ -4436,11 +4631,16 @@
 
         const b433 = data.frequency_distribution?.['433_mhz'] || 0;
         const b868 = data.frequency_distribution?.['868_mhz'] || 0;
-        const totalBands = Math.max(1, b433 + b868);
+        const b2400 = data.frequency_distribution?.['2400_mhz'] || 0;
+        const totalBands = Math.max(1, b433 + b868 + b2400);
         document.getElementById('statBand433').textContent = b433;
         document.getElementById('statBand868').textContent = b868;
+        const b2400El = document.getElementById('statBand2400');
+        if (b2400El) b2400El.textContent = b2400;
         document.getElementById('statBandBar433').style.width = `${Math.round((b433 / totalBands) * 100)}%`;
         document.getElementById('statBandBar868').style.width = `${Math.round((b868 / totalBands) * 100)}%`;
+        const b2400Bar = document.getElementById('statBandBar2400');
+        if (b2400Bar) b2400Bar.style.width = `${Math.round((b2400 / totalBands) * 100)}%`;
 
         const hourly = data.hourly_24h || [];
         cachedHourly24h = hourly;
@@ -4730,6 +4930,12 @@
         document.getElementById('set_ppm').value = s.ppm ?? '0';
         document.getElementById('set_debounce_seconds').value = s.debounce_seconds ?? '2.0';
         document.getElementById('set_retention_days').value = s.retention_days ?? '30';
+        const bleEnEl = document.getElementById('set_ble_enabled');
+        if (bleEnEl) bleEnEl.checked = String(s.ble_enabled ?? '1') === '1';
+        const bleModeEl = document.getElementById('set_ble_mode');
+        if (bleModeEl) bleModeEl.value = s.ble_mode ?? 'smart';
+        const bleDebEl = document.getElementById('set_ble_debounce_seconds');
+        if (bleDebEl) bleDebEl.value = s.ble_debounce_seconds ?? '15';
         document.getElementById('set_mqtt_enabled').checked = String(s.mqtt_enabled ?? '1') === '1';
         document.getElementById('set_mqtt_host').value = s.mqtt_host ?? '';
         document.getElementById('set_mqtt_port').value = s.mqtt_port ?? '1883';
@@ -4759,6 +4965,9 @@
         ppm: String(document.getElementById('set_ppm').value || '0'),
         debounce_seconds: String(document.getElementById('set_debounce_seconds').value || '2.0'),
         retention_days: String(document.getElementById('set_retention_days').value || '30'),
+        ble_enabled: document.getElementById('set_ble_enabled')?.checked ? '1' : '0',
+        ble_mode: document.getElementById('set_ble_mode')?.value || 'smart',
+        ble_debounce_seconds: String(document.getElementById('set_ble_debounce_seconds')?.value || '15'),
         mqtt_enabled: document.getElementById('set_mqtt_enabled').checked ? '1' : '0',
         mqtt_host: document.getElementById('set_mqtt_host').value.trim(),
         mqtt_port: String(document.getElementById('set_mqtt_port').value || '1883'),

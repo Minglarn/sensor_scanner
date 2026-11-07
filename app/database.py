@@ -21,6 +21,9 @@ def _parse_bool_env(val: str, default: str = "0") -> str:
 
 
 def get_default_settings() -> Dict[str, str]:
+    ble_mode_env = (os.environ.get("BLE_MODE", "smart") or "smart").strip().lower()
+    if ble_mode_env not in ("smart", "all"):
+        ble_mode_env = "smart"
     return {
         "device_index": os.environ.get("DEVICE_INDEX", "0"),
         "mode": os.environ.get("DEFAULT_MODE", "hop"),
@@ -30,6 +33,9 @@ def get_default_settings() -> Dict[str, str]:
         "gain": os.environ.get("RTL_GAIN", "auto"),
         "ppm": os.environ.get("RTL_PPM", "0"),
         "debounce_seconds": os.environ.get("DEBOUNCE_SECONDS", "2.0"),
+        "ble_enabled": _parse_bool_env(os.environ.get("BLE_ENABLED", "true"), "1"),
+        "ble_mode": ble_mode_env,
+        "ble_debounce_seconds": os.environ.get("BLE_DEBOUNCE_SECONDS", "15") or "15",
         "retention_days": os.environ.get("RETENTION_DAYS", "30"),
         "mqtt_enabled": _parse_bool_env(os.environ.get("MQTT_ENABLED", "1"), "1"),
         "mqtt_host": os.environ.get("MQTT_HOST", "192.168.1.121"),
@@ -64,9 +70,20 @@ def enrich_sparsnas_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def infer_category(model: str, payload: Dict[str, Any]) -> str:
+    explicit_cat = str(payload.get("category") or "").strip()
+    if explicit_cat and explicit_cat not in ("Sensor", "Unknown"):
+        return explicit_cat
+
     model_lower = (model or "").lower()
     keys = {k.lower() for k in payload.keys()}
     ptype = str(payload.get("type") or "").strip().upper()
+
+    if (
+        "vehicle_status" in keys
+        or "beacon_hash" in keys
+        or any(w in model_lower for w in ("tesla", "s3xy", "enhauto", "vehicle"))
+    ):
+        return "Vehicle"
 
     if (
         ptype == "TPMS"
@@ -540,6 +557,8 @@ class Database:
                 where_clauses.append("(s.freq >= 430.0 AND s.freq <= 440.0)")
             elif fb == "868":
                 where_clauses.append("(s.freq >= 860.0 AND s.freq <= 875.0)")
+            elif fb in ("2400", "2.4", "ble"):
+                where_clauses.append("(s.freq >= 2400.0 AND s.freq <= 2500.0)")
 
         if only_aliased:
             where_clauses.append("(d.alias IS NOT NULL AND TRIM(d.alias) != '')")
@@ -810,6 +829,23 @@ class Database:
             finally:
                 conn.close()
 
+    def is_device_known_and_named(self, device_id: str) -> bool:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                row = conn.execute(
+                    """
+                    SELECT 1 FROM devices
+                    WHERE device_id = ?
+                      AND (COALESCE(TRIM(alias), '') != '' OR COALESCE(TRIM(group_name), '') != '')
+                    LIMIT 1;
+                    """,
+                    (str(device_id).strip(),),
+                ).fetchone()
+                return row is not None
+            finally:
+                conn.close()
+
     def get_summary_counts(self) -> Dict[str, int]:
         today_prefix = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
         with self._lock:
@@ -830,6 +866,9 @@ class Database:
                 new_devices = conn.execute(
                     "SELECT COUNT(*) AS c FROM devices WHERE COALESCE(is_new, 1) = 1 AND ignored = 0 AND COALESCE(TRIM(alias), '') = '' AND COALESCE(TRIM(group_name), '') = '';"
                 ).fetchone()["c"]
+                ble_devices = conn.execute(
+                    "SELECT COUNT(*) AS c FROM devices WHERE ignored = 0 AND (model LIKE '%BLE%' OR model IN ('Enhauto-S3XY', 'Plejd-Mesh', 'Xiaomi-MiBeacon') OR last_payload LIKE '%\"mod\": \"BLE\"%' OR last_payload LIKE '%\"mod\":\"BLE\"%');"
+                ).fetchone()["c"]
                 return {
                     "total_signals": int(total_signals),
                     "signals_today": int(signals_today),
@@ -837,6 +876,7 @@ class Database:
                     "active_devices": int(active_devices),
                     "ignored_devices": int(ignored_devices),
                     "new_devices": int(new_devices),
+                    "ble_devices": int(ble_devices),
                 }
             finally:
                 conn.close()
@@ -882,13 +922,15 @@ class Database:
                     SELECT
                         SUM(CASE WHEN freq >= 430.0 AND freq <= 440.0 THEN 1 ELSE 0 END) AS band_433,
                         SUM(CASE WHEN freq >= 860.0 AND freq <= 875.0 THEN 1 ELSE 0 END) AS band_868,
-                        SUM(CASE WHEN freq IS NULL OR NOT ((freq >= 430.0 AND freq <= 440.0) OR (freq >= 860.0 AND freq <= 875.0)) THEN 1 ELSE 0 END) AS band_other
+                        SUM(CASE WHEN freq >= 2400.0 AND freq <= 2500.0 THEN 1 ELSE 0 END) AS band_2400,
+                        SUM(CASE WHEN freq IS NULL OR NOT ((freq >= 430.0 AND freq <= 440.0) OR (freq >= 860.0 AND freq <= 875.0) OR (freq >= 2400.0 AND freq <= 2500.0)) THEN 1 ELSE 0 END) AS band_other
                     FROM signals;
                     """
                 ).fetchone()
 
                 band_433 = int(freq_rows["band_433"] or 0)
                 band_868 = int(freq_rows["band_868"] or 0)
+                band_2400 = int(freq_rows["band_2400"] or 0)
                 band_other = int(freq_rows["band_other"] or 0)
 
                 top_devices_rows = conn.execute(
@@ -909,6 +951,7 @@ class Database:
                     "frequency_distribution": {
                         "433_mhz": band_433,
                         "868_mhz": band_868,
+                        "2400_mhz": band_2400,
                         "other": band_other,
                     },
                     "top_devices": top_devices,

@@ -1,10 +1,10 @@
 # SensorScanner
 
-**Version:** `2026.11.07.8` (CalVer)  
+**Version:** `2026.11.07.9` (CalVer)  
 **Container Image:** `ghcr.io/minglarn/sensor_scanner:latest`  
 **GitHub Repository:** `https://github.com/Minglarn/sensor_scanner`
 
-**SensorScanner** är en nyckelfärdig, Dockeriserad helhetslösning som använder `rtl_433` tillsammans med en **RTL-SDR Blog V4**-mottagare (R828D-tuner) för att avlyssna, avkoda, lagra, filtrera och vidarebefordra trådlösa RF-signaler på **433.92 MHz** och **868.3 MHz**.
+**SensorScanner** är en nyckelfärdig, Dockeriserad helhetslösning som använder `rtl_433` tillsammans med en **RTL-SDR Blog V4**-mottagare (R828D-tuner) på **433.92 MHz** och **868.3 MHz** parallellt med värdmaskinens **Bluetooth Low Energy (BLE 2.4 GHz)**-adapter (`BlueZ` via D-Bus) för att avlyssna, avkoda, lagra, filtrera och vidarebefordra trådlösa RF- och BLE-signaler.
 
 Applikationen fångar automatiskt upp vädersensorer, el- och vattenmätare, däcktryckssensorer (TPMS), fjärrkontroller, dörr-/fönstersensorer samt rörelsedetektorer och presenterar dem i realtid via ett responsivt webbgränssnitt, lagrar historik i SQLite (WAL-läge) och publicerar utvalda enheter till MQTT inklusive stöd för **Home Assistant MQTT Auto-Discovery**.
 

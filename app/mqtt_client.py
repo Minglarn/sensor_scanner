@@ -111,6 +111,42 @@ HA_METRIC_SPECS: List[Tuple[str, str, str, str, Optional[str], str, str]] = [
         "{{ 100 if value_json.battery_ok | int == 1 else 10 }}",
     ),
     (
+        "battery_pct",
+        "battery_pct",
+        "Batterinivå",
+        "%",
+        "battery",
+        "measurement",
+        "{{ value_json.battery_pct | int }}",
+    ),
+    (
+        "lux",
+        "illuminance",
+        "Ljusstyrka",
+        "lx",
+        "illuminance",
+        "measurement",
+        "{{ value_json.lux | int }}",
+    ),
+    (
+        "moisture",
+        "moisture",
+        "Markfuktighet",
+        "%",
+        "moisture",
+        "measurement",
+        "{{ value_json.moisture | float | round(1) }}",
+    ),
+    (
+        "distance_m",
+        "distance_m",
+        "BLE Avstånd",
+        "m",
+        "distance",
+        "measurement",
+        "{{ value_json.distance_m | float | round(1) }}",
+    ),
+    (
         "pressure_kPa",
         "pressure_kpa",
         "Däcktryck",
@@ -389,6 +425,10 @@ class MQTTManager:
 
         try:
             self._client.publish(base_topic, payload=json_str, qos=0, retain=False)
+            is_ble = str(enriched_payload.get("mod") or "").upper() == "BLE" or float(enriched_payload.get("freq") or 0) >= 2400.0
+            if is_ble:
+                ble_topic = f"{self._prefix}/BLE/{model_seg}/{id_seg}"
+                self._client.publish(ble_topic, payload=json_str, qos=0, retain=False)
             if alias_raw:
                 alias_seg = sanitize_topic_segment(alias_raw)
                 alias_topic = f"{self._prefix}/alias/{alias_seg}"
