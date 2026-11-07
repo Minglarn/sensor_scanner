@@ -253,6 +253,15 @@ class MQTTManager:
                 "{{ value_json.pressure_bar | float | round(2) }}",
             ),
             (
+                "pressure_PSI",
+                "pressure_psi_bar",
+                "Däcktryck",
+                "bar",
+                "pressure",
+                "measurement",
+                "{{ (value_json.pressure_PSI | float * 0.0689476) | round(2) }}",
+            ),
+            (
                 "pressure_hPa",
                 "pressure_hpa",
                 "Lufttryck",

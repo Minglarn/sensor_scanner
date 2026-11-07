@@ -49,6 +49,11 @@
     .animate-pulse-subtle {
       animation: pulseSubtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
     }
+    .json-key { color: #38bdf8; }
+    .json-string { color: #34d399; }
+    .json-number { color: #fbbf24; }
+    .json-boolean { color: #c084fc; }
+    .json-null { color: #94a3b8; }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-screen flex flex-col selection:bg-sky-500 selection:text-white transition-colors duration-150">
@@ -67,7 +72,7 @@
             <div>
               <div class="flex items-center gap-2">
                 <h1 class="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">SensorScanner</h1>
-                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">v2026.11.07.2</span>
+                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">v2026.11.07.3</span>
               </div>
               <p class="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block leading-tight">RTL-SDR Blog V4 &amp; rtl_433 RF-signalanalysator</p>
             </div>
@@ -294,8 +299,8 @@
         <button onclick="togglePause()" class="px-2.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 font-semibold">Återuppta nu</button>
       </div>
 
-      <!-- Signals Multi-Column Card Grid -->
-      <div id="signalsGridContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5">
+      <!-- Signals Multi-Column Card Grid (3-5 Columns) -->
+      <div id="signalsGridContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
         <!-- Rendered by JS -->
       </div>
 
@@ -310,7 +315,7 @@
                 <th class="py-2 px-2.5">Kategori</th>
                 <th class="py-2 px-2.5">ID / Kanal</th>
                 <th class="py-2 px-2.5">Mätvärden</th>
-                <th class="py-2 px-2.5">Frekvens</th>
+                <th class="py-2 px-2.5">Radio &amp; Frekvens</th>
                 <th class="py-2 px-2.5">RSSI / SNR</th>
                 <th class="py-2 px-2.5 text-right">Åtgärder</th>
               </tr>
@@ -335,7 +340,7 @@
     </section>
 
     <!-- =================================================================== -->
-    <!-- TAB 2: ENHETSREGISTER (ENHETER)                                     -->
+    <!-- TAB 2: ENHETSREGISTER (ENHETER - 3-5 KOLUMNERS KOMPAKT GRID)        -->
     <!-- =================================================================== -->
     <section id="tabPanel_devices" class="hidden space-y-2.5">
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -367,7 +372,7 @@
         </div>
       </div>
 
-      <div id="devicesContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5">
+      <div id="devicesContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
         <!-- Rendered by JS -->
       </div>
 
@@ -382,7 +387,7 @@
     <section id="tabPanel_system" class="hidden space-y-4">
       
       <!-- Overview KPI Cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
           <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Signaler idag / Totalt</span>
@@ -612,21 +617,22 @@
   </main>
 
   <!-- ===================================================================== -->
-  <!-- DETAIL MODAL (INSPECT SIGNAL, RAW JSON, SET ALIAS, LAST 20 READINGS)  -->
+  <!-- REDESIGNED TELEMETRY DETAIL MODAL                                     -->
   <!-- ===================================================================== -->
   <div id="detailModal" class="fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
       
       <!-- Modal Header -->
       <div class="px-4 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
         <div class="min-w-0">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <i id="modalCategoryIcon" class="mdi mdi-access-point text-lg text-sky-500"></i>
             <h2 id="modalTitle" class="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">Enhetsdetaljer</h2>
             <span id="modalCategoryBadge" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">Sensor</span>
           </div>
-          <p id="modalSubtitle" class="text-xs text-slate-500 dark:text-slate-400 font-mono truncate"></p>
+          <p id="modalSubtitle" class="text-xs text-slate-500 dark:text-slate-400 font-mono truncate mt-0.5"></p>
         </div>
-        <button onclick="closeDetailModal()" class="w-8 h-8 rounded-lg bg-slate-200/70 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+        <button onclick="closeDetailModal()" class="w-8 h-8 rounded-lg bg-slate-200/70 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
           <i class="mdi mdi-close text-lg"></i>
         </button>
       </div>
@@ -634,13 +640,28 @@
       <!-- Modal Body -->
       <div class="p-4 overflow-y-auto space-y-4 text-xs">
         
-        <!-- Quick Device Configuration Bar -->
-        <div class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-3">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Snabbkonfigurera Enhet</div>
-          <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+        <!-- 1. VISUAL TELEMETRY KPI GRID -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <i class="mdi mdi-gauge mr-1 text-sky-500"></i>Analyserad Telemetri &amp; Radiodata
+            </span>
+            <span id="modalPacketTime" class="text-[11px] font-mono text-slate-400"></span>
+          </div>
+          <div id="modalKpiGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+            <!-- Populated via extractAndFormatMetrics() -->
+          </div>
+        </div>
+
+        <!-- 2. QUICK DEVICE CONFIGURATION BAR -->
+        <div class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-2.5">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <i class="mdi mdi-cog-outline mr-1"></i>Enhetskonfiguration &amp; Home Assistant
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
             <div class="sm:col-span-5">
               <label class="block text-slate-500 dark:text-slate-400 mb-1">Alias (Eget namn)</label>
-              <input type="text" id="modalAliasInput" placeholder="t.ex. Växthus Termometer" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100" />
+              <input type="text" id="modalAliasInput" placeholder="t.ex. Toyota Vänster Fram / Växthus" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100" />
             </div>
             <div class="sm:col-span-3">
               <label class="block text-slate-500 dark:text-slate-400 mb-1">Kategori</label>
@@ -678,28 +699,19 @@
           </div>
         </div>
 
-        <!-- Raw JSON Payload -->
+        <!-- 3. LAST 20 MEASUREMENTS TABLE (WITH FULL METRIC BADGES) -->
         <div>
-          <div class="flex items-center justify-between mb-1">
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Rå JSON-payload (Senast valda paket)</span>
-            <button onclick="copyModalJson()" class="text-sky-600 dark:text-sky-400 hover:underline text-[11px]">
-              <i class="mdi mdi-content-copy mr-0.5"></i>Kopiera JSON
-            </button>
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+            <i class="mdi mdi-history mr-1"></i>De 20 senaste mätvärdena för denna enhet
           </div>
-          <pre id="modalRawJson" class="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-emerald-300 overflow-x-auto"></pre>
-        </div>
-
-        <!-- Last 20 Measurements for this Device -->
-        <div>
-          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">De 20 senaste mätvärdena för denna enhet</div>
           <div class="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl">
             <table class="w-full text-left border-collapse">
               <thead>
                 <tr class="bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px]">
                   <th class="py-1.5 px-3">Tidpunkt</th>
-                  <th class="py-1.5 px-3">Frekvens</th>
+                  <th class="py-1.5 px-3">Frekvens &amp; Mod</th>
                   <th class="py-1.5 px-3">RSSI / SNR</th>
-                  <th class="py-1.5 px-3">Mätvärden</th>
+                  <th class="py-1.5 px-3">Analyserade Mätvärden</th>
                 </tr>
               </thead>
               <tbody id="modalHistoryBody" class="divide-y divide-slate-200 dark:divide-slate-800/70 font-mono text-[11px]">
@@ -708,6 +720,23 @@
             </table>
           </div>
         </div>
+
+        <!-- 4. COLLAPSIBLE SYNTAX-HIGHLIGHTED RAW JSON PAYLOAD -->
+        <details class="group bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+          <summary class="cursor-pointer list-none px-3.5 py-2.5 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition">
+            <span class="flex items-center gap-1.5">
+              <i class="mdi mdi-code-json text-sm text-sky-500"></i>
+              <span>Rå JSON-payload (Inspektera källdata)</span>
+            </span>
+            <div class="flex items-center gap-3">
+              <button type="button" onclick="event.stopPropagation(); copyModalJson();" class="text-sky-600 dark:text-sky-400 hover:underline font-normal normal-case">
+                <i class="mdi mdi-content-copy mr-0.5"></i>Kopiera JSON
+              </button>
+              <i class="mdi mdi-chevron-down text-base transition-transform group-open:rotate-180"></i>
+            </div>
+          </summary>
+          <pre id="modalRawJson" class="p-3.5 bg-slate-950 border-t border-slate-800 font-mono text-[11px] leading-relaxed overflow-x-auto text-slate-200"></pre>
+        </details>
 
       </div>
     </div>
@@ -723,7 +752,7 @@
     let activeTab = 'signals';
     let isPaused = false;
     let viewMode = localStorage.getItem('ss_view_mode') || 'grid';
-    let groupDevices = localStorage.getItem('ss_group_devices') !== 'false'; // ON by default
+    let groupDevices = localStorage.getItem('ss_group_devices') !== 'false';
     let activeQuickPill = 'all';
 
     let rawSignalsList = [];
@@ -735,6 +764,13 @@
     let deviceDebounceTimer = null;
     let wsConnection = null;
     let highlightedDeviceKey = null;
+
+    // Keys that represent technical radio/envelope metadata rather than sensor measurements
+    const TECHNICAL_METADATA_KEYS = new Set([
+      'time', 'protocol', 'model', 'type', 'id', 'device', 'sensor_id', 'node_id',
+      'address', 'house_code', 'code', 'channel', 'mic', 'mod', 'freq', 'freq1',
+      'freq2', 'rssi', 'snr', 'noise', 'alias', 'device_key'
+    ]);
 
     // -----------------------------------------------------------------------
     // Initialization
@@ -751,7 +787,6 @@
       loadSettingsForm();
       connectWebSocket();
 
-      // Update relative timestamps every 5 seconds
       setInterval(() => {
         if (!isPaused && activeTab === 'signals') {
           updateRelativeTimestampsInDom();
@@ -851,6 +886,340 @@
       box.classList.remove('hidden');
       clearTimeout(box._timer);
       box._timer = setTimeout(() => box.classList.add('hidden'), 3200);
+    }
+
+    // -----------------------------------------------------------------------
+    // SMART SIGNAL ANALYZER & AUTOMATIC UNIT CONVERSION
+    // -----------------------------------------------------------------------
+    function degreesToSwedishCompass(deg) {
+      const num = Number(deg);
+      if (Number.isNaN(num)) return '';
+      const dirs = ['N', 'NO', 'O', 'SO', 'S', 'SV', 'V', 'NV'];
+      const idx = Math.round(((num % 360) + 360) % 360 / 45) % 8;
+      return dirs[idx];
+    }
+
+    function extractAndFormatMetrics(payload, sig = null) {
+      const p = payload && typeof payload === 'object' ? payload : {};
+      const consumed = new Set();
+      const badges = [];
+      const kpis = [];
+
+      function addMetric(icon, text, colorVariant, kpiLabel, kpiPrimary, kpiSecondary = '') {
+        const palettes = {
+          purple: 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30',
+          amber: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
+          sky: 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30',
+          cyan: 'bg-cyan-50 text-cyan-800 border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30',
+          blue: 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30',
+          teal: 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30',
+          emerald: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30',
+          indigo: 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30',
+          rose: 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40',
+          neutral: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+        };
+        const cls = palettes[colorVariant] || palettes.neutral;
+        badges.push(`
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold border ${cls}">
+            <i class="mdi ${icon} text-xs leading-none"></i><span>${escapeHtml(text)}</span>
+          </span>
+        `);
+        kpis.push({
+          icon,
+          label: kpiLabel,
+          primary: kpiPrimary,
+          secondary: kpiSecondary,
+          cls
+        });
+      }
+
+      // 1. Tire Pressure / TPMS (pressure_PSI, pressure_kPa, pressure_bar) -> ALWAYS Bar primary
+      if (p.pressure_PSI !== undefined && p.pressure_PSI !== null) {
+        consumed.add('pressure_PSI');
+        const psi = Number(p.pressure_PSI);
+        if (!Number.isNaN(psi)) {
+          const bar = (psi * 0.0689476).toFixed(2);
+          addMetric('mdi-car-tire-alert', `${bar} bar (${psi.toFixed(1)} PSI)`, 'purple', 'Däcktryck', `${bar} bar`, `${psi.toFixed(1)} PSI`);
+        }
+      } else if (p.pressure_kPa !== undefined && p.pressure_kPa !== null) {
+        consumed.add('pressure_kPa');
+        const kpa = Number(p.pressure_kPa);
+        if (!Number.isNaN(kpa)) {
+          const bar = (kpa / 100.0).toFixed(2);
+          addMetric('mdi-car-tire-alert', `${bar} bar (${kpa.toFixed(0)} kPa)`, 'purple', 'Däcktryck', `${bar} bar`, `${kpa.toFixed(0)} kPa`);
+        }
+      } else if (p.pressure_bar !== undefined && p.pressure_bar !== null) {
+        consumed.add('pressure_bar');
+        const bar = Number(p.pressure_bar);
+        if (!Number.isNaN(bar)) {
+          addMetric('mdi-car-tire-alert', `${bar.toFixed(2)} bar`, 'purple', 'Däcktryck', `${bar.toFixed(2)} bar`, `${(bar * 100).toFixed(0)} kPa`);
+        }
+      }
+
+      // TPMS specific auxiliary fields: status, flags, wheel, alert
+      if (p.status !== undefined && p.status !== null) {
+        consumed.add('status');
+        const stVal = p.status;
+        const hexSuffix = typeof stVal === 'number' ? ` (0x${stVal.toString(16).toUpperCase()})` : '';
+        addMetric('mdi-information-outline', `Status: ${stVal}${hexSuffix}`, 'neutral', 'Statuskod', `${stVal}`, hexSuffix.replace(/[()]/g, '').trim());
+      }
+      if (p.wheel !== undefined && p.wheel !== null) {
+        consumed.add('wheel');
+        addMetric('mdi-tire', `Hjul: ${p.wheel}`, 'purple', 'Hjulposition', String(p.wheel));
+      }
+      if (p.flags !== undefined && p.flags !== null) {
+        consumed.add('flags');
+        addMetric('mdi-flag-outline', `Flags: ${p.flags}`, 'neutral', 'Flaggor', String(p.flags));
+      }
+      if (p.alert !== undefined && p.alert !== null) {
+        consumed.add('alert');
+        const isAlert = Boolean(p.alert) && String(p.alert) !== '0';
+        addMetric('mdi-alert-outline', `Alert: ${p.alert}`, isAlert ? 'rose' : 'neutral', 'TPMS Larm', String(p.alert));
+      }
+
+      // 2. Temperature (temperature_C, temperature_F, temp_C)
+      let tempC = null;
+      let rawF = null;
+      if (p.temperature_C !== undefined && p.temperature_C !== null) {
+        consumed.add('temperature_C');
+        tempC = Number(p.temperature_C);
+      } else if (p.temp_C !== undefined && p.temp_C !== null) {
+        consumed.add('temp_C');
+        tempC = Number(p.temp_C);
+      } else if (p.temperature_F !== undefined && p.temperature_F !== null) {
+        consumed.add('temperature_F');
+        rawF = Number(p.temperature_F);
+        if (!Number.isNaN(rawF)) tempC = ((rawF - 32.0) * 5.0) / 9.0;
+      } else if (sig && sig.temperature_c !== null && sig.temperature_c !== undefined) {
+        tempC = Number(sig.temperature_c);
+      }
+      if (tempC !== null && !Number.isNaN(tempC)) {
+        const subF = rawF !== null ? `${rawF.toFixed(1)} °F` : '';
+        addMetric('mdi-thermometer', `${tempC.toFixed(1)} °C`, 'amber', 'Temperatur', `${tempC.toFixed(1)} °C`, subF);
+      }
+
+      // 3. Wind (Oregon-WGR800 etc.)
+      let windMs = null;
+      if (p.wind_avg_m_s !== undefined && p.wind_avg_m_s !== null) {
+        consumed.add('wind_avg_m_s');
+        windMs = Number(p.wind_avg_m_s);
+      } else if (p.wind_speed_m_s !== undefined && p.wind_speed_m_s !== null) {
+        consumed.add('wind_speed_m_s');
+        windMs = Number(p.wind_speed_m_s);
+      } else if (p.wind_avg_km_h !== undefined && p.wind_avg_km_h !== null) {
+        consumed.add('wind_avg_km_h');
+        windMs = Number(p.wind_avg_km_h) / 3.6;
+      } else if (p.wind_speed_km_h !== undefined && p.wind_speed_km_h !== null) {
+        consumed.add('wind_speed_km_h');
+        windMs = Number(p.wind_speed_km_h) / 3.6;
+      } else if (p.speed !== undefined && p.speed !== null) {
+        consumed.add('speed');
+        windMs = Number(p.speed);
+      }
+
+      let gustMs = null;
+      if (p.wind_max_m_s !== undefined && p.wind_max_m_s !== null) {
+        consumed.add('wind_max_m_s');
+        gustMs = Number(p.wind_max_m_s);
+      } else if (p.gust_speed_m_s !== undefined && p.gust_speed_m_s !== null) {
+        consumed.add('gust_speed_m_s');
+        gustMs = Number(p.gust_speed_m_s);
+      } else if (p.wind_max_km_h !== undefined && p.wind_max_km_h !== null) {
+        consumed.add('wind_max_km_h');
+        gustMs = Number(p.wind_max_km_h) / 3.6;
+      } else if (p.gust !== undefined && p.gust !== null) {
+        consumed.add('gust');
+        gustMs = Number(p.gust);
+      }
+
+      if (windMs !== null && !Number.isNaN(windMs)) {
+        const gustText = gustMs !== null && !Number.isNaN(gustMs) ? ` (Byar: ${gustMs.toFixed(1)} m/s)` : '';
+        addMetric(
+          'mdi-weather-windy',
+          `${windMs.toFixed(1)} m/s${gustText}`,
+          'cyan',
+          'Vindhastighet',
+          `${windMs.toFixed(1)} m/s`,
+          gustMs !== null && !Number.isNaN(gustMs) ? `Byvind: ${gustMs.toFixed(1)} m/s` : ''
+        );
+      } else if (gustMs !== null && !Number.isNaN(gustMs)) {
+        addMetric('mdi-weather-windy', `Byar: ${gustMs.toFixed(1)} m/s`, 'cyan', 'Byvind', `${gustMs.toFixed(1)} m/s`);
+      }
+
+      const windDirRaw = p.wind_dir_deg ?? p.wind_dir ?? p.direction_deg;
+      if (windDirRaw !== undefined && windDirRaw !== null) {
+        consumed.add('wind_dir_deg');
+        consumed.add('wind_dir');
+        consumed.add('direction_deg');
+        const deg = Number(windDirRaw);
+        if (!Number.isNaN(deg)) {
+          const comp = degreesToSwedishCompass(deg);
+          addMetric('mdi-compass-outline', `${comp} (${deg.toFixed(0)}°)`, 'cyan', 'Vindriktning', `${comp}`, `${deg.toFixed(0)}°`);
+        } else {
+          addMetric('mdi-compass-outline', String(windDirRaw), 'cyan', 'Vindriktning', String(windDirRaw));
+        }
+      }
+
+      // 4. Rain (Oregon-PCR800 etc.)
+      let rainMm = null;
+      if (p.rain_mm !== undefined && p.rain_mm !== null) {
+        consumed.add('rain_mm');
+        rainMm = Number(p.rain_mm);
+      } else if (p.total_rain_mm !== undefined && p.total_rain_mm !== null) {
+        consumed.add('total_rain_mm');
+        rainMm = Number(p.total_rain_mm);
+      } else if (p.rain_in !== undefined && p.rain_in !== null) {
+        consumed.add('rain_in');
+        rainMm = Number(p.rain_in) * 25.4;
+      }
+
+      let rainRateMmH = null;
+      if (p.rain_rate_mm_h !== undefined && p.rain_rate_mm_h !== null) {
+        consumed.add('rain_rate_mm_h');
+        rainRateMmH = Number(p.rain_rate_mm_h);
+      } else if (p.rain_rate_in_h !== undefined && p.rain_rate_in_h !== null) {
+        consumed.add('rain_rate_in_h');
+        rainRateMmH = Number(p.rain_rate_in_h) * 25.4;
+      }
+
+      if (rainMm !== null && !Number.isNaN(rainMm)) {
+        const rateSuffix = rainRateMmH !== null && !Number.isNaN(rainRateMmH) ? ` (${rainRateMmH.toFixed(1)} mm/h)` : '';
+        addMetric(
+          'mdi-weather-pouring',
+          `${rainMm.toFixed(1)} mm${rateSuffix}`,
+          'blue',
+          'Nederbörd',
+          `${rainMm.toFixed(1)} mm`,
+          rainRateMmH !== null && !Number.isNaN(rainRateMmH) ? `Intensitet: ${rainRateMmH.toFixed(1)} mm/h` : 'Ackumulerat'
+        );
+      } else if (rainRateMmH !== null && !Number.isNaN(rainRateMmH)) {
+        addMetric('mdi-weather-pouring', `${rainRateMmH.toFixed(1)} mm/h`, 'blue', 'Regnintensitet', `${rainRateMmH.toFixed(1)} mm/h`);
+      }
+
+      // 5. Humidity & Atmospheric Pressure
+      const humVal = p.humidity ?? (sig ? sig.humidity : null);
+      if (humVal !== undefined && humVal !== null && !Number.isNaN(Number(humVal))) {
+        consumed.add('humidity');
+        addMetric('mdi-water-percent', `${Number(humVal).toFixed(0)} %`, 'sky', 'Luftfuktighet', `${Number(humVal).toFixed(0)} %`);
+      }
+
+      if (p.pressure_hPa !== undefined && p.pressure_hPa !== null) {
+        consumed.add('pressure_hPa');
+        addMetric('mdi-gauge', `${Number(p.pressure_hPa).toFixed(1)} hPa`, 'teal', 'Lufttryck', `${Number(p.pressure_hPa).toFixed(1)} hPa`);
+      }
+
+      // 6. Electricity, Energy & Water
+      const elParts = [];
+      if (p.power_W !== undefined && p.power_W !== null) {
+        consumed.add('power_W');
+        elParts.push(`${Number(p.power_W).toFixed(0)} W`);
+      }
+      if (p.energy_kWh !== undefined && p.energy_kWh !== null) {
+        consumed.add('energy_kWh');
+        elParts.push(`${Number(p.energy_kWh).toFixed(2)} kWh`);
+      }
+      if (p.current_A !== undefined && p.current_A !== null) {
+        consumed.add('current_A');
+        elParts.push(`${Number(p.current_A).toFixed(1)} A`);
+      }
+      if (p.voltage_V !== undefined && p.voltage_V !== null) {
+        consumed.add('voltage_V');
+        elParts.push(`${Number(p.voltage_V).toFixed(0)} V`);
+      }
+      if (elParts.length > 0) {
+        addMetric('mdi-flash', elParts.join(' / '), 'emerald', 'El & Energi', elParts[0], elParts.slice(1).join(' • '));
+      }
+
+      const waterVal = p.volume_m3 ?? p.consumption ?? p.water;
+      if (waterVal !== undefined && waterVal !== null) {
+        consumed.add('volume_m3');
+        consumed.add('consumption');
+        consumed.add('water');
+        const unit = p.volume_m3 !== undefined ? ' m³' : '';
+        addMetric('mdi-water-pump', `${waterVal}${unit}`, 'blue', 'Förbrukning / Vatten', `${waterVal}${unit}`);
+      }
+
+      // 7. Switch / Door / Motion
+      if (p.motion !== undefined || p.contact_open !== undefined) {
+        consumed.add('motion');
+        consumed.add('contact_open');
+        const label = p.motion !== undefined ? `Rörelse: ${p.motion}` : `Kontakt: ${p.contact_open ? 'ÖPPEN' : 'STÄNGD'}`;
+        addMetric('mdi-motion-sensor', label, 'indigo', 'Säkerhet / Kontakt', label);
+      } else {
+        const swVal = p.state ?? p.cmd ?? p.button;
+        if (swVal !== undefined && swVal !== null) {
+          consumed.add('state');
+          consumed.add('cmd');
+          consumed.add('button');
+          addMetric('mdi-toggle-switch-outline', `${swVal}`, 'indigo', 'Switch / Status', String(swVal));
+        }
+      }
+
+      // 8. Battery (battery_ok, battery_low, battery_mV, battery_V)
+      const batOk = p.battery_ok !== undefined ? p.battery_ok : (sig ? sig.battery_ok : undefined);
+      const batLow = p.battery_low;
+      let voltStr = '';
+      if (p.battery_mV !== undefined && p.battery_mV !== null) {
+        consumed.add('battery_mV');
+        voltStr = `${Number(p.battery_mV).toFixed(0)} mV`;
+      } else if (p.battery_V !== undefined && p.battery_V !== null) {
+        consumed.add('battery_V');
+        voltStr = `${Number(p.battery_V).toFixed(2)} V`;
+      }
+
+      if (batOk !== undefined && batOk !== null) {
+        consumed.add('battery_ok');
+        consumed.add('battery_low');
+        const isLow = Number(batOk) === 0 || Number(batLow) === 1;
+        const vSuffix = voltStr ? ` (${voltStr})` : '';
+        if (isLow) {
+          addMetric('mdi-battery-alert-variant-outline', `Batteri LÅGT${vSuffix}`, 'rose', 'Batteristatus', 'LÅGT', voltStr);
+        } else {
+          addMetric('mdi-battery-check', `Batteri OK${vSuffix}`, 'emerald', 'Batteristatus', 'OK', voltStr);
+        }
+      } else if (batLow !== undefined && batLow !== null) {
+        consumed.add('battery_low');
+        const isLow = Number(batLow) === 1;
+        addMetric(
+          isLow ? 'mdi-battery-alert-variant-outline' : 'mdi-battery-check',
+          isLow ? 'Batteri LÅGT' : 'Batteri OK',
+          isLow ? 'rose' : 'emerald',
+          'Batteristatus',
+          isLow ? 'LÅGT' : 'OK',
+          voltStr
+        );
+      } else if (voltStr) {
+        addMetric('mdi-battery-outline', `Batteri: ${voltStr}`, 'emerald', 'Batterispänning', voltStr);
+      }
+
+      // 9. SMART FALLBACK FOR ALL REMAINING PAYLOAD KEYS
+      Object.keys(p).forEach((key) => {
+        if (TECHNICAL_METADATA_KEYS.has(key) || consumed.has(key)) return;
+        const val = p[key];
+        if (val === null || val === undefined || val === '') return;
+        const formattedVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+        addMetric('mdi-tag-outline', `${key}: ${formattedVal}`, 'neutral', key, formattedVal);
+      });
+
+      return {
+        badgesHtml: badges.join(''),
+        kpis
+      };
+    }
+
+    function extractRadioMetadata(sig, payload) {
+      const p = payload && typeof payload === 'object' ? payload : {};
+      let freqMHz = sig && sig.freq ? Number(sig.freq) : null;
+      if (!freqMHz && p.freq !== undefined) freqMHz = Number(p.freq);
+      if (!freqMHz && p.freq1 !== undefined) freqMHz = Number(p.freq1);
+      if (freqMHz && freqMHz > 1000000) freqMHz = freqMHz / 1000000;
+
+      const mod = p.mod ? String(p.mod).toUpperCase() : (p.freq1 !== undefined && p.freq2 !== undefined ? 'FSK' : '');
+      const proto = p.protocol !== undefined ? `#${p.protocol}` : '';
+      const mic = p.mic ? String(p.mic) : '';
+
+      const freqLabel = freqMHz ? `${freqMHz.toFixed(2)} MHz${mod ? ' (' + mod + ')' : ''}` : (mod || '-');
+      return { freqMHz, mod, proto, mic, freqLabel };
     }
 
     // -----------------------------------------------------------------------
@@ -1185,7 +1554,16 @@
       const bat = sig.battery_ok !== null && sig.battery_ok !== undefined ? sig.battery_ok : p.battery_ok;
 
       if (activeQuickPill === 'weather') {
-        return cat === 'weather' || p.temperature_C !== undefined || p.humidity !== undefined || p.wind_avg_km_h !== undefined || p.rain_mm !== undefined;
+        return (
+          cat === 'weather' ||
+          p.temperature_C !== undefined ||
+          p.humidity !== undefined ||
+          p.wind_avg_km_h !== undefined ||
+          p.wind_avg_m_s !== undefined ||
+          p.wind_speed_m_s !== undefined ||
+          p.rain_mm !== undefined ||
+          p.rain_in !== undefined
+        );
       }
       if (activeQuickPill === 'tpms') {
         return cat === 'tpms' || p.pressure_kPa !== undefined || p.pressure_bar !== undefined || p.pressure_PSI !== undefined;
@@ -1194,7 +1572,7 @@
         return cat === 'meter' || cat === 'switch' || cat === 'security' || p.power_W !== undefined || p.energy_kWh !== undefined || p.state !== undefined || p.cmd !== undefined;
       }
       if (activeQuickPill === 'low_battery') {
-        return bat !== null && bat !== undefined && Number(bat) === 0;
+        return (bat !== null && bat !== undefined && Number(bat) === 0) || Number(p.battery_low) === 1;
       }
       return true;
     }
@@ -1310,7 +1688,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // Category Icons & Extended MDI Metric Badges
+    // Card & Table Builders for Signaler
     // -----------------------------------------------------------------------
     function getCategoryIcon(category) {
       const c = (category || '').toLowerCase();
@@ -1335,24 +1713,28 @@
         : `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(sig.model)}</span>`;
 
       const channelPart = sig.channel !== null && sig.channel !== undefined && sig.channel !== ''
-        ? `<span>Kanal: <strong class="text-slate-700 dark:text-slate-200">${escapeHtml(sig.channel)}</strong></span>`
+        ? `<span>K:<strong class="text-slate-700 dark:text-slate-200">${escapeHtml(sig.channel)}</strong></span>`
         : '';
 
-      const freqPart = sig.freq
-        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"><i class="mdi mdi-sine-wave text-xs"></i>${Number(sig.freq).toFixed(2)} MHz</span>`
+      const radio = extractRadioMetadata(sig, p);
+      const freqBadge = radio.freqMHz
+        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"><i class="mdi mdi-sine-wave text-xs"></i>${escapeHtml(radio.freqLabel)}</span>`
+        : '';
+      const protoBadge = radio.proto
+        ? `<span class="px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/70" title="rtl_433 Protokoll">${escapeHtml(radio.proto)}</span>`
         : '';
 
       const exactTime = formatTimestamp(sig.timestamp);
       const relTime = formatRelativeTime(sig.timestamp);
 
-      const metricsHtml = buildExtendedMetricBadges(sig, p);
+      const { badgesHtml } = extractAndFormatMetrics(p, sig);
       const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr);
       const hitCount = sig.hit_count || 1;
 
       return `
         <div
           id="sigcard_${escapeHtml(devKey)}"
-          onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${ Number(sig.id || 0) })"
+          onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})"
           class="${highlightCls} cursor-pointer group bg-white dark:bg-slate-900 hover:bg-slate-50/90 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-sky-500/50 rounded-xl p-2.5 transition duration-200 shadow-sm flex flex-col justify-between gap-2"
         >
           <!-- Row 1: Header -->
@@ -1361,7 +1743,7 @@
               <i class="mdi ${catIcon} text-base shrink-0"></i>
               <div class="text-xs truncate flex items-baseline gap-1 min-w-0">${titleHtml}</div>
             </div>
-            <div class="flex items-center gap-1 shrink-0">
+            <div class="flex items-center gap-0.5 shrink-0">
               <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
               <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias & Kategori">
                 <i class="mdi mdi-pencil-outline text-sm"></i>
@@ -1375,12 +1757,13 @@
             </div>
           </div>
 
-          <!-- Row 2: Metadata -->
-          <div class="flex flex-wrap items-center justify-between gap-1.5 text-[11px] font-mono text-slate-500 dark:text-slate-400">
-            <div class="flex items-center gap-2">
-              <span>ID: <strong class="text-slate-700 dark:text-slate-200">${escapeHtml(sig.device_id)}</strong></span>
+          <!-- Row 2: Metadata (ID, Channel, Frequency/Modulation, Protocol, Relative Time) -->
+          <div class="flex flex-wrap items-center justify-between gap-1 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span>ID:<strong class="text-slate-700 dark:text-slate-200">${escapeHtml(sig.device_id)}</strong></span>
               ${channelPart}
-              ${freqPart}
+              ${freqBadge}
+              ${protoBadge}
             </div>
             <span class="inline-flex items-center gap-0.5 text-slate-400 dark:text-slate-500" title="${escapeHtml(exactTime)}" data-ts="${escapeHtml(sig.timestamp)}">
               <i class="mdi mdi-clock-outline text-xs"></i>
@@ -1388,17 +1771,20 @@
             </span>
           </div>
 
-          <!-- Row 3: Telemetry Metrics -->
+          <!-- Row 3: Smart Analyzed Metrics -->
           <div class="flex flex-wrap items-center gap-1 py-0.5">
-            ${metricsHtml}
+            ${badgesHtml}
           </div>
 
           <!-- Row 4: Footer (RSSI/SNR + Counter) -->
           <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/80 text-[11px] font-mono">
             ${footerSignalHtml}
-            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700" title="Antal mottagna paket från denna enhet">
-              <i class="mdi mdi-counter text-xs text-sky-500"></i>${hitCount}
-            </span>
+            <div class="flex items-center gap-1">
+              ${radio.mic ? `<span class="text-[10px] text-slate-400 dark:text-slate-500">${escapeHtml(radio.mic)}</span>` : ''}
+              <span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700" title="Antal mottagna paket från denna enhet">
+                <i class="mdi mdi-counter text-xs text-sky-500"></i>${hitCount}
+              </span>
+            </div>
           </div>
         </div>
       `;
@@ -1411,7 +1797,8 @@
       const catIcon = getCategoryIcon(sig.category);
       const exactTime = formatTimestamp(sig.timestamp);
       const relTime = formatRelativeTime(sig.timestamp);
-      const metricsHtml = buildExtendedMetricBadges(sig, p);
+      const { badgesHtml } = extractAndFormatMetrics(p, sig);
+      const radio = extractRadioMetadata(sig, p);
       const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr);
       const hitCount = sig.hit_count || 1;
 
@@ -1435,10 +1822,10 @@
             ${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ` <span class="text-slate-400">/ K${escapeHtml(sig.channel)}</span>` : ''}
           </td>
           <td class="py-1.5 px-2.5">
-            <div class="flex flex-wrap items-center gap-1">${metricsHtml}</div>
+            <div class="flex flex-wrap items-center gap-1">${badgesHtml}</div>
           </td>
           <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-600 dark:text-slate-300">
-            ${sig.freq ? `<i class="mdi mdi-sine-wave mr-0.5 text-slate-400"></i>${Number(sig.freq).toFixed(2)} MHz` : '-'}
+            <i class="mdi mdi-sine-wave mr-0.5 text-slate-400"></i>${escapeHtml(radio.freqLabel)} ${radio.proto ? `<span class="text-slate-400">${escapeHtml(radio.proto)}</span>` : ''}
           </td>
           <td class="py-1.5 px-2.5 font-mono text-[11px] whitespace-nowrap">
             ${footerSignalHtml}
@@ -1458,159 +1845,6 @@
           </td>
         </tr>
       `;
-    }
-
-    function buildExtendedMetricBadges(sig, p) {
-      const badges = [];
-
-      // 1. Temperature (temperature_C / temperature_F)
-      let tempC = sig.temperature_c !== null && sig.temperature_c !== undefined ? sig.temperature_c : p.temperature_C;
-      if ((tempC === null || tempC === undefined) && p.temperature_F !== undefined) {
-        tempC = ((Number(p.temperature_F) - 32) * 5) / 9;
-      }
-      if (tempC !== null && tempC !== undefined && !Number.isNaN(Number(tempC))) {
-        badges.push(`
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30">
-            <i class="mdi mdi-thermometer text-xs"></i>${Number(tempC).toFixed(1)} °C
-          </span>
-        `);
-      }
-
-      // 2. Humidity (humidity)
-      const hum = sig.humidity !== null && sig.humidity !== undefined ? sig.humidity : p.humidity;
-      if (hum !== null && hum !== undefined && !Number.isNaN(Number(hum))) {
-        badges.push(`
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30">
-            <i class="mdi mdi-water-percent text-xs"></i>${Number(hum).toFixed(0)} %
-          </span>
-        `);
-      }
-
-      // 3. Atmospheric Pressure (pressure_hPa)
-      if (p.pressure_hPa !== undefined && p.pressure_hPa !== null) {
-        badges.push(`
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-teal-50 text-teal-800 border border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30">
-            <i class="mdi mdi-gauge text-xs"></i>${Number(p.pressure_hPa).toFixed(1)} hPa
-          </span>
-        `);
-      }
-
-      // 4. Tire Pressure / TPMS (pressure_kPa, pressure_bar, pressure_PSI)
-      let kpa = null;
-      if (p.pressure_kPa !== undefined) kpa = Number(p.pressure_kPa);
-      else if (p.pressure_bar !== undefined) kpa = Number(p.pressure_bar) * 100;
-      else if (p.pressure_PSI !== undefined) kpa = Number(p.pressure_PSI) * 6.89476;
-
-      if (kpa !== null && !Number.isNaN(kpa)) {
-        const bar = (kpa / 100).toFixed(2);
-        badges.push(`
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-800 border border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30">
-            <i class="mdi mdi-car-tire-alert text-xs"></i>${kpa.toFixed(0)} kPa (${bar} bar)
-          </span>
-        `);
-      }
-
-      // 5. Wind (wind_avg_km_h, wind_avg_m_s, wind_max_km_h, wind_max_m_s, wind_dir_deg)
-      let windMs = null;
-      if (p.wind_avg_m_s !== undefined) windMs = Number(p.wind_avg_m_s);
-      else if (p.wind_avg_km_h !== undefined) windMs = Number(p.wind_avg_km_h) / 3.6;
-
-      let gustMs = null;
-      if (p.wind_max_m_s !== undefined) gustMs = Number(p.wind_max_m_s);
-      else if (p.wind_max_km_h !== undefined) gustMs = Number(p.wind_max_km_h) / 3.6;
-
-      if (windMs !== null && !Number.isNaN(windMs)) {
-        const gustStr = gustMs !== null && !Number.isNaN(gustMs) ? ` (Byar ${gustMs.toFixed(1)})` : '';
-        badges.push(`
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30">
-            <i class="mdi mdi-weather-windy text-xs"></i>${windMs.toFixed(1)} m/s${gustStr}
-          </span>
-        `);
-      }
-      if (p.wind_dir_deg !== undefined && p.wind_dir_deg !== null) {
-        badges.push(`
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30">
-            <i class="mdi mdi-compass-outline text-xs"></i>${Number(p.wind_dir_deg).toFixed(0)}°
-          </span>
-        `);
-      }
-
-      // 6. Rain (rain_mm, rain_rate_mm_h)
-      if (p.rain_mm !== undefined && p.rain_mm !== null) {
-        const rateStr = p.rain_rate_mm_h !== undefined ? ` (${Number(p.rain_rate_mm_h).toFixed(1)} mm/h)` : '';
-        badges.push(`
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30">
-            <i class="mdi mdi-weather-pouring text-xs"></i>${Number(p.rain_mm).toFixed(1)} mm${rateStr}
-          </span>
-        `);
-      }
-
-      // 7. Energy / Power (power_W, energy_kWh, current_A, voltage_V)
-      const energyParts = [];
-      if (p.power_W !== undefined) energyParts.push(`${Number(p.power_W).toFixed(0)} W`);
-      if (p.energy_kWh !== undefined) energyParts.push(`${Number(p.energy_kWh).toFixed(2)} kWh`);
-      if (p.current_A !== undefined) energyParts.push(`${Number(p.current_A).toFixed(1)} A`);
-      if (p.voltage_V !== undefined) energyParts.push(`${Number(p.voltage_V).toFixed(0)} V`);
-      if (energyParts.length > 0) {
-        badges.push(`
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30">
-            <i class="mdi mdi-flash text-xs"></i>${escapeHtml(energyParts.join(' / '))}
-          </span>
-        `);
-      }
-
-      // 8. Switch / Door / Motion (state, cmd, button, contact_open, motion)
-      if (p.motion !== undefined || p.contact_open !== undefined) {
-        const label = p.motion !== undefined ? `Rörelse: ${p.motion}` : `Kontakt: ${p.contact_open ? 'ÖPPEN' : 'STÄNGD'}`;
-        badges.push(`
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30">
-            <i class="mdi mdi-motion-sensor text-xs"></i>${escapeHtml(label)}
-          </span>
-        `);
-      } else {
-        const swVal = p.state ?? p.cmd ?? p.button;
-        if (swVal !== undefined && swVal !== null) {
-          badges.push(`
-            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30">
-              <i class="mdi mdi-toggle-switch-outline text-xs"></i>${escapeHtml(String(swVal))}
-            </span>
-          `);
-        }
-      }
-
-      // 9. Battery (battery_ok)
-      const bat = sig.battery_ok !== null && sig.battery_ok !== undefined ? sig.battery_ok : p.battery_ok;
-      if (bat !== null && bat !== undefined) {
-        const isOk = Number(bat) === 1;
-        if (isOk) {
-          badges.push(`
-            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30">
-              <i class="mdi mdi-battery-check-outline text-xs"></i>OK
-            </span>
-          `);
-        } else {
-          badges.push(`
-            <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-800 border border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40">
-              <i class="mdi mdi-battery-alert-variant-outline text-xs"></i>LÅGT
-            </span>
-          `);
-        }
-      }
-
-      // Fallback if no known telemetry key matched
-      if (badges.length === 0) {
-        const skip = new Set(['time', 'model', 'id', 'device', 'channel', 'freq', 'freq1', 'freq2', 'rssi', 'snr', 'noise', 'mod', 'mic', 'protocol']);
-        const extras = Object.keys(p).filter((k) => !skip.has(k)).slice(0, 2);
-        extras.forEach((k) => {
-          badges.push(`
-            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-              ${escapeHtml(k)}: ${escapeHtml(String(p[k]))}
-            </span>
-          `);
-        });
-      }
-
-      return badges.join('');
     }
 
     function buildFooterSignalStrength(rssi, snr) {
@@ -1678,8 +1912,27 @@
     }
 
     // -----------------------------------------------------------------------
-    // Detail Modal
+    // Redesigned Detail Modal (Visual KPI Grid + Full History + Syntax JSON)
     // -----------------------------------------------------------------------
+    function syntaxHighlightJson(obj) {
+      const jsonStr = JSON.stringify(obj, null, 2);
+      const escaped = escapeHtml(jsonStr);
+      return escaped.replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        (match) => {
+          let cls = 'json-number';
+          if (/^"/.test(match)) {
+            cls = /:$/.test(match) ? 'json-key' : 'json-string';
+          } else if (/true|false/.test(match)) {
+            cls = 'json-boolean';
+          } else if (/null/.test(match)) {
+            cls = 'json-null';
+          }
+          return `<span class="${cls}">${match}</span>`;
+        }
+      );
+    }
+
     async function openDeviceModalByKey(deviceKey, signalId = 0) {
       currentModalDeviceKey = deviceKey;
       document.getElementById('modalActionStatus').textContent = '';
@@ -1700,37 +1953,87 @@
 
         currentModalPayload = (matchingSig && matchingSig.payload) || dev.last_payload || {};
 
+        document.getElementById('modalCategoryIcon').className = `mdi ${getCategoryIcon(dev.category)} text-lg`;
         document.getElementById('modalTitle').textContent = dev.alias ? `${dev.alias} (${dev.model})` : dev.model;
-        document.getElementById('modalSubtitle').textContent = `Key: ${dev.device_key} | ID: ${dev.device_id} | Träffar: ${dev.hit_count}`;
+        document.getElementById('modalSubtitle').textContent = `Key: ${dev.device_key} • ID: ${dev.device_id} • Träffar: ${dev.hit_count}`;
         document.getElementById('modalCategoryBadge').textContent = dev.category || 'Sensor';
+        document.getElementById('modalPacketTime').textContent = formatTimestamp(currentModalPayload.time || dev.last_seen);
 
         document.getElementById('modalAliasInput').value = dev.alias || '';
         document.getElementById('modalCategorySelect').value = dev.category || 'Sensor';
         document.getElementById('modalMqttToggle').checked = Boolean(dev.mqtt_enabled);
         document.getElementById('modalIgnoredToggle').checked = Boolean(dev.ignored);
 
-        document.getElementById('modalRawJson').textContent = JSON.stringify(currentModalPayload, null, 2);
+        // 1. Build Visual KPI Cards Grid
+        const analyzed = extractAndFormatMetrics(currentModalPayload, matchingSig);
+        const radio = extractRadioMetadata(matchingSig, currentModalPayload);
+        const kpiCardsHtml = analyzed.kpis.map((k) => `
+          <div class="p-3 rounded-xl border ${k.cls} flex flex-col justify-between">
+            <div class="flex items-center justify-between text-[11px] opacity-80">
+              <span class="font-semibold uppercase tracking-wider truncate">${escapeHtml(k.label)}</span>
+              <i class="mdi ${k.icon} text-base"></i>
+            </div>
+            <div class="mt-1.5">
+              <div class="text-base sm:text-lg font-bold font-mono leading-tight">${escapeHtml(k.primary)}</div>
+              ${k.secondary ? `<div class="text-[11px] font-mono opacity-80 mt-0.5">${escapeHtml(k.secondary)}</div>` : ''}
+            </div>
+          </div>
+        `);
 
+        // Add Signal Quality KPI Card
+        if (currentModalPayload.rssi !== undefined) {
+          const rssiVal = Number(currentModalPayload.rssi).toFixed(1);
+          const snrVal = currentModalPayload.snr !== undefined ? `SNR: ${Number(currentModalPayload.snr).toFixed(1)} dB` : '';
+          kpiCardsHtml.push(`
+            <div class="p-3 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+              <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                <span class="font-semibold uppercase tracking-wider">Signalstyrka</span>
+                <i class="mdi mdi-wifi-strength-4 text-base text-emerald-500"></i>
+              </div>
+              <div class="mt-1.5">
+                <div class="text-base sm:text-lg font-bold font-mono text-slate-900 dark:text-white leading-tight">${rssiVal} dB RSSI</div>
+                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(snrVal)}${currentModalPayload.noise !== undefined ? ` • Brus: ${Number(currentModalPayload.noise).toFixed(1)} dB` : ''}</div>
+              </div>
+            </div>
+          `);
+        }
+
+        // Add Radio & Protocol KPI Card
+        const radioParts = [radio.mod, radio.proto ? `Protokoll ${radio.proto}` : '', radio.mic].filter(Boolean);
+        kpiCardsHtml.push(`
+          <div class="p-3 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+              <span class="font-semibold uppercase tracking-wider">Radio &amp; Frekvens</span>
+              <i class="mdi mdi-sine-wave text-base text-sky-500"></i>
+            </div>
+            <div class="mt-1.5">
+              <div class="text-base sm:text-lg font-bold font-mono text-slate-900 dark:text-white leading-tight">${escapeHtml(radio.freqMHz ? radio.freqMHz.toFixed(2) + ' MHz' : '-')}</div>
+              <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(radioParts.join(' • ') || 'Standard RF')}</div>
+            </div>
+          </div>
+        `);
+
+        document.getElementById('modalKpiGrid').innerHTML = kpiCardsHtml.join('');
+
+        // 2. Build Last 20 Measurements Table using extractAndFormatMetrics()
         const tbody = document.getElementById('modalHistoryBody');
         tbody.innerHTML = history.map((h) => {
           const hp = h.payload || {};
-          const summaryParts = [];
-          if (h.temperature_c !== null && h.temperature_c !== undefined) summaryParts.push(`${h.temperature_c} °C`);
-          if (h.humidity !== null && h.humidity !== undefined) summaryParts.push(`${h.humidity} %`);
-          if (hp.pressure_kPa !== undefined) summaryParts.push(`${hp.pressure_kPa} kPa`);
-          if (hp.state !== undefined) summaryParts.push(`state=${hp.state}`);
-          if (h.battery_ok !== null && h.battery_ok !== undefined) summaryParts.push(`bat=${h.battery_ok ? 'OK' : 'LOW'}`);
-          if (summaryParts.length === 0) summaryParts.push(JSON.stringify(hp).slice(0, 70));
+          const hMetrics = extractAndFormatMetrics(hp, h);
+          const hRadio = extractRadioMetadata(h, hp);
 
           return `
-            <tr class="hover:bg-slate-100 dark:hover:bg-slate-800/50">
-              <td class="py-1.5 px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">${formatTimestamp(h.timestamp)}</td>
-              <td class="py-1.5 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${h.freq ? Number(h.freq).toFixed(2) + ' MHz' : '-'}</td>
-              <td class="py-1.5 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${h.rssi !== null ? h.rssi + ' dB' : '-'}</td>
-              <td class="py-1.5 px-3 text-sky-600 dark:text-sky-300 truncate max-w-xs">${escapeHtml(summaryParts.join(' | '))}</td>
+            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+              <td class="py-2 px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">${formatTimestamp(h.timestamp)}</td>
+              <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${escapeHtml(hRadio.freqLabel)}</td>
+              <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${h.rssi !== null ? h.rssi + ' dB' : '-'}</td>
+              <td class="py-2 px-3"><div class="flex flex-wrap items-center gap-1">${hMetrics.badgesHtml}</div></td>
             </tr>
           `;
         }).join('');
+
+        // 3. Syntax-highlighted Raw JSON
+        document.getElementById('modalRawJson').innerHTML = syntaxHighlightJson(currentModalPayload);
 
         document.getElementById('detailModal').classList.remove('hidden');
       } catch (e) {
@@ -1782,7 +2085,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // Devices Tab (Enhetsregister - Compact Multi-Column Grid)
+    // Devices Tab (Enhetsregister - 3-5 Column Grid WITH Telemetry Badges)
     // -----------------------------------------------------------------------
     function debouncedLoadDevices() {
       clearTimeout(deviceDebounceTimer);
@@ -1838,21 +2141,27 @@
         const isIgnored = Number(dev.ignored) === 1;
         const isMqtt = Number(dev.mqtt_enabled) === 1;
         const catIcon = getCategoryIcon(dev.category);
+        const lastPayload = dev.last_payload || {};
+        const { badgesHtml } = extractAndFormatMetrics(lastPayload);
+        const radio = extractRadioMetadata(null, lastPayload);
+        const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi, lastPayload.snr);
+
         const borderClass = isIgnored
           ? 'border-rose-300 dark:border-rose-900/60 opacity-75'
           : 'border-slate-200 dark:border-slate-800';
 
         return `
-          <div class="bg-white dark:bg-slate-900 border ${borderClass} rounded-xl p-3 shadow-sm flex flex-col justify-between gap-2.5">
-            <div class="flex items-start justify-between gap-2">
+          <div class="bg-white dark:bg-slate-900 border ${borderClass} rounded-xl p-3 shadow-sm flex flex-col justify-between gap-2">
+            <!-- Header -->
+            <div class="flex items-start justify-between gap-1.5">
               <div class="min-w-0">
                 <div class="flex items-center gap-1.5">
-                  <i class="mdi ${catIcon} text-base"></i>
+                  <i class="mdi ${catIcon} text-base shrink-0"></i>
                   <span class="text-xs font-bold text-slate-900 dark:text-white truncate">${escapeHtml(dev.alias || dev.model)}</span>
                   <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700">${escapeHtml(dev.category || 'Sensor')}</span>
                 </div>
                 <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                  ${escapeHtml(dev.model)} | ID: ${escapeHtml(dev.device_id)}
+                  ${escapeHtml(dev.model)} • ID: <strong class="text-slate-700 dark:text-slate-200">${escapeHtml(dev.device_id)}</strong> ${radio.freqMHz ? `• ${escapeHtml(radio.freqLabel)}` : ''}
                 </div>
               </div>
               <div class="text-right font-mono text-[11px] shrink-0">
@@ -1863,14 +2172,25 @@
               </div>
             </div>
 
+            <!-- Latest Telemetry Badges Row -->
+            <div onclick="openDeviceModalByKey('${escapeHtml(dev.device_key)}')" class="cursor-pointer py-1 px-2 rounded-lg bg-slate-50/80 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/70 space-y-1.5 hover:border-sky-500/40 transition">
+              <div class="flex flex-wrap items-center gap-1">
+                ${badgesHtml || '<span class="text-[11px] text-slate-400">Inga mätvärden</span>'}
+              </div>
+              <div class="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
+                ${signalStrengthHtml}
+                <span class="text-sky-600 dark:text-sky-400 hover:underline">Öppna telemetri <i class="mdi mdi-arrow-right"></i></span>
+              </div>
+            </div>
+
             <!-- Inline Edit Alias & Category -->
-            <div class="grid grid-cols-12 gap-1.5 items-center pt-1.5 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+            <div class="grid grid-cols-12 gap-1.5 items-center pt-1 text-xs">
               <div class="col-span-6">
                 <input
                   type="text"
                   id="devAlias_${escapeHtml(dev.device_key)}"
                   value="${escapeHtml(dev.alias || '')}"
-                  placeholder="Alias..."
+                  placeholder="Sätt eget alias..."
                   class="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none text-xs"
                 />
               </div>
@@ -1925,7 +2245,7 @@
                   class="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
                   title="Visa detaljer och historik"
                 >
-                  <i class="mdi mdi-code-json"></i>
+                  <i class="mdi mdi-chart-box-outline"></i>
                 </button>
                 <button
                   onclick="triggerHaDiscovery('${escapeHtml(dev.device_key)}')"

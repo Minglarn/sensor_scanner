@@ -35,13 +35,31 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
     model_lower = (model or "").lower()
     keys = {k.lower() for k in payload.keys()}
 
-    if "tpms" in model_lower or "pressure_kpa" in keys or "pressure_bar" in keys or "pressure_psi" in keys:
+    if "tpms" in model_lower or any(k in keys for k in ("pressure_kpa", "pressure_bar", "pressure_psi", "wheel")):
         return "TPMS"
     if any(k in keys for k in ("energy_kwh", "power_w", "current_a", "voltage_v", "consumption", "volume_m3", "water")):
         return "Meter"
     if any(w in model_lower for w in ("meter", "energy", "water", "owl", "emon", "gas")):
         return "Meter"
-    if any(k in keys for k in ("temperature_c", "temperature_f", "humidity", "wind_avg_km_h", "wind_avg_m_s", "rain_mm")):
+    if any(
+        k in keys
+        for k in (
+            "temperature_c",
+            "temperature_f",
+            "temp_c",
+            "humidity",
+            "wind_avg_km_h",
+            "wind_avg_m_s",
+            "wind_speed_m_s",
+            "wind_speed_km_h",
+            "wind_dir_deg",
+            "rain_mm",
+            "total_rain_mm",
+            "rain_in",
+            "rain_rate_mm_h",
+            "rain_rate_in_h",
+        )
+    ) or any(w in model_lower for w in ("wgr800", "pcr800", "weather", "wind", "rain", "therm")):
         return "Weather"
     if any(w in model_lower for w in ("smoke", "pir", "motion", "alarm", "security", "door", "contact", "dsc", "honeywell")):
         return "Security"
