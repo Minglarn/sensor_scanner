@@ -6,7 +6,9 @@ import subprocess
 import time
 import urllib.request
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional, Set
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Set, Tuple
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -65,6 +67,25 @@ main_loop: Optional[asyncio.AbstractEventLoop] = None
 APP_STARTED_AT = time.time()
 
 
+try:
+    LOCAL_TZ = ZoneInfo("Europe/Stockholm")
+except Exception:
+    LOCAL_TZ = datetime.now(timezone.utc).astimezone().tzinfo  # type: ignore[assignment]
+
+
+def parse_and_format_local(iso_str: str) -> Tuple[Optional[datetime], str]:
+    if not iso_str or iso_str == "unknown":
+        return None, "Okänt datum"
+    try:
+        dt = datetime.fromisoformat(str(iso_str).strip().replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local_dt = dt.astimezone(LOCAL_TZ)
+        return local_dt, local_dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None, str(iso_str)[:19].replace("T", " ")
+
+
 def _resolve_local_git_commit() -> str:
     env_sha = (os.getenv("GIT_COMMIT", "unknown") or "unknown").strip()
     if env_sha and env_sha.lower() != "unknown":
@@ -84,8 +105,32 @@ def _resolve_local_git_commit() -> str:
     return "unknown"
 
 
+def _resolve_local_build_date_raw() -> str:
+    env_date = (os.getenv("BUILD_DATE", "unknown") or "unknown").strip()
+    if env_date and env_date.lower() != "unknown":
+        return env_date
+    try:
+        out = subprocess.check_output(
+            ["git", "log", "-1", "--format=%cI"],
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            stderr=subprocess.DEVNULL,
+            timeout=3.0,
+        )
+        c_date = out.decode("utf-8", errors="ignore").strip()
+        if c_date:
+            return c_date
+    except Exception:
+        pass
+    try:
+        mtime = os.path.getmtime(os.path.abspath(__file__))
+        return datetime.fromtimestamp(mtime, tz=timezone.utc).astimezone(LOCAL_TZ).isoformat()
+    except Exception:
+        return "unknown"
+
+
 LOCAL_GIT_COMMIT = _resolve_local_git_commit()
-LOCAL_BUILD_DATE = (os.getenv("BUILD_DATE", "unknown") or "unknown").strip()
+LOCAL_BUILD_DT, LOCAL_BUILD_DATE = parse_and_format_local(_resolve_local_build_date_raw())
+REMOTE_COMMIT_DT: Optional[datetime] = None
 GITHUB_COMMITS_URL = "https://api.github.com/repos/Minglarn/sensor_scanner/commits/main"
 
 _version_cache: Dict[str, Any] = {
@@ -95,6 +140,7 @@ _version_cache: Dict[str, Any] = {
     "commit_message": "",
     "commit_date": "",
     "update_available": False,
+    "recent_commit": False,
     "checked_at": 0.0,
     "error": "",
 }
@@ -132,26 +178,38 @@ def _fetch_github_latest_sync() -> Dict[str, Any]:
 
 
 async def check_github_updates(force: bool = False) -> Dict[str, Any]:
+    global REMOTE_COMMIT_DT
     now = time.time()
     if not force and _version_cache["checked_at"] > 0 and (now - _version_cache["checked_at"]) < 600.0:
+        if REMOTE_COMMIT_DT is not None:
+            now_dt = datetime.now(LOCAL_TZ)
+            _version_cache["recent_commit"] = bool(0 <= (now_dt - REMOTE_COMMIT_DT).total_seconds() < 120.0)
         return dict(_version_cache)
 
     try:
         latest = await asyncio.to_thread(_fetch_github_latest_sync)
         remote_sha = latest.get("remote_sha", "")
         local_sha = _version_cache["local_sha"]
-        update_available = bool(
-            local_sha
-            and local_sha != "unknown"
-            and remote_sha
-            and remote_sha != local_sha
-        )
+        remote_dt, remote_date_str = parse_and_format_local(latest.get("commit_date", ""))
+        REMOTE_COMMIT_DT = remote_dt
+
+        if not local_sha or local_sha == "unknown" or not remote_sha or remote_sha == local_sha:
+            update_available = False
+        elif LOCAL_BUILD_DT is not None and remote_dt is not None:
+            update_available = bool(remote_dt > LOCAL_BUILD_DT)
+        else:
+            update_available = True
+
+        now_dt = datetime.now(LOCAL_TZ)
+        recent_commit = bool(remote_dt is not None and 0 <= (now_dt - remote_dt).total_seconds() < 120.0)
+
         _version_cache.update(
             {
                 "remote_sha": remote_sha,
                 "commit_message": latest.get("commit_message", ""),
-                "commit_date": latest.get("commit_date", ""),
+                "commit_date": remote_date_str,
                 "update_available": update_available,
+                "recent_commit": recent_commit,
                 "checked_at": now,
                 "error": "",
             }

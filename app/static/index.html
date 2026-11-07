@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.22</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.23</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1555,6 +1555,11 @@
           <span id="updateModalStatusText">En ny version av SensorScanner finns tillgänglig på GitHub (main).</span>
         </div>
 
+        <div id="updateModalRecentBuildBanner" class="hidden px-3 py-2 rounded-lg border border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-300 flex items-center gap-2 font-medium text-[11px]">
+          <i class="mdi mdi-timer-sand text-base shrink-0"></i>
+          <span>Obs: Commiten skapades nyss – vänta ca 1–2 min så att GitHub Actions hinner publicera Docker-imagen innan du kör pull.</span>
+        </div>
+
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60">
             <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Nuvarande version i containern</div>
@@ -1582,7 +1587,7 @@
 
         <div>
           <div class="flex items-center justify-between mb-1">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Snabbkommando för iridium</span>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">UPPDATERINGSKOMMANDO (DOCKER COMPOSE)</span>
             <button type="button" onclick="copyUpdateCommand()" class="inline-flex items-center gap-1 text-sky-600 dark:text-sky-400 hover:underline font-semibold">
               <i class="mdi mdi-content-copy"></i>
               <span>Kopiera kommando</span>
@@ -3671,15 +3676,24 @@
         commitMsgEl.textContent = gitVersionState.commit_message || 'Ingen commit-information tillgänglig';
       }
 
+      const recentBannerEl = document.getElementById('updateModalRecentBuildBanner');
       if (bannerEl && bannerTxt) {
         if (gitVersionState.update_available) {
           bannerEl.className = 'px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium';
-          bannerTxt.textContent = `Ny version finns på GitHub (${remoteSha})! Kör kommandot nedan på iridium för att uppdatera.`;
+          bannerTxt.textContent = `Ny version finns tillgänglig på GitHub (${remoteSha}). Kör kommandot nedan på din Docker-host för att uppdatera.`;
           if (hdrIcon) hdrIcon.className = 'mdi mdi-cloud-download-outline text-lg text-amber-500';
+          if (recentBannerEl) {
+            if (gitVersionState.recent_commit) {
+              recentBannerEl.classList.remove('hidden');
+            } else {
+              recentBannerEl.classList.add('hidden');
+            }
+          }
         } else {
           bannerEl.className = 'px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 flex items-center gap-2 font-medium';
-          bannerTxt.textContent = `Containern kör senaste versionen på main (${localSha}).`;
+          bannerTxt.textContent = 'Du kör den senaste versionen av SensorScanner!';
           if (hdrIcon) hdrIcon.className = 'mdi mdi-check-decagram-outline text-lg text-emerald-500';
+          if (recentBannerEl) recentBannerEl.classList.add('hidden');
         }
       }
     }
