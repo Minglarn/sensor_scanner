@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.30</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.31</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1725,7 +1725,7 @@
             </span>
             <span id="modalPacketTime" class="text-[11px] font-mono text-slate-400"></span>
           </div>
-          <div id="modalKpiGrid" class="flex flex-wrap items-center gap-2">
+          <div id="modalKpiGrid" class="flex flex-wrap items-center gap-1.5">
             <!-- Populated via extractAndFormatMetrics() -->
           </div>
         </div>
@@ -3103,15 +3103,16 @@
         const mfgDisplay = (isIbeaconModel && (!p.manufacturer_name || p.manufacturer_name === 'Apple'))
           ? 'Apple iBeacon-spec (0x004C)'
           : String(p.manufacturer_name);
-        addModalOnlyKpi('mdi-domain', 'sky', 'TILLVERKARE', mfgDisplay, p.manufacturer_id ? String(p.manufacturer_id) : '');
+        const mfgIdStr = p.manufacturer_id ? String(p.manufacturer_id) : '';
+        const mfgSec = (mfgIdStr && !mfgDisplay.toUpperCase().includes(mfgIdStr.toUpperCase())) ? mfgIdStr : '';
+        addModalOnlyKpi('mdi-domain', 'sky', 'TILLVERKARE', mfgDisplay, mfgSec);
       }
       if (p.mac_vendor) {
         addModalOnlyKpi(
           'mdi-chip',
           'emerald',
-          'NÄTVERKSKORT (OUI)',
-          String(p.mac_vendor),
-          p.mac ? String(p.mac).slice(0, 8) : ''
+          'OUI',
+          String(p.mac_vendor)
         );
       }
       if (p.mac || p.mac_type) {
@@ -3193,8 +3194,12 @@
               `Endpoint: ${endpointName}`
             );
           }
-          if (rawTeslaId) {
-            addModalOnlyKpi('mdi-key-wireless', 'teal', 'TESLA BEACON', rawTeslaId, p.ibeacon_uuid ? `UUID: ${p.ibeacon_uuid}` : '');
+          const hasMajMin = p.major !== undefined && p.major !== null && p.minor !== undefined && p.minor !== null;
+          const majMinText = hasMajMin ? `${p.major} / ${p.minor}` : '';
+          if (p.ibeacon_uuid) {
+            addModalOnlyKpi('mdi-bullseye', 'teal', 'IBEACON UUID', String(p.ibeacon_uuid), majMinText);
+          } else if (rawTeslaId && rawTeslaId !== p.local_name) {
+            addModalOnlyKpi('mdi-key-wireless', 'teal', 'TESLA BEACON', rawTeslaId);
           }
         } else {
           addMetric(
@@ -3214,9 +3219,9 @@
           'mdi-bullseye',
           badgeText,
           'purple',
-          'IBEACON',
-          majMinText ? majMinText : 'iBeacon',
-          p.ibeacon_uuid ? `UUID: ${p.ibeacon_uuid}` : ''
+          p.ibeacon_uuid ? 'IBEACON UUID' : 'IBEACON',
+          p.ibeacon_uuid ? String(p.ibeacon_uuid) : (majMinText || 'iBeacon'),
+          p.ibeacon_uuid ? majMinText : ''
         );
       }
 
@@ -5782,25 +5787,26 @@
       const analyzed = extractAndFormatMetrics(payload, sig);
       const radio = extractRadioMetadata(sig, payload);
 
-      const renderChip = (icon, cls, label, primary, secondary = '') => {
+      const renderChip = (icon, cls, label, primary, secondary = '', titleText = '') => {
         const secSegments = Array.isArray(secondary)
           ? secondary.filter(Boolean)
           : (secondary ? String(secondary).split(' | ').filter(Boolean) : []);
         const secHtml = secSegments
-          .map((seg) => `<span class="text-[11px] opacity-65 font-mono border-l pl-2 border-current/20">${escapeHtml(seg)}</span>`)
+          .map((seg) => `<span class="text-[10px] opacity-65 font-mono border-l pl-1.5 border-current/20">${escapeHtml(seg)}</span>`)
           .join('');
+        const titleAttr = titleText ? ` title="${escapeHtml(titleText)}"` : '';
         return `
-          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs whitespace-nowrap shadow-2xs ${cls}">
-            <i class="mdi ${icon} text-base opacity-80"></i>
-            <span class="font-medium opacity-75 uppercase tracking-wider text-[10px]">${escapeHtml(label)}:</span>
-            <span class="font-bold text-xs font-mono">${escapeHtml(primary)}</span>
+          <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] leading-tight whitespace-nowrap ${cls}"${titleAttr}>
+            <i class="mdi ${icon} text-xs opacity-80"></i>
+            <span class="font-medium opacity-70 uppercase tracking-tight text-[10px]">${escapeHtml(label)}:</span>
+            <span class="font-semibold text-[11px] font-mono">${escapeHtml(primary)}</span>
             ${secHtml}
           </div>
         `;
       };
 
       const kpiCardsHtml = analyzed.kpis.map((k) =>
-        renderChip(k.icon, k.cls, k.label, k.primary, k.secondary)
+        renderChip(k.icon, k.cls, k.label, k.primary, k.secondary, k.title || '')
       );
 
       // Sibling iBeacon UUID Detection across devicesList
@@ -5814,18 +5820,32 @@
           return String(dp.ibeacon_uuid || '').trim().toUpperCase() === targetUuid;
         });
         if (siblings.length > 0) {
-          const sibNames = siblings
-            .slice(0, 4)
-            .map((s) => (s.alias && s.alias.trim()) ? s.alias.trim() : (s.last_payload?.mac || s.device_id))
-            .join(', ');
-          const purpleChipCls = 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30';
+          const allSibNames = siblings.map((s) =>
+            (s.alias && s.alias.trim())
+              ? s.alias.trim()
+              : (s.last_payload?.local_name || s.last_payload?.mac || s.device_id)
+          );
+          const fullTooltip = `Delar iBeacon UUID (${targetUuid}) med ${siblings.length} enheter: ${allSibNames.join(', ')}`;
+          let sibSummary = '';
+          if (siblings.length <= 2) {
+            sibSummary = allSibNames.join(', ');
+          } else {
+            const aliasedSibs = siblings
+              .filter((s) => s.alias && s.alias.trim())
+              .map((s) => s.alias.trim());
+            const shownList = aliasedSibs.length > 0 ? aliasedSibs.slice(0, 2) : allSibNames.slice(0, 1);
+            const remCount = siblings.length - shownList.length;
+            sibSummary = remCount > 0 ? `${shownList.join(', ')} (+${remCount} till)` : shownList.join(', ');
+          }
+          const purpleChipCls = 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30 cursor-help';
           kpiCardsHtml.push(
             renderChip(
               'mdi-link-variant',
               purpleChipCls,
               'DELAR UUID MED',
               `${siblings.length} andra enheter`,
-              sibNames ? [sibNames] : []
+              sibSummary ? [sibSummary] : [],
+              fullTooltip
             )
           );
         }
@@ -5906,7 +5926,6 @@
         if (distInfo && distInfo.distanceM !== null) {
           const d = distInfo.distanceM;
           const distLabel = formatBleDistanceText(d);
-          const refLabel = `Ref@1m: ${distInfo.ref1m} dBm`;
           let distChipCls = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30';
           if (d >= 5.0 && d <= 15.0) {
             distChipCls = 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30';
@@ -5914,7 +5933,7 @@
             distChipCls = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30';
           }
           kpiCardsHtml.push(
-            renderChip('mdi-ruler', distChipCls, 'AVSTÅND (EST.)', distLabel, [refLabel])
+            renderChip('mdi-ruler', distChipCls, 'AVSTÅND', distLabel)
           );
         }
       }
