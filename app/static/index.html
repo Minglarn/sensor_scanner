@@ -63,6 +63,13 @@
       background-color: rgba(14, 165, 233, 0.12) !important;
       border-color: rgba(14, 165, 233, 0.5) !important;
     }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 h-screen flex overflow-hidden selection:bg-sky-500 selection:text-white transition-colors duration-150">
@@ -172,7 +179,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.34</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.35</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -207,30 +214,30 @@
 
     <!-- TOPBAR -->
     <header class="z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-xs shrink-0">
-      <div class="px-3 sm:px-6 py-2">
-        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+      <div class="px-3 sm:px-6 py-1.5">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-1.5">
           
           <!-- Left: Mobile Hamburger + Active View Title + Divider + Unified Status Indicators -->
-          <div class="flex items-center justify-between gap-2 flex-wrap">
-            <div class="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center justify-between gap-2 min-w-0">
+            <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto no-scrollbar whitespace-nowrap flex-nowrap">
               <button
                 onclick="toggleMobileSidebar(true)"
-                class="lg:hidden inline-flex items-center justify-center w-8 h-8 rounded-md bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200"
+                class="lg:hidden inline-flex items-center justify-center w-7 h-7 rounded-md bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 shrink-0"
                 title="Öppna meny"
               >
                 <i class="mdi mdi-menu text-base leading-none"></i>
               </button>
 
-              <div class="inline-flex items-center gap-2 h-8">
+              <div class="inline-flex items-center gap-1.5 h-7 lg:h-8 shrink-0">
                 <i id="activeViewIcon" class="mdi mdi-access-point-network text-base text-sky-500 leading-none"></i>
                 <h2 id="activeViewTitle" class="text-sm font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap">Signaler</h2>
               </div>
 
-              <div class="h-5 w-px bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
+              <div class="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-0.5 hidden sm:block shrink-0"></div>
 
               <!-- Unified Telemetry Status Indicators (SDR, BLE, MQTT) -->
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <div id="sdrStatusBadge" class="relative overflow-hidden inline-flex items-center gap-2 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap transition-colors duration-200" title="Status och aktuell frekvens för rtl_433">
+              <div class="flex items-center gap-1.5 flex-nowrap shrink-0">
+                <div id="sdrStatusBadge" class="relative overflow-hidden inline-flex items-center gap-1.5 h-7 lg:h-8 px-2 lg:px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap transition-colors duration-200 shrink-0" title="Status och aktuell frekvens för rtl_433">
                   <span id="sdrStatusDot" class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
                   <i class="mdi mdi-antenna text-slate-400 leading-none"></i>
                   <span id="sdrStatusText" class="inline-flex items-center gap-1.5 whitespace-nowrap">Initierar</span>
@@ -239,13 +246,13 @@
                   </div>
                 </div>
 
-                <button id="bleStatusBadge" type="button" onclick="toggleBLE()" class="inline-flex items-center gap-2 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition cursor-pointer" title="Klicka för att växla Bluetooth Low Energy (BLE 2.4 GHz) PÅ/AV">
+                <button id="bleStatusBadge" type="button" onclick="toggleBLE()" class="inline-flex items-center gap-1.5 h-7 lg:h-8 px-2 lg:px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition cursor-pointer shrink-0" title="Klicka för att växla Bluetooth Low Energy (BLE 2.4 GHz) PÅ/AV">
                   <span id="bleStatusDot" class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
                   <i id="bleStatusIcon" class="mdi mdi-bluetooth text-sky-500 leading-none"></i>
                   <span id="bleStatusText" class="whitespace-nowrap">BLE: Initierar</span>
                 </button>
 
-                <div id="mqttStatusBadge" class="inline-flex items-center gap-2 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap" title="Status för MQTT-anslutning">
+                <div id="mqttStatusBadge" class="inline-flex items-center gap-1.5 h-7 lg:h-8 px-2 lg:px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap shrink-0" title="Status för MQTT-anslutning">
                   <span id="mqttStatusDot" class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
                   <i class="mdi mdi-swap-horizontal text-slate-400 leading-none"></i>
                   <span id="mqttStatusText" class="hidden sm:inline">MQTT: Frånkopplad</span>
@@ -255,26 +262,26 @@
             </div>
 
             <!-- Mobile-visible Pause & Theme Toggle -->
-            <div class="flex lg:hidden items-center gap-1.5">
-              <button onclick="togglePause()" class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium border transition bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80">
+            <div class="flex lg:hidden items-center gap-1 shrink-0">
+              <button onclick="togglePause()" class="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs font-medium border transition bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80">
                 <i class="mdi mdi-pause text-sm leading-none"></i>
               </button>
-              <button onclick="toggleTheme()" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md text-xs font-medium border transition bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80">
+              <button onclick="toggleTheme()" class="inline-flex items-center justify-center h-7 px-2 rounded-md text-xs font-medium border transition bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80">
                 <i class="mdi mdi-weather-sunny text-sm leading-none"></i>
               </button>
             </div>
           </div>
 
           <!-- Right: GitHub Version / Update Button + Frequency Segment + Pause + Theme Toggle -->
-          <div class="flex items-center justify-between lg:justify-end gap-2 flex-wrap">
+          <div class="flex items-center justify-between lg:justify-end gap-1.5 overflow-x-auto no-scrollbar whitespace-nowrap flex-nowrap shrink-0">
             <!-- GitHub Version / Update Indicator -->
-            <div class="inline-flex items-center gap-1.5">
+            <div class="inline-flex items-center gap-1.5 shrink-0">
               <button
                 id="versionCheckBtn"
                 type="button"
                 onclick="checkVersion(true)"
                 title="Klicka för att söka efter uppdateringar på GitHub"
-                class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition whitespace-nowrap"
+                class="inline-flex items-center gap-1.5 h-7 lg:h-8 px-2 lg:px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition whitespace-nowrap"
               >
                 <i id="versionCheckIcon" class="mdi mdi-source-branch text-slate-400 leading-none"></i>
                 <span id="versionCheckBtnText" class="font-mono">v·...</span>
@@ -285,7 +292,7 @@
                 type="button"
                 onclick="openUpdateModal()"
                 title="Ny version finns på GitHub – klicka för uppdateringsinstruktioner"
-                class="hidden inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/40 hover:bg-amber-500/25 transition whitespace-nowrap"
+                class="hidden inline-flex items-center gap-1.5 h-7 lg:h-8 px-2 lg:px-2.5 rounded-md text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/40 hover:bg-amber-500/25 transition whitespace-nowrap"
               >
                 <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0"></span>
                 <i class="mdi mdi-cloud-download-outline leading-none"></i>
@@ -294,22 +301,22 @@
             </div>
 
             <!-- Frequency Segment Switcher -->
-            <div class="inline-flex items-center h-8 p-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-x-auto">
-              <button onclick="switchFrequencyMode('433')" id="modeBtn_433" class="h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+            <div class="inline-flex items-center h-7 lg:h-8 p-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-x-auto no-scrollbar shrink-0">
+              <button onclick="switchFrequencyMode('433')" id="modeBtn_433" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
                 <i class="mdi mdi-sine-wave mr-0.5"></i>433.92
               </button>
-              <button onclick="switchFrequencyMode('868')" id="modeBtn_868" class="h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+              <button onclick="switchFrequencyMode('868')" id="modeBtn_868" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
                 <i class="mdi mdi-sine-wave mr-0.5"></i>868.3
               </button>
-              <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" class="h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+              <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
                 <i class="mdi mdi-swap-horizontal mr-0.5"></i>Dual Hop
               </button>
-              <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" class="h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+              <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
                 <i class="mdi mdi-tune-variant mr-0.5"></i>Custom
               </button>
             </div>
 
-            <div class="hidden lg:flex items-center gap-1.5">
+            <div class="hidden lg:flex items-center gap-1.5 shrink-0">
               <button id="pauseBtn" onclick="togglePause()" class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium border transition bg-slate-100/80 hover:bg-slate-200/70 dark:bg-slate-800/80 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80 whitespace-nowrap" title="Pausa eller återuppta live-flödet">
                 <i id="pauseIcon" class="mdi mdi-pause text-sm leading-none"></i>
                 <span id="pauseBtnText">Pausa</span>
@@ -343,151 +350,187 @@
         <!-- =================================================================== -->
         <section id="view-signals" class="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
       
-      <!-- Pinned Filter & View Controls Bar (Never scrolls away) -->
-      <div class="shrink-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2.5 shadow-sm">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
+      <!-- Pinned Filter & View Controls Bar (Single non-wrapping row) -->
+      <div class="shrink-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-1.5 shadow-xs">
+        <div class="flex items-center justify-between gap-2 flex-nowrap">
           
-          <!-- Free-text Search -->
-          <div class="lg:col-span-2 relative">
-            <i class="mdi mdi-magnify text-base text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-            <input
-              type="text"
-              id="signalSearchInput"
-              oninput="debouncedLoadSignals()"
-              placeholder="Sök modell, ID, alias eller JSON..."
-              class="w-full pl-8 pr-14 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500"
-            />
-            <button onclick="clearSignalFilters()" title="Återställ alla filter" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-[11px] font-medium">
-              Rensa
-            </button>
-          </div>
+          <!-- Left Group: Search (with Rensa + Count badge) + Filter & Kategorier Popover + Mina enheter -->
+          <div class="flex items-center gap-2 flex-1 min-w-0">
 
-          <!-- Searchable Multi-Select Model Dropdown -->
-          <div class="lg:col-span-2 relative" id="sigModelDropdownWrap">
-            <button
-              type="button"
-              onclick="toggleDropdownMenu('sigModelMenu')"
-              class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500/60 rounded-lg text-xs text-slate-700 dark:text-slate-200 flex items-center justify-between gap-1.5 transition"
-            >
-              <span class="flex items-center gap-1.5 truncate">
-                <i class="mdi mdi-chip text-sky-500"></i>
-                <span id="sigModelBtnLabel" class="truncate">Alla modeller</span>
-              </span>
-              <span class="flex items-center gap-1 shrink-0">
-                <span id="sigModelCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-sky-600 text-white text-[10px] font-mono font-bold">0</span>
-                <i class="mdi mdi-chevron-down text-slate-400"></i>
-              </span>
-            </button>
+            <!-- 1. Free-text Search with embedded Rensa & Count badge -->
+            <div class="relative flex-1 max-w-md min-w-[140px]">
+              <i class="mdi mdi-magnify text-base text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+              <input
+                type="text"
+                id="signalSearchInput"
+                oninput="debouncedLoadSignals()"
+                placeholder="Sök modell, ID, alias eller JSON..."
+                class="w-full pl-8 pr-28 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500"
+              />
+              <div class="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onclick="clearSignalFilters()"
+                  title="Återställ alla filter"
+                  class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-[11px] font-medium px-1"
+                >
+                  Rensa
+                </button>
+                <span id="signal-count-badge" class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[11px] font-mono font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap" title="Antal synliga signaler"><span id="visibleSignalCount">0</span> st</span>
+              </div>
+            </div>
 
-            <!-- Dropdown Panel -->
-            <div id="sigModelMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-40 flex flex-col overflow-hidden text-xs">
-              <div class="p-2 border-b border-slate-100 dark:border-slate-800">
-                <div class="relative">
-                  <i class="mdi mdi-magnify text-slate-400 absolute left-2 top-1/2 -translate-y-1/2"></i>
-                  <input
-                    type="text"
-                    id="sigModelSearchInput"
-                    oninput="renderSignalModelDropdownList()"
-                    placeholder="Filtrera modell i listan..."
-                    class="w-full pl-7 pr-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-sky-500"
-                  />
+            <!-- 2. Consolidated "Filter & Kategorier" Popover (#category-dropdown / #sigFilterMenu) -->
+            <div class="relative shrink-0" id="sigFilterDropdownWrap">
+              <button
+                id="sigFilterDropdownBtn"
+                type="button"
+                onclick="toggleDropdownMenu('sigFilterMenu')"
+                class="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 transition whitespace-nowrap"
+              >
+                <i class="mdi mdi-tune-variant text-sky-500 text-sm leading-none"></i>
+                <span id="sigFilterBtnLabel">Filter &amp; Kategorier</span>
+                <span id="sigFilterCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-sky-600 text-white text-[10px] font-mono font-bold">0</span>
+                <span
+                  id="sigFilterQuickResetBtn"
+                  onclick="event.stopPropagation(); clearSignalFilters();"
+                  title="Återställ alla aktiva filter"
+                  class="hidden px-1 py-0.2 rounded bg-sky-500/15 hover:bg-sky-500/25 text-sky-700 dark:text-sky-300 text-[10px] font-semibold"
+                >Återställ</span>
+                <i class="mdi mdi-chevron-down text-slate-400 text-xs leading-none"></i>
+              </button>
+
+              <!-- Consolidated Popover Panel (Section 1: Band & Model, Section 2: Raw BLE Beacons, Section 3: Categories) -->
+              <div id="sigFilterMenu" data-dropdown="category-dropdown" class="hidden absolute left-0 mt-1.5 w-80 sm:w-96 max-h-[82vh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-40 flex flex-col overflow-hidden text-xs">
+                <div class="p-3 overflow-y-auto space-y-3">
+                  
+                  <!-- SECTION 1: Frekvensband & Modell -->
+                  <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Frekvensband &amp; Modell</span>
+                      <button type="button" onclick="clearSignalFilters()" class="text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:underline">Återställ alla</button>
+                    </div>
+
+                    <!-- Hidden select synced for loadSignals() / signalMatchesActiveFilters() -->
+                    <select id="signalFreqSelect" onchange="loadSignals()" class="hidden">
+                      <option value="">Alla frekvensband</option>
+                      <option value="433">433 MHz-bandet</option>
+                      <option value="868">868 MHz-bandet</option>
+                      <option value="2400">2.4 GHz (Bluetooth BLE)</option>
+                    </select>
+
+                    <!-- Frequency Band Quick Pills -->
+                    <div class="grid grid-cols-4 gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800">
+                      <button type="button" id="freqPill_all" onclick="setSignalFreqBand('')" class="px-1.5 py-1 rounded-md text-[11px] font-semibold transition bg-sky-600 text-white shadow-2xs">Alla</button>
+                      <button type="button" id="freqPill_433" onclick="setSignalFreqBand('433')" class="px-1.5 py-1 rounded-md text-[11px] font-semibold transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">433 MHz</button>
+                      <button type="button" id="freqPill_868" onclick="setSignalFreqBand('868')" class="px-1.5 py-1 rounded-md text-[11px] font-semibold transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">868 MHz</button>
+                      <button type="button" id="freqPill_2400" onclick="setSignalFreqBand('2400')" class="px-1.5 py-1 rounded-md text-[11px] font-semibold transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">2.4 GHz BLE</button>
+                    </div>
+
+                    <!-- Searchable Multi-Select Model Selector inside Section 1 -->
+                    <div id="sigModelDropdownWrap" class="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/70 overflow-hidden">
+                      <button
+                        type="button"
+                        onclick="toggleModelSectionInPopover()"
+                        class="w-full px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 flex items-center justify-between gap-1.5 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition"
+                      >
+                        <span class="flex items-center gap-1.5 truncate">
+                          <i class="mdi mdi-chip text-sky-500"></i>
+                          <span id="sigModelBtnLabel" class="truncate font-medium">Alla modeller</span>
+                        </span>
+                        <span class="flex items-center gap-1 shrink-0">
+                          <span id="sigModelCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-sky-600 text-white text-[10px] font-mono font-bold">0</span>
+                          <i id="sigModelChevron" class="mdi mdi-chevron-down text-slate-400"></i>
+                        </span>
+                      </button>
+
+                      <div id="sigModelMenu" class="hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                        <div class="p-2 border-b border-slate-100 dark:border-slate-800">
+                          <div class="relative">
+                            <i class="mdi mdi-magnify text-slate-400 absolute left-2 top-1/2 -translate-y-1/2"></i>
+                            <input
+                              type="text"
+                              id="sigModelSearchInput"
+                              oninput="renderSignalModelDropdownList()"
+                              placeholder="Filtrera modell i listan..."
+                              class="w-full pl-7 pr-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-sky-500"
+                            />
+                          </div>
+                        </div>
+                        <div id="sigModelOptionsList" class="p-1.5 overflow-y-auto space-y-0.5 max-h-40">
+                          <!-- Populated dynamically -->
+                        </div>
+                        <div class="px-2 py-1.5 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px]">
+                          <button type="button" onclick="selectAllSignalModels()" class="text-sky-600 dark:text-sky-400 hover:underline font-semibold">Markera alla</button>
+                          <button type="button" onclick="clearSignalModels()" class="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold">Rensa val</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- SECTION 2: Toggle för Visa råa BLE Beacons (#toggle-beacons) -->
+                  <div class="pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                    <label for="toggle-beacons" class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 cursor-pointer select-none">
+                      <span class="flex items-center gap-2 min-w-0">
+                        <i class="mdi mdi-radar text-sky-500 text-sm leading-none"></i>
+                        <span class="min-w-0">
+                          <span class="block font-semibold text-slate-800 dark:text-slate-200">Visa råa BLE Beacons</span>
+                          <span id="btnToggleBeaconsLabel" class="block text-[10px] text-slate-400">Döljer tomma beacons utan mätvärden</span>
+                        </span>
+                      </span>
+                      <input
+                        id="toggle-beacons"
+                        type="checkbox"
+                        onchange="toggleHideEmptyBeacons()"
+                        class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0 shrink-0"
+                      />
+                    </label>
+                  </div>
+
+                  <!-- SECTION 3: Checklista för Kategorier & Status -->
+                  <div id="sigFilterOptionsList" class="pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                    <!-- Populated dynamically with Categories & Status filters -->
+                  </div>
+                </div>
+
+                <div class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px] shrink-0">
+                  <button type="button" onclick="selectAllSignalCategoriesAndFilters()" class="text-sky-600 dark:text-sky-400 hover:underline font-semibold">Markera alla kategorier</button>
+                  <button type="button" onclick="clearSignalCategoriesAndFilters()" class="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold">Rensa kategorier</button>
                 </div>
               </div>
-              <div id="sigModelOptionsList" class="p-1.5 overflow-y-auto space-y-0.5 max-h-56">
-                <!-- Populated dynamically -->
-              </div>
-              <div class="p-2 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px]">
-                <button type="button" onclick="selectAllSignalModels()" class="text-sky-600 dark:text-sky-400 hover:underline font-semibold">Markera alla</button>
-                <button type="button" onclick="clearSignalModels()" class="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold">Rensa val</button>
-              </div>
             </div>
-          </div>
 
-          <!-- Dynamic Multi-Select "Kategorier & Filter" Dropdown -->
-          <div class="lg:col-span-2 relative" id="sigFilterDropdownWrap">
-            <button
-              type="button"
-              onclick="toggleDropdownMenu('sigFilterMenu')"
-              class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500/60 rounded-lg text-xs text-slate-700 dark:text-slate-200 flex items-center justify-between gap-1.5 transition"
-            >
-              <span class="flex items-center gap-1.5 truncate">
-                <i class="mdi mdi-filter-variant text-sky-500"></i>
-                <span id="sigFilterBtnLabel" class="truncate">Kategorier &amp; Filter</span>
-              </span>
-              <span class="flex items-center gap-1 shrink-0">
-                <span id="sigFilterCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-sky-600 text-white text-[10px] font-mono font-bold">0</span>
-                <i class="mdi mdi-chevron-down text-slate-400"></i>
-              </span>
-            </button>
-
-            <!-- Dropdown Panel -->
-            <div id="sigFilterMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-40 flex flex-col overflow-hidden text-xs">
-              <div id="sigFilterOptionsList" class="p-2 overflow-y-auto space-y-2 max-h-72">
-                <!-- Populated dynamically with Section A (Status) and Section B (Categories) -->
-              </div>
-              <div class="p-2 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px]">
-                <button type="button" onclick="selectAllSignalCategoriesAndFilters()" class="text-sky-600 dark:text-sky-400 hover:underline font-semibold">Markera alla</button>
-                <button type="button" onclick="clearSignalCategoriesAndFilters()" class="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold">Rensa val</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Frequency Band Dropdown -->
-          <div class="lg:col-span-2 xl:col-span-1">
-            <select
-              id="signalFreqSelect"
-              onchange="loadSignals()"
-              class="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
-            >
-              <option value="">Alla frekvensband</option>
-              <option value="433">433 MHz-bandet</option>
-              <option value="868">868 MHz-bandet</option>
-              <option value="2400">2.4 GHz (Bluetooth BLE)</option>
-            </select>
-          </div>
-
-          <!-- Synchronized Sort Dropdown + Hide Empty Beacons + Group Duplicates + View Switcher + Visible Count -->
-          <div class="lg:col-span-4 xl:col-span-5 flex flex-wrap items-center justify-between sm:justify-end gap-1.5">
-            
-            <!-- Only Named / Aliased Devices Quick Toggle -->
+            <!-- 3. "Mina enheter" Quick Filter Button -->
             <button
               id="btn-filter-aliased"
               type="button"
               onclick="toggleFilterAliasedOnly()"
-              class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-sky-500/60"
-              title="Visa endast enheter som har ett eget Alias, Grupp eller är verifierat eget fordon"
+              class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0 whitespace-nowrap bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-sky-500/60"
+              title="Visa endast egna/namngivna enheter (Alias, Grupp eller verifierat eget fordon)"
             >
-              <i class="mdi mdi-star-check-outline text-sm leading-none"></i>
-              <span>Endast namngivna</span>
+              <i class="mdi mdi-star text-amber-500 text-sm leading-none"></i>
+              <span>Mina enheter</span>
             </button>
+          </div>
 
-            <!-- Hide Empty Beacons Toggle (Active by default: hideEmptyBeacons = true) -->
-            <button
-              id="btn-toggle-beacons"
-              type="button"
-              onclick="toggleHideEmptyBeacons()"
-              class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0"
-              title="Dölj anonyma/tomma BLE-beacons utan mätvärden (Plejd, TV, skrivare m.fl.) i Signaler"
-            >
-              <i class="mdi mdi-radar text-sm leading-none"></i>
-              <span id="btnToggleBeaconsLabel">Dölj tomma Beacons (Aktiv)</span>
-            </button>
-
-            <!-- Synchronized Signal Sort Dropdown -->
-            <div class="relative flex items-center min-w-0 flex-1 sm:flex-initial">
+          <!-- Right Group: 4. Sort + 5. Group (icon only < 1024px) + 6. View Switcher -->
+          <div class="flex items-center gap-1.5 shrink-0">
+            
+            <!-- 4. Synchronized Signal Sort Dropdown -->
+            <div class="relative flex items-center shrink-0">
               <i class="mdi mdi-sort-variant text-sky-500 text-sm absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
               <select
                 id="signalSortSelect"
                 onchange="onSignalSortDropdownChange(this.value)"
                 title="Sortera signaler (synkroniserad med tabellens kolumnrubriker)"
-                class="w-full sm:w-auto pl-6 pr-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500/60 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500 transition"
+                class="pl-6 pr-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500/60 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500 transition"
               >
-                <option value="time:desc">Senast aktiv (Tid ↓)</option>
-                <option value="time:asc">Äldst först (Tid ↑)</option>
+                <option value="time:desc">Senast aktiv</option>
+                <option value="time:asc">Äldst först</option>
                 <option value="name:asc">Namn / Alias (A–Ö)</option>
                 <option value="name:desc">Namn / Alias (Ö–A)</option>
-                <option value="hits:desc">Flest träffar (Antal ↓)</option>
-                <option value="hits:asc">Färst träffar (Antal ↑)</option>
+                <option value="hits:desc">Flest träffar</option>
+                <option value="hits:asc">Färst träffar</option>
                 <option value="rssi:desc">Signalstyrka (RSSI ↓)</option>
                 <option value="rssi:asc">Signalstyrka (RSSI ↑)</option>
                 <option value="freq:asc">Frekvensband</option>
@@ -499,18 +542,18 @@
               </select>
             </div>
 
-            <!-- Group Devices Toggle -->
+            <!-- 5. Group Devices Toggle (Icon only < 1024px) -->
             <button
               id="groupDevicesBtn"
               onclick="toggleGroupDevices()"
               class="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0"
-              title="Visa endast senaste kortet/raden per unik enhet och uppdatera på plats"
+              title="Gruppera dubbletter: visa endast senaste kortet/raden per unik enhet"
             >
-              <i class="mdi mdi-layers-triple-outline text-sm leading-none"></i>
-              <span class="hidden 2xl:inline">Gruppera</span>
+              <i class="mdi mdi-folder-outline text-sm leading-none"></i>
+              <span class="hidden lg:inline">Gruppera</span>
             </button>
 
-            <!-- View Switcher: Card vs Table -->
+            <!-- 6. View Switcher: Card vs Table -->
             <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shrink-0">
               <button
                 id="viewModeBtn_grid"
@@ -529,11 +572,8 @@
                 <i class="mdi mdi-table text-sm leading-none"></i>
               </button>
             </div>
-
-            <div class="text-[11px] font-mono text-slate-400 dark:text-slate-500 shrink-0" title="Antal synliga signaler">
-              <span id="visibleSignalCount" class="font-semibold text-slate-700 dark:text-slate-300">0</span> st
-            </div>
           </div>
+
         </div>
       </div>
 
@@ -2147,7 +2187,6 @@
       // Close custom multi-select dropdowns when clicking outside
       document.addEventListener('click', (e) => {
         const wraps = [
-          { wrap: 'sigModelDropdownWrap', menu: 'sigModelMenu' },
           { wrap: 'sigFilterDropdownWrap', menu: 'sigFilterMenu' },
           { wrap: 'devFilterDropdownWrap', menu: 'devFilterMenu' }
         ];
@@ -2389,29 +2428,74 @@
       if (!btn) return;
       const isActive = selectedSignalStatusFilters.has('aliased');
       if (isActive) {
-        btn.className = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0 bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40 shadow-2xs';
+        btn.className = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0 whitespace-nowrap bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40 shadow-2xs';
       } else {
-        btn.className = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-sky-500/60';
+        btn.className = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0 whitespace-nowrap bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-sky-500/60';
+      }
+    }
+
+    function setSignalFreqBand(val) {
+      const sel = document.getElementById('signalFreqSelect');
+      if (sel) sel.value = val || '';
+      syncSignalFreqBandPills();
+      updateFilterDropdownBadges();
+      loadSignals();
+    }
+
+    function syncSignalFreqBandPills() {
+      const currentVal = document.getElementById('signalFreqSelect')?.value || '';
+      const map = [
+        { id: 'freqPill_all', val: '' },
+        { id: 'freqPill_433', val: '433' },
+        { id: 'freqPill_868', val: '868' },
+        { id: 'freqPill_2400', val: '2400' }
+      ];
+      const activeCls = 'px-1.5 py-1 rounded-md text-[11px] font-semibold transition bg-sky-600 text-white shadow-2xs';
+      const inactiveCls = 'px-1.5 py-1 rounded-md text-[11px] font-semibold transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+      map.forEach(({ id, val }) => {
+        const el = document.getElementById(id);
+        if (el) el.className = currentVal === val ? activeCls : inactiveCls;
+      });
+    }
+
+    function toggleModelSectionInPopover() {
+      const mEl = document.getElementById('sigModelMenu');
+      const chev = document.getElementById('sigModelChevron');
+      if (!mEl) return;
+      mEl.classList.toggle('hidden');
+      const isOpen = !mEl.classList.contains('hidden');
+      if (chev) {
+        chev.className = isOpen ? 'mdi mdi-chevron-up text-sky-500' : 'mdi mdi-chevron-down text-slate-400';
+      }
+      if (isOpen) {
+        renderSignalModelDropdownList();
+        setTimeout(() => document.getElementById('sigModelSearchInput')?.focus(), 40);
       }
     }
 
     function toggleHideEmptyBeacons() {
-      hideEmptyBeacons = !hideEmptyBeacons;
+      const chk = document.getElementById('toggle-beacons');
+      if (chk) {
+        hideEmptyBeacons = !chk.checked;
+      } else {
+        hideEmptyBeacons = !hideEmptyBeacons;
+      }
       localStorage.setItem('ss_hide_empty_beacons', hideEmptyBeacons ? 'true' : 'false');
       syncToggleBeaconsButton();
+      updateFilterDropdownBadges();
       renderSignalsView();
     }
 
     function syncToggleBeaconsButton() {
-      const btn = document.getElementById('btn-toggle-beacons');
+      const chk = document.getElementById('toggle-beacons');
       const lbl = document.getElementById('btnToggleBeaconsLabel');
-      if (!btn || !lbl) return;
-      if (hideEmptyBeacons) {
-        btn.className = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40';
-        lbl.textContent = 'Dölj tomma Beacons (Aktiv)';
-      } else {
-        btn.className = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300';
-        lbl.textContent = 'Visa råa Beacons';
+      if (chk) {
+        chk.checked = !hideEmptyBeacons;
+      }
+      if (lbl) {
+        lbl.textContent = hideEmptyBeacons
+          ? 'Döljer tomma beacons utan mätvärden (Smart)'
+          : 'Visar alla råa BLE-beacons i flödet';
       }
     }
 
@@ -2495,19 +2579,21 @@
     // Dynamic Multi-Select Dropdowns (Models, Categories & Status Filters)
     // -----------------------------------------------------------------------
     function toggleDropdownMenu(menuId) {
-      const menus = ['sigModelMenu', 'sigFilterMenu', 'devFilterMenu'];
+      if (menuId === 'sigModelMenu') {
+        toggleModelSectionInPopover();
+        return;
+      }
+      const menus = ['sigFilterMenu', 'devFilterMenu'];
       menus.forEach((id) => {
         const el = document.getElementById(id);
         if (!el) return;
         if (id === menuId) {
           el.classList.toggle('hidden');
           if (!el.classList.contains('hidden')) {
-            if (id === 'sigModelMenu') {
-              renderSignalModelDropdownList();
-              setTimeout(() => document.getElementById('sigModelSearchInput')?.focus(), 40);
-            } else {
-              renderCategoryFilterDropdowns();
-            }
+            syncSignalFreqBandPills();
+            syncToggleBeaconsButton();
+            renderSignalModelDropdownList();
+            renderCategoryFilterDropdowns();
           }
         } else {
           el.classList.add('hidden');
@@ -2562,20 +2648,35 @@
         }
       }
 
-      // 2. Signal Categories & Status button
-      const sigTotal = selectedSignalStatusFilters.size + selectedSignalCategories.size;
+      // 2. Consolidated "Filter & Kategorier" button
+      const freqVal = document.getElementById('signalFreqSelect')?.value || '';
+      const freqActive = freqVal ? 1 : 0;
+      const rawBeaconsActive = !hideEmptyBeacons ? 1 : 0;
+      const statusInPopoverCount = Array.from(selectedSignalStatusFilters).filter((k) => k !== 'aliased').length;
+      const sigTotal = modCount + freqActive + rawBeaconsActive + statusInPopoverCount + selectedSignalCategories.size;
       const sigBadge = document.getElementById('sigFilterCountBadge');
       const sigLabel = document.getElementById('sigFilterBtnLabel');
+      const sigResetBtn = document.getElementById('sigFilterQuickResetBtn');
+      const sigBtn = document.getElementById('sigFilterDropdownBtn');
       if (sigBadge && sigLabel) {
         if (sigTotal > 0) {
           sigBadge.textContent = String(sigTotal);
           sigBadge.classList.remove('hidden');
-          sigLabel.textContent = `Kategorier & Filter (${sigTotal})`;
+          sigLabel.textContent = `Filter (${sigTotal})`;
+          if (sigResetBtn) sigResetBtn.classList.remove('hidden');
+          if (sigBtn) {
+            sigBtn.className = 'px-2.5 py-1.5 bg-sky-500/15 border border-sky-500/40 hover:border-sky-500/60 rounded-lg text-xs font-semibold text-sky-700 dark:text-sky-300 inline-flex items-center gap-1.5 transition whitespace-nowrap';
+          }
         } else {
           sigBadge.classList.add('hidden');
-          sigLabel.textContent = 'Kategorier & Filter';
+          sigLabel.textContent = 'Filter & Kategorier';
+          if (sigResetBtn) sigResetBtn.classList.add('hidden');
+          if (sigBtn) {
+            sigBtn.className = 'px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 transition whitespace-nowrap';
+          }
         }
       }
+      syncSignalFreqBandPills();
       syncFilterAliasedButton();
 
       // 3. Device Categories & Status button
@@ -4720,6 +4821,12 @@
       selectedSignalModels.clear();
       selectedSignalStatusFilters.clear();
       selectedSignalCategories.clear();
+      if (!hideEmptyBeacons) {
+        hideEmptyBeacons = true;
+        localStorage.setItem('ss_hide_empty_beacons', 'true');
+      }
+      syncSignalFreqBandPills();
+      syncToggleBeaconsButton();
       renderSignalModelDropdownList();
       renderCategoryFilterDropdowns();
       loadSignals();
