@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.29</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.30</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -2934,51 +2934,85 @@
       '50765CB7-D9EA-4E21-99A4-FA879613A492': 'Smart Home / Media Beacon'
     };
 
+    function getDisplayVendor(payload, model = '') {
+      const p = (payload && typeof payload === 'object') ? payload : {};
+      const rawModel = String(model || p.model || '').trim();
+      const isIbeacon = rawModel === 'iBeacon-BLE' || p.apple_type === 'iBeacon' || Boolean(p.ibeacon_uuid);
+      const rawMfg = p.manufacturer_name ? String(p.manufacturer_name).trim() : '';
+      const isGenericAppleIbeaconMfg =
+        rawMfg === 'Apple iBeacon-spec (0x004C)' ||
+        (isIbeacon && rawMfg === 'Apple');
+
+      // 1. If manufacturer_name exists and is NOT "Apple iBeacon-spec (0x004C)" (nor generic "Apple" on an iBeacon),
+      //    then manufacturer_name (e.g. "Samsung") is ALWAYS the primary vendor!
+      if (rawMfg && !isGenericAppleIbeaconMfg) {
+        return rawMfg;
+      }
+
+      // 2. Otherwise (missing or generic iBeacon spec), check GATT manufacturer first, then IEEE OUI mac_vendor
+      if (p.gatt_manufacturer && String(p.gatt_manufacturer).trim()) {
+        return String(p.gatt_manufacturer).trim();
+      }
+      if (p.mac_vendor && String(p.mac_vendor).trim()) {
+        return String(p.mac_vendor).trim();
+      }
+      return '';
+    }
+
     function resolveSignalDisplayNames(sigOrDev, payload = null) {
       const obj = sigOrDev || {};
       const p = (payload && typeof payload === 'object') ? payload : (obj.payload || obj.last_payload || {});
       const rawAlias = obj.alias ? String(obj.alias).trim() : '';
       const rawModel = obj.model ? String(obj.model).trim() : (p.model ? String(p.model).trim() : 'Unknown');
       const rawLocalName = p.local_name ? String(p.local_name).trim() : (p.gatt_name ? String(p.gatt_name).trim() : '');
-      const isIbeacon = rawModel === 'iBeacon-BLE' || p.apple_type === 'iBeacon' || Boolean(p.ibeacon_uuid);
-      let rawMfg = p.manufacturer_name ? String(p.manufacturer_name).trim() : '';
-      if (isIbeacon && (!rawMfg || rawMfg === 'Apple')) {
-        rawMfg = 'Apple iBeacon-spec (0x004C)';
-      }
-      const hwSubtitle = p.gatt_manufacturer
-        ? [p.gatt_manufacturer, p.gatt_model].filter(Boolean).join(' ')
-        : (p.mac_vendor ? String(p.mac_vendor).trim() : rawMfg);
+      const displayVendor = getDisplayVendor(p, rawModel);
+      const effectiveModel = (p.gatt_model && String(p.gatt_model).trim())
+        ? String(p.gatt_model).trim()
+        : rawModel;
 
-      // 1. User-defined alias always takes priority
+      let vendorAndModelSub = '';
+      if (displayVendor) {
+        if (
+          effectiveModel &&
+          effectiveModel !== 'Unknown' &&
+          effectiveModel.toLowerCase() !== displayVendor.toLowerCase()
+        ) {
+          vendorAndModelSub = `${displayVendor} • ${effectiveModel}`;
+        } else {
+          vendorAndModelSub = displayVendor;
+        }
+      } else if (effectiveModel && effectiveModel !== 'Unknown') {
+        vendorAndModelSub = effectiveModel;
+      }
+
+      // 1. User-defined alias always takes priority for Row 1; Row 2 shows Vendor • Model (e.g. "Samsung • BLE-Fridge")
       if (rawAlias) {
         return {
           primaryName: rawAlias,
-          secondaryName: rawModel
+          secondaryName: vendorAndModelSub && vendorAndModelSub !== rawAlias ? vendorAndModelSub : rawModel
         };
       }
 
-      // 2. If no alias, check BLE local_name / gatt_name
+      // 2. If no alias, check BLE local_name / gatt_name (e.g. "Fridge" -> Row 2: "Samsung • BLE-Fridge")
       if (rawLocalName) {
         if (rawLocalName === 'P mesh') {
           return {
             primaryName: 'Plejd-Mesh',
-            secondaryName: (rawMfg && rawMfg !== 'Plejd-Mesh') ? rawMfg : ''
+            secondaryName: (displayVendor && displayVendor !== 'Plejd-Mesh') ? vendorAndModelSub : ''
           };
-        }
-        let sub = rawModel;
-        if (!sub || sub === rawLocalName || sub.startsWith('BLE-')) {
-          sub = hwSubtitle && hwSubtitle !== rawLocalName ? hwSubtitle : (sub && sub !== rawLocalName ? sub : '');
         }
         return {
           primaryName: rawLocalName,
-          secondaryName: sub
+          secondaryName: (vendorAndModelSub && vendorAndModelSub !== rawLocalName) ? vendorAndModelSub : ''
         };
       }
 
-      // 3. Fallback to model (and hardware/manufacturer subtitle if different)
+      // 3. Fallback to model on Row 1; Row 2 shows "Vendor • Model" (e.g. "Texas Instruments • iBeacon-BLE" or "Daikin • BRP069C4x")
       return {
         primaryName: rawModel,
-        secondaryName: (hwSubtitle && hwSubtitle !== rawModel) ? hwSubtitle : ''
+        secondaryName: displayVendor
+          ? vendorAndModelSub
+          : (effectiveModel && effectiveModel !== rawModel ? effectiveModel : '')
       };
     }
 
@@ -3065,20 +3099,20 @@
         ].filter(Boolean).join(' | ');
         addModalOnlyKpi('mdi-chip', 'indigo', 'FIRMWARE / REV', fwPrimary, fwSec);
       }
-      if (p.mac_vendor) {
-        addModalOnlyKpi(
-          'mdi-chip',
-          'emerald',
-          'HÅRDVARU-MAC (OUI)',
-          String(p.mac_vendor),
-          p.mac ? String(p.mac).slice(0, 8) : ''
-        );
-      }
       if (p.manufacturer_name || isIbeaconModel) {
         const mfgDisplay = (isIbeaconModel && (!p.manufacturer_name || p.manufacturer_name === 'Apple'))
           ? 'Apple iBeacon-spec (0x004C)'
           : String(p.manufacturer_name);
         addModalOnlyKpi('mdi-domain', 'sky', 'TILLVERKARE', mfgDisplay, p.manufacturer_id ? String(p.manufacturer_id) : '');
+      }
+      if (p.mac_vendor) {
+        addModalOnlyKpi(
+          'mdi-chip',
+          'emerald',
+          'NÄTVERKSKORT (OUI)',
+          String(p.mac_vendor),
+          p.mac ? String(p.mac).slice(0, 8) : ''
+        );
       }
       if (p.mac || p.mac_type) {
         addModalOnlyKpi(
@@ -6293,6 +6327,12 @@
           sigEl.innerHTML = signalStrengthHtml;
         }
 
+        const subEl = cardEl.querySelector('[data-dev-subtitle]');
+        if (subEl) {
+          const { secondaryName } = resolveSignalDisplayNames(dev, lastPayload);
+          subEl.textContent = secondaryName || dev.model;
+        }
+
         const freqEl = cardEl.querySelector('[data-dev-freq]');
         if (freqEl && radio.freqMHz) {
           freqEl.textContent = `• ${radio.freqLabel}`;
@@ -6611,8 +6651,8 @@
                   <i class="mdi ${catIcon} text-base shrink-0"></i>
                   <span class="text-xs font-semibold text-slate-800 dark:text-slate-100 leading-tight break-words [overflow-wrap:anywhere]">${escapeHtml(resolveSignalDisplayNames(dev, lastPayload).primaryName)}</span>
                 </div>
-                <div class="text-[11px] font-mono text-slate-400 leading-tight mt-0.5 pl-5 break-words [overflow-wrap:anywhere]">
-                  ${escapeHtml(dev.model)}
+                <div data-dev-subtitle class="text-[11px] font-mono text-slate-400 leading-tight mt-0.5 pl-5 break-words [overflow-wrap:anywhere]">
+                  ${escapeHtml(resolveSignalDisplayNames(dev, lastPayload).secondaryName || dev.model)}
                 </div>
                 <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 pl-5 break-words [overflow-wrap:anywhere]">
                   ID: <strong class="text-slate-700 dark:text-slate-200 break-words [overflow-wrap:anywhere]">${escapeHtml(dev.device_id)}</strong>

@@ -20,6 +20,8 @@ KNOWN_IBEACON_UUIDS: Dict[str, str] = {
 }
 
 PERSISTENT_HARDWARE_KEYS = (
+    "manufacturer_name",
+    "manufacturer_id",
     "mac_vendor",
     "ibeacon_profile",
     "gatt_name",

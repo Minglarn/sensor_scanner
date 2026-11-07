@@ -1435,6 +1435,8 @@ class BLEManager:
             "lux",
             "moisture",
             "sequence",
+            "manufacturer_name",
+            "manufacturer_id",
             "mac_vendor",
             "ibeacon_profile",
             "gatt_name",
@@ -1594,7 +1596,8 @@ class BLEManager:
         payload["id"] = device_id
 
         if model == "iBeacon-BLE" or apple_type == "iBeacon" or "ibeacon_uuid" in payload:
-            payload["manufacturer_name"] = "Apple iBeacon-spec (0x004C)"
+            if not payload.get("manufacturer_name") or payload.get("manufacturer_name") == "Apple":
+                payload["manufacturer_name"] = "Apple iBeacon-spec (0x004C)"
             ib_uuid = str(payload.get("ibeacon_uuid") or "").strip().upper()
             if ib_uuid in KNOWN_IBEACON_UUIDS:
                 payload["ibeacon_profile"] = KNOWN_IBEACON_UUIDS[ib_uuid]
