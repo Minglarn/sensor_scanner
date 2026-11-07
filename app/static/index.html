@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.23</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.24</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1423,7 +1423,13 @@
                 <span class="text-slate-700 dark:text-slate-300">Ignorera / Svartlista enhet</span>
               </label>
             </div>
-            <span id="modalActionStatus" class="text-emerald-600 dark:text-emerald-400 font-semibold"></span>
+            <div class="flex items-center gap-3 ml-auto">
+              <span id="modalActionStatus" class="text-emerald-600 dark:text-emerald-400 font-semibold"></span>
+              <button id="modal-delete-btn" type="button" onclick="deleteDeviceFromModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer">
+                <i id="modal-delete-btn-icon" class="mdi mdi-trash-can-outline text-sm"></i>
+                <span id="modal-delete-btn-text">Radera från DB</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -2536,7 +2542,7 @@
         'effect', 'pulses', 'pulse_count', 'pulses_per_kwh', 'sequence', 'mode',
         'calculated_power_W', 'local_name', 'manufacturer_name', 'manufacturer_id',
         'service_uuids', 'ble_service_name', 'mac_type', 'apple_type', 'tesla_node',
-        'is_own_vehicle', 'tx_power', 'distance_m', 'beacon_hash', 'ibeacon_uuid',
+        'is_own_vehicle', 'tx_power', 'distance_m', 'measured_power_1m', 'beacon_hash', 'ibeacon_uuid',
         'uuid', 'major', 'minor', 'is_beacon_only'
       ].forEach((k) => consumed.add(k));
 
@@ -4337,8 +4343,8 @@
             const strengthTarget = existingEl.querySelector('[data-sig-strength]');
             if (strengthTarget) {
               strengthTarget.innerHTML = viewMode === 'table'
-                ? buildTableSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz)
-                : buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
+                ? buildTableSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz, sig.payload || {})
+                : buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz, sig.payload || {});
             }
 
             const hitsTarget = existingEl.querySelector('[data-sig-hits]');
@@ -4510,7 +4516,7 @@
       const timeInnerHtml = renderSignalTimeInnerHtml(sig.timestamp, freshUntilMs);
 
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
-      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
+      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz, p);
       const hitCount = sig.hit_count || 1;
       const isHaActive = Number(sig.ha_discovery) === 1;
       const devObj = devicesList.find((d) => d.device_key === devKey);
@@ -4625,7 +4631,43 @@
       `;
     }
 
-    function buildTableSignalStrength(rssi, snr, mod = '', freq = null) {
+    function computeOrExtractBleDistance(payload, sig = null) {
+      const p = payload && typeof payload === 'object' ? payload : {};
+      let ref1m = -59;
+      if (p.measured_power_1m !== undefined && p.measured_power_1m !== null && !Number.isNaN(Number(p.measured_power_1m))) {
+        ref1m = Math.round(Number(p.measured_power_1m));
+      } else if (p.tx_power !== undefined && p.tx_power !== null && !Number.isNaN(Number(p.tx_power))) {
+        const txNum = Number(p.tx_power);
+        if (txNum >= -90 && txNum <= -30) {
+          ref1m = Math.round(txNum);
+        } else if (txNum > -30) {
+          ref1m = Math.round(txNum - 62);
+        }
+      }
+
+      if (p.distance_m !== undefined && p.distance_m !== null && !Number.isNaN(Number(p.distance_m))) {
+        return { distanceM: Number(p.distance_m), ref1m };
+      }
+
+      const rawRssi = p.rssi ?? (sig && sig.rssi);
+      if (rawRssi !== undefined && rawRssi !== null && !Number.isNaN(Number(rawRssi))) {
+        const rssiNum = Number(rawRssi);
+        const ratio = (ref1m - rssiNum) / (10.0 * 2.4);
+        const distanceM = Math.round(Math.pow(10, ratio) * 10) / 10;
+        return { distanceM, ref1m };
+      }
+      return null;
+    }
+
+    function formatBleDistanceText(distM) {
+      if (distM === null || distM === undefined || Number.isNaN(Number(distM))) return '';
+      const d = Number(distM);
+      if (d < 1.0) return '< 1 m';
+      if (d > 60.0) return '> 60 m';
+      return `~${d.toFixed(1)} m`;
+    }
+
+    function buildTableSignalStrength(rssi, snr, mod = '', freq = null, payload = null) {
       if (rssi === null || rssi === undefined) {
         return `<span class="text-slate-400"><i class="mdi mdi-wifi-strength-outline mr-1"></i>RSSI -</span>`;
       }
@@ -4652,12 +4694,15 @@
           icon = 'mdi-wifi-strength-1';
           color = 'text-rose-500 dark:text-rose-400';
         }
+        const distInfo = computeOrExtractBleDistance(payload, { rssi: val });
+        const distText = distInfo ? formatBleDistanceText(distInfo.distanceM) : '';
         return `
           <div class="flex flex-col items-end leading-tight">
             <span class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
               <i class="mdi ${icon} text-sm leading-none"></i>
               <span>${val.toFixed(0)} dBm</span>
             </span>
+            ${distText ? `<span class="inline-flex items-center justify-end gap-0.5 text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5 whitespace-nowrap"><i class="mdi mdi-map-marker-distance text-xs leading-none"></i><span>${escapeHtml(distText)}</span></span>` : ''}
           </div>
         `;
       }
@@ -4700,7 +4745,7 @@
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
       const radio = extractRadioMetadata(sig, p);
       const tableRadioHtml = renderTableRadioCellHtml(radio);
-      const tableSignalHtml = buildTableSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
+      const tableSignalHtml = buildTableSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz, p);
       const hitCount = sig.hit_count || 1;
       const isHaActive = Number(sig.ha_discovery) === 1;
       const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, p);
@@ -4762,7 +4807,7 @@
       `;
     }
 
-    function buildFooterSignalStrength(rssi, snr, mod = '', freq = null) {
+    function buildFooterSignalStrength(rssi, snr, mod = '', freq = null, payload = null) {
       if (rssi === null || rssi === undefined) {
         return `<span class="text-slate-400"><i class="mdi mdi-wifi-strength-outline mr-1"></i>RSSI -</span>`;
       }
@@ -4776,11 +4821,6 @@
       let color = 'text-emerald-600 dark:text-emerald-400';
 
       if (isBle) {
-        // 1. BLE (2.4 GHz) RSSI in dBm:
-        // >= -68 dBm: Strong (Green, mdi-wifi-strength-4)
-        // -69 to -84 dBm: Good / Normal indoor (Sky/Blue, mdi-wifi-strength-3)
-        // -85 to -96 dBm: Medium / Far (Amber, mdi-wifi-strength-2)
-        // < -96 dBm: Weak / Edge (Rose, mdi-wifi-strength-1)
         if (val >= -68) {
           icon = 'mdi-wifi-strength-4';
           color = 'text-emerald-600 dark:text-emerald-400';
@@ -4794,10 +4834,13 @@
           icon = 'mdi-wifi-strength-1';
           color = 'text-rose-500 dark:text-rose-400';
         }
+        const distInfo = computeOrExtractBleDistance(payload, { rssi: val });
+        const distText = distInfo ? formatBleDistanceText(distInfo.distanceM) : '';
         return `
           <span class="inline-flex items-center gap-1 ${color}">
             <i class="mdi ${icon} text-sm leading-none"></i>
             <span>${val.toFixed(0)} dBm</span>
+            ${distText ? `<span class="text-slate-400 dark:text-slate-500 ml-1 inline-flex items-center gap-0.5"><i class="mdi mdi-map-marker-distance text-xs leading-none"></i><span>${escapeHtml(distText)}</span></span>` : ''}
           </span>
         `;
       }
@@ -4888,9 +4931,81 @@
       );
     }
 
+    let modalDeleteConfirmPending = false;
+    let modalDeleteConfirmTimer = null;
+
+    function resetModalDeleteButton() {
+      modalDeleteConfirmPending = false;
+      if (modalDeleteConfirmTimer) {
+        clearTimeout(modalDeleteConfirmTimer);
+        modalDeleteConfirmTimer = null;
+      }
+      const btn = document.getElementById('modal-delete-btn');
+      const icon = document.getElementById('modal-delete-btn-icon');
+      const txt = document.getElementById('modal-delete-btn-text');
+      if (btn) {
+        btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer';
+      }
+      if (icon) {
+        icon.className = 'mdi mdi-trash-can-outline text-sm';
+      }
+      if (txt) {
+        txt.textContent = 'Radera från DB';
+      }
+    }
+
+    async function deleteDeviceFromModal() {
+      if (!currentModalDeviceKey) return;
+      const btn = document.getElementById('modal-delete-btn');
+      const icon = document.getElementById('modal-delete-btn-icon');
+      const txt = document.getElementById('modal-delete-btn-text');
+
+      if (!modalDeleteConfirmPending) {
+        modalDeleteConfirmPending = true;
+        if (btn) {
+          btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white border border-rose-600 shadow-xs transition-colors cursor-pointer';
+        }
+        if (icon) {
+          icon.className = 'mdi mdi-alert-circle-outline text-sm';
+        }
+        if (txt) {
+          txt.textContent = 'Bekräfta radering?';
+        }
+        modalDeleteConfirmTimer = setTimeout(resetModalDeleteButton, 4000);
+        return;
+      }
+
+      const targetKey = currentModalDeviceKey;
+      resetModalDeleteButton();
+
+      try {
+        const res = await fetch(`/api/devices/${encodeURIComponent(targetKey)}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) {
+          showToast('Kunde inte radera enhet från databasen', true);
+          return;
+        }
+        rawSignalsList = rawSignalsList.filter((s) => s.device_key !== targetKey);
+        devicesList = devicesList.filter((d) => d.device_key !== targetKey);
+        selectedDeviceKeys.delete(targetKey);
+        syncMultiSelectBar();
+        updateNewDevicesNavBadge();
+        renderCategoryFilterDropdowns();
+        renderSignalsView();
+        renderDevicesList();
+        closeDetailModal();
+        loadStatus();
+        showToast(`Enhet ${targetKey} och dess historik har raderats från databasen`);
+      } catch (e) {
+        showToast('Kunde inte radera enhet från databasen', true);
+      }
+    }
+
     async function openDeviceModalByKey(deviceKey, signalId = 0) {
       currentModalDeviceKey = deviceKey;
       document.getElementById('modalActionStatus').textContent = '';
+      resetModalDeleteButton();
 
       const matchingSig = signalId
         ? rawSignalsList.find((s) => Number(s.id) === Number(signalId))
@@ -5025,6 +5140,24 @@
         );
       }
 
+      if (radio.isBle) {
+        const distInfo = computeOrExtractBleDistance(payload, sig);
+        if (distInfo && distInfo.distanceM !== null) {
+          const d = distInfo.distanceM;
+          const distLabel = formatBleDistanceText(d);
+          const refLabel = `Ref@1m: ${distInfo.ref1m} dBm`;
+          let distChipCls = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30';
+          if (d >= 5.0 && d <= 15.0) {
+            distChipCls = 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30';
+          } else if (d > 15.0) {
+            distChipCls = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30';
+          }
+          kpiCardsHtml.push(
+            renderChip('mdi-ruler', distChipCls, 'AVSTÅND (EST.)', distLabel, [refLabel])
+          );
+        }
+      }
+
       document.getElementById('modalKpiGrid').innerHTML = kpiCardsHtml.join('');
 
       if (Array.isArray(historyList)) {
@@ -5074,6 +5207,7 @@
     }
 
     function closeDetailModal() {
+      resetModalDeleteButton();
       document.getElementById('detailModal').classList.add('hidden');
       currentModalDeviceKey = null;
     }
@@ -5204,7 +5338,7 @@
         const lastPayload = dev.last_payload || sig.payload || {};
         const { badgesHtml } = extractAndFormatMetrics(lastPayload, sig);
         const radio = extractRadioMetadata(sig, lastPayload);
-        const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi ?? sig.rssi, lastPayload.snr ?? sig.snr, radio.mod, radio.freqMHz);
+        const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi ?? sig.rssi, lastPayload.snr ?? sig.snr, radio.mod, radio.freqMHz, lastPayload);
 
         const badgesEl = cardEl.querySelector('[data-dev-badges]');
         if (badgesEl) {
@@ -5473,7 +5607,7 @@
       const lastPayload = dev.last_payload || {};
       const { badgesHtml } = extractAndFormatMetrics(lastPayload);
       const radio = extractRadioMetadata(null, lastPayload);
-      const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi, lastPayload.snr, radio.mod, radio.freqMHz);
+      const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi, lastPayload.snr, radio.mod, radio.freqMHz, lastPayload);
       const hasGroup = Boolean(dev.group_name && dev.group_name.trim());
 
       let borderClass = 'border-slate-200 dark:border-slate-800';

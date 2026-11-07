@@ -497,6 +497,19 @@ class Database:
                         enriched_pl = enrich_sparsnas_payload(dict(pl))
                         if r["model"] in ("Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE"):
                             enriched_pl["vehicle_status"] = "Digital Key • Inom räckvidd"
+                        if str(enriched_pl.get("mod") or "").upper() == "BLE" and enriched_pl.get("rssi") is not None and "distance_m" not in enriched_pl:
+                            try:
+                                rssi_f = float(enriched_pl["rssi"])
+                                tx_p = enriched_pl.get("tx_power")
+                                if tx_p is not None:
+                                    tx_f = float(tx_p)
+                                    ref_1m = tx_f if -90.0 <= tx_f <= -30.0 else (tx_f - 62.0 if tx_f > -30.0 else -59.0)
+                                else:
+                                    ref_1m = -59.0
+                                enriched_pl["distance_m"] = round(10.0 ** ((ref_1m - rssi_f) / 24.0), 1)
+                                enriched_pl["measured_power_1m"] = int(round(ref_1m))
+                            except (ValueError, TypeError):
+                                pass
                         new_cat = infer_category(r["model"], enriched_pl)
                         cur_cat = r["category"] or "Sensor"
                         new_pl_json = json.dumps(enriched_pl, ensure_ascii=False)

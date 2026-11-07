@@ -581,6 +581,7 @@ class BLEManager:
         self._debounce_cache: Dict[str, Tuple[float, str]] = {}
         self._beacon_touch_cache: Dict[str, float] = {}
         self._device_state_cache: Dict[str, Dict[str, Any]] = {}
+        self._rssi_ema_cache: Dict[str, float] = {}
         self._log_tail: Deque[str] = deque(maxlen=100)
 
     def reset_stats_and_cache(self) -> None:
@@ -590,6 +591,17 @@ class BLEManager:
         self._debounce_cache.clear()
         self._beacon_touch_cache.clear()
         self._device_state_cache.clear()
+        self._rssi_ema_cache.clear()
+
+    def evict_device(self, model: str, device_id: str) -> None:
+        dev_cache_key = f"{model}:{device_id}"
+        self._discovered_devices.discard(dev_cache_key)
+        self._debounce_cache.pop(dev_cache_key, None)
+        self._beacon_touch_cache.pop(dev_cache_key, None)
+        self._rssi_ema_cache.pop(dev_cache_key, None)
+        if len(device_id) == 12:
+            mac_fmt = ":".join(device_id[i : i + 2] for i in range(0, 12, 2)).upper()
+            self._device_state_cache.pop(mac_fmt, None)
 
     def get_status(self) -> Dict[str, Any]:
         settings = self._get_settings()
@@ -1084,6 +1096,37 @@ class BLEManager:
 
         payload["model"] = model
         payload["id"] = device_id
+
+        # Calculate estimated distance (distance_m) with EMA RSSI smoothing and Log-Distance Path Loss (n = 2.4)
+        dev_cache_key = f"{model}:{device_id}"
+        if rssi is not None:
+            try:
+                cur_rssi = float(rssi)
+                prev_smoothed = self._rssi_ema_cache.get(dev_cache_key)
+                if prev_smoothed is not None:
+                    smoothed_rssi = 0.4 * cur_rssi + 0.6 * prev_smoothed
+                else:
+                    smoothed_rssi = cur_rssi
+                self._rssi_ema_cache[dev_cache_key] = smoothed_rssi
+
+                tx_p = payload.get("tx_power")
+                if tx_p is not None:
+                    tx_f = float(tx_p)
+                    if -90.0 <= tx_f <= -30.0:
+                        measured_power_1m = tx_f
+                    elif tx_f > -30.0:
+                        measured_power_1m = tx_f - 62.0
+                    else:
+                        measured_power_1m = -59.0
+                else:
+                    measured_power_1m = -59.0
+
+                ratio = (measured_power_1m - smoothed_rssi) / (10.0 * 2.4)
+                distance_m = round(10.0 ** ratio, 1)
+                payload["distance_m"] = distance_m
+                payload["measured_power_1m"] = int(round(measured_power_1m))
+            except (ValueError, TypeError):
+                pass
 
         # Determine if this BLE packet carries real sensor telemetry or is a passive raw beacon
         telemetry_keys = (

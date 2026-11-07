@@ -75,6 +75,9 @@ class RTLManager:
         self._debounced_count = 0
         self._received_count = 0
 
+    def evict_device(self, model: str, device_id: str) -> None:
+        self._debounce_cache.pop(f"{model}:{device_id}", None)
+
     def _resolve_active_freqs(self, settings: Dict[str, str]) -> List[str]:
         mode = str(settings.get("mode", "hop")).strip().lower()
         if mode == "433":

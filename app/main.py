@@ -806,7 +806,7 @@ async def api_ha_discovery(device_key: str):
     return result
 
 
-@app.delete("/api/devices/{device_key}")
+@app.delete("/api/devices/{device_key:path}")
 async def api_delete_device(device_key: str):
     device = await asyncio.to_thread(db.get_device, device_key)
     if device and int(device.get("ha_discovery", 0)) == 1:
@@ -815,6 +815,10 @@ async def api_delete_device(device_key: str):
     deleted = await asyncio.to_thread(db.delete_device, device_key)
     if not deleted:
         raise HTTPException(status_code=404, detail="Enheten hittades inte.")
+
+    if device:
+        ble_manager.evict_device(str(device.get("model", "")), str(device.get("device_id", "")))
+        rtl_manager.evict_device(str(device.get("model", "")), str(device.get("device_id", "")))
 
     await ws_manager.broadcast({"type": "device_deleted", "device_key": device_key})
     await broadcast_full_status()
