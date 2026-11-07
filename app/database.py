@@ -270,6 +270,7 @@ class Database:
                             mqtt_enabled INTEGER DEFAULT 1,
                             ha_discovery INTEGER DEFAULT 0,
                             ignored INTEGER DEFAULT 0,
+                            is_new INTEGER DEFAULT 1,
                             first_seen TEXT NOT NULL,
                             last_seen TEXT NOT NULL,
                             hit_count INTEGER DEFAULT 1,
@@ -287,6 +288,13 @@ class Database:
                         pass
                     try:
                         conn.execute("ALTER TABLE devices ADD COLUMN group_name TEXT DEFAULT '';")
+                    except Exception:
+                        pass
+                    try:
+                        conn.execute("ALTER TABLE devices ADD COLUMN is_new INTEGER DEFAULT 1;")
+                        conn.execute(
+                            "UPDATE devices SET is_new = 0 WHERE (alias IS NOT NULL AND TRIM(alias) != '') OR (group_name IS NOT NULL AND TRIM(group_name) != '') OR ignored = 1;"
+                        )
                     except Exception:
                         pass
 
@@ -420,8 +428,8 @@ class Database:
                             """
                             INSERT INTO devices (
                                 device_key, model, device_id, alias, group_name, category,
-                                mqtt_enabled, ha_discovery, ignored, first_seen, last_seen, hit_count, last_payload
-                            ) VALUES (?, ?, ?, '', '', ?, 1, 0, 0, ?, ?, 1, ?);
+                                mqtt_enabled, ha_discovery, ignored, is_new, first_seen, last_seen, hit_count, last_payload
+                            ) VALUES (?, ?, ?, '', '', ?, 1, 0, 0, 1, ?, ?, 1, ?);
                             """,
                             (device_key, model, device_id, inferred_cat, timestamp, timestamp, raw_json),
                         )
@@ -736,7 +744,7 @@ class Database:
                     conn.execute(
                         """
                         UPDATE devices
-                        SET alias = ?, group_name = ?, category = ?, mqtt_enabled = ?, ha_discovery = ?, ignored = ?
+                        SET alias = ?, group_name = ?, category = ?, mqtt_enabled = ?, ha_discovery = ?, ignored = ?, is_new = 0
                         WHERE device_key = ?;
                         """,
                         (new_alias, new_group, new_cat, new_mqtt, new_ha, new_ignored, device_key),
@@ -771,7 +779,7 @@ class Database:
                         conn.execute(
                             """
                             UPDATE devices
-                            SET group_name = ?, category = ?, ignored = ?
+                            SET group_name = ?, category = ?, ignored = ?, is_new = 0
                             WHERE device_key = ?;
                             """,
                             (new_group, new_cat, new_ignored, dk),
@@ -819,12 +827,16 @@ class Database:
                 ignored_devices = conn.execute(
                     "SELECT COUNT(*) AS c FROM devices WHERE ignored = 1;"
                 ).fetchone()["c"]
+                new_devices = conn.execute(
+                    "SELECT COUNT(*) AS c FROM devices WHERE COALESCE(is_new, 1) = 1 AND ignored = 0 AND COALESCE(TRIM(alias), '') = '' AND COALESCE(TRIM(group_name), '') = '';"
+                ).fetchone()["c"]
                 return {
                     "total_signals": int(total_signals),
                     "signals_today": int(signals_today),
                     "total_devices": int(total_devices),
                     "active_devices": int(active_devices),
                     "ignored_devices": int(ignored_devices),
+                    "new_devices": int(new_devices),
                 }
             finally:
                 conn.close()
@@ -928,3 +940,80 @@ class Database:
                 return deleted
             finally:
                 conn.close()
+
+    def optimize_database(self) -> Dict[str, Any]:
+        deleted = self.run_retention_cleanup()
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                    conn.execute("PRAGMA optimize;")
+            finally:
+                conn.close()
+        size_bytes = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
+        return {"ok": True, "deleted_signals": deleted, "size_bytes": size_bytes}
+
+    def export_backup(self) -> Dict[str, Any]:
+        devices = self.get_devices(include_ignored=True)
+        settings = self.get_settings()
+        return {
+            "exported_at": now_iso(),
+            "devices": devices,
+            "settings": settings,
+        }
+
+    def import_backup(self, data: Dict[str, Any]) -> Dict[str, int]:
+        devices_in = data.get("devices") if isinstance(data.get("devices"), list) else []
+        imported_count = 0
+        now_ts = now_iso()
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    for dev in devices_in:
+                        if not isinstance(dev, dict):
+                            continue
+                        dk = str(dev.get("device_key") or "").strip()
+                        model = str(dev.get("model") or "").strip()
+                        dev_id = str(dev.get("device_id") or "").strip()
+                        if not dk or not model:
+                            continue
+                        alias = str(dev.get("alias") or "").strip()
+                        group_name = str(dev.get("group_name") or "").strip()
+                        category = str(dev.get("category") or "Sensor").strip()
+                        mqtt_en = int(bool(dev.get("mqtt_enabled", 1)))
+                        ha_disc = int(bool(dev.get("ha_discovery", 0)))
+                        ignored = int(bool(dev.get("ignored", 0)))
+                        first_seen = str(dev.get("first_seen") or now_ts)
+                        last_seen = str(dev.get("last_seen") or now_ts)
+                        hit_count = int(dev.get("hit_count") or 1)
+                        lp = dev.get("last_payload")
+                        lp_json = json.dumps(lp, ensure_ascii=False) if isinstance(lp, dict) else "{}"
+
+                        existing = conn.execute(
+                            "SELECT device_key FROM devices WHERE device_key = ?;", (dk,)
+                        ).fetchone()
+                        if existing:
+                            conn.execute(
+                                """
+                                UPDATE devices
+                                SET alias = ?, group_name = ?, category = ?, mqtt_enabled = ?, ha_discovery = ?, ignored = ?, is_new = 0
+                                WHERE device_key = ?;
+                                """,
+                                (alias, group_name, category, mqtt_en, ha_disc, ignored, dk),
+                            )
+                        else:
+                            conn.execute(
+                                """
+                                INSERT INTO devices (
+                                    device_key, model, device_id, alias, group_name, category,
+                                    mqtt_enabled, ha_discovery, ignored, is_new, first_seen, last_seen, hit_count, last_payload
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?);
+                                """,
+                                (dk, model, dev_id, alias, group_name, category, mqtt_en, ha_disc, ignored, first_seen, last_seen, hit_count, lp_json),
+                            )
+                        imported_count += 1
+            finally:
+                conn.close()
+        return {"imported_devices": imported_count}

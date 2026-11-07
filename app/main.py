@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set
 
@@ -55,6 +56,7 @@ class ConnectionManager:
 ws_manager = ConnectionManager()
 db = Database()
 main_loop: Optional[asyncio.AbstractEventLoop] = None
+APP_STARTED_AT = time.time()
 
 
 def _on_mqtt_status_threadsafe(mqtt_status: Dict[str, Any]) -> None:
@@ -115,6 +117,7 @@ def build_status_payload() -> Dict[str, Any]:
     return {
         "app_name": __app_name__,
         "version": __version__,
+        "app_uptime_seconds": int(max(0.0, time.time() - APP_STARTED_AT)),
         "rtl": rtl_st,
         "mqtt": mqtt_st,
         "counts": counts,
@@ -471,3 +474,23 @@ async def api_update_settings(req: SettingsUpdateRequest):
 @app.get("/api/stats")
 async def api_get_stats():
     return await asyncio.to_thread(db.get_stats)
+
+
+@app.get("/api/backup/export")
+async def api_export_backup():
+    data = await asyncio.to_thread(db.export_backup)
+    return {"version": __version__, **data}
+
+
+@app.post("/api/backup/import")
+async def api_import_backup(payload: Dict[str, Any]):
+    result = await asyncio.to_thread(db.import_backup, payload)
+    await broadcast_full_status()
+    return {"ok": True, **result}
+
+
+@app.post("/api/database/optimize")
+async def api_optimize_database():
+    result = await asyncio.to_thread(db.optimize_database)
+    await broadcast_full_status()
+    return result

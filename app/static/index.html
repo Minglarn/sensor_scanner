@@ -6,6 +6,7 @@
   <title>SensorScanner | RTL-SDR V4 RF Monitor</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -56,120 +57,250 @@
     .json-null { color: #94a3b8; }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-screen flex flex-col selection:bg-sky-500 selection:text-white transition-colors duration-150">
+<body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 h-screen flex overflow-hidden selection:bg-sky-500 selection:text-white transition-colors duration-150">
 
-  <!-- TOPBAR / HEADER -->
-  <header class="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-sm">
-    <div class="max-w-[1920px] w-full mx-auto px-3 sm:px-6 py-2">
-      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
-        
-        <!-- Brand + Live Status Badges -->
-        <div class="flex items-center justify-between gap-2 flex-wrap">
-          <div class="flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-lg bg-sky-500/10 dark:bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-600 dark:text-sky-400 shrink-0">
-              <i class="mdi mdi-radar text-xl leading-none"></i>
-            </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <h1 class="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">SensorScanner</h1>
-                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">v2026.11.07.6</span>
-              </div>
-              <p class="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block leading-tight">RTL-SDR Blog V4 &amp; rtl_433 RF-signalanalysator</p>
-            </div>
+  <!-- MOBILE SIDEBAR BACKDROP -->
+  <div id="sidebarBackdrop" onclick="toggleMobileSidebar(false)" class="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-xs hidden lg:hidden"></div>
+
+  <!-- ===================================================================== -->
+  <!-- COLLAPSIBLE LEFT SIDEBAR                                              -->
+  <!-- ===================================================================== -->
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 lg:static h-screen w-60 -translate-x-full lg:translate-x-0 flex flex-col justify-between border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-all duration-200 select-none shrink-0">
+    
+    <!-- Top Section: Brand + Navigation Menu -->
+    <div class="flex flex-col min-h-0">
+      <!-- Brand Header -->
+      <div id="sidebarBrandHeader" class="h-14 px-3.5 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 shrink-0">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-8 h-8 rounded-lg bg-sky-500/10 dark:bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-600 dark:text-sky-400 shrink-0">
+            <i class="mdi mdi-radar text-xl leading-none"></i>
           </div>
-
-          <!-- Status Indicators (WS, SDR & MQTT) + Pause + Theme Toggle -->
-          <div class="flex items-center gap-1.5">
-            <div id="wsStatusBadge" class="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400" title="Realtidsanslutning (WebSocket)">
-              <span id="wsStatusDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
-              <span id="wsStatusText" class="hidden md:inline">WS: Ansluter</span>
-            </div>
-
-            <div id="sdrStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300" title="Status för rtl_433-processen">
-              <span id="sdrStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
-              <span id="sdrStatusText">SDR: Initierar</span>
-            </div>
-
-            <div id="mqttStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400" title="Status för MQTT-anslutning">
-              <span id="mqttStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
-              <span id="mqttStatusText" class="hidden sm:inline">MQTT: Frånkopplad</span>
-              <span class="sm:hidden">MQTT</span>
-            </div>
-
-            <button id="pauseBtn" onclick="togglePause()" class="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700" title="Pausa eller återuppta live-flödet">
-              <i id="pauseIcon" class="mdi mdi-pause text-sm leading-none"></i>
-              <span id="pauseBtnText">Pausa</span>
-            </button>
-
-            <button id="themeToggleBtn" onclick="toggleTheme()" class="flex items-center justify-center w-7 h-7 rounded-lg text-sm border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700" title="Växla mellan Ljust och Mörkt läge">
-              <i id="themeToggleIcon" class="mdi mdi-weather-sunny leading-none"></i>
-            </button>
+          <div class="sidebar-label min-w-0">
+            <h1 class="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate leading-tight">SensorScanner</h1>
+            <p class="text-[10px] text-slate-500 dark:text-slate-400 truncate leading-tight">RTL-SDR V4 &amp; rtl_433</p>
           </div>
         </div>
-
-        <!-- Quick Frequency Switcher -->
-        <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-950/90 p-1 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto">
-          <button onclick="switchFrequencyMode('433')" id="modeBtn_433" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
-            <i class="mdi mdi-sine-wave mr-0.5"></i>433.92 MHz
-          </button>
-          <button onclick="switchFrequencyMode('868')" id="modeBtn_868" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
-            <i class="mdi mdi-sine-wave mr-0.5"></i>868.3 MHz
-          </button>
-          <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
-            <i class="mdi mdi-swap-horizontal mr-0.5"></i>Dual Hop 433/868
-          </button>
-          <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
-            <i class="mdi mdi-tune-variant mr-0.5"></i>Custom
-          </button>
-        </div>
-
+        <button onclick="toggleMobileSidebar(false)" class="lg:hidden w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center">
+          <i class="mdi mdi-close text-base"></i>
+        </button>
       </div>
 
-      <!-- Error Banner (shown only if SDR reports an error) -->
-      <div id="sdrErrorBanner" class="hidden mt-2 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-700/70 text-rose-800 dark:text-rose-200 text-xs flex items-center justify-between gap-2">
-        <div class="flex items-center gap-2 min-w-0">
-          <i class="mdi mdi-alert-circle-outline text-base text-rose-600 dark:text-rose-400 shrink-0"></i>
-          <span id="sdrErrorText" class="truncate font-mono"></span>
-        </div>
-        <button onclick="switchTab('system')" class="shrink-0 underline hover:opacity-80 font-semibold">Visa logg</button>
-      </div>
+      <!-- 5 Separate Navigation Views -->
+      <nav class="p-2 space-y-1 overflow-y-auto">
+        <!-- 1. Signaler -->
+        <button
+          onclick="switchTab('signals')"
+          id="tabBtn_signals"
+          title="Signaler (Live & Historik)"
+          class="sidebar-nav-btn w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition"
+        >
+          <div class="flex items-center gap-2.5 min-w-0">
+            <i class="mdi mdi-access-point-network text-lg leading-none shrink-0"></i>
+            <span class="sidebar-label truncate">Signaler</span>
+          </div>
+          <span id="navCountSignals" class="sidebar-badge px-1.5 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-mono shrink-0">0</span>
+        </button>
 
-      <!-- Navigation Tabs -->
-      <nav class="flex items-center justify-between border-t border-slate-200 dark:border-slate-800/80 mt-2 pt-1.5 -mb-0.5">
-        <div class="flex space-x-1 sm:space-x-1.5 w-full sm:w-auto">
-          <button onclick="switchTab('signals')" id="tabBtn_signals" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition">
-            <i class="mdi mdi-access-point-network text-sm"></i>
-            <span>Signaler</span>
-            <span id="navCountSignals" class="ml-0.5 px-1.5 py-0.2 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-mono">0</span>
-          </button>
+        <!-- 2. Enheter -->
+        <button
+          onclick="switchTab('devices')"
+          id="tabBtn_devices"
+          title="Enheter (Enhetsregister & Grupper)"
+          class="sidebar-nav-btn relative w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition"
+        >
+          <div class="flex items-center gap-2.5 min-w-0">
+            <i class="mdi mdi-devices text-lg leading-none shrink-0"></i>
+            <span class="sidebar-label truncate">Enheter</span>
+          </div>
+          <div class="sidebar-badge flex items-center gap-1 shrink-0">
+            <span id="navNewDevicesBadge" class="hidden px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold">+0 NY</span>
+            <span id="navCountDevices" class="px-1.5 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-mono">0</span>
+          </div>
+          <span id="navCollapsedNewDot" class="hidden absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900"></span>
+        </button>
 
-          <button onclick="switchTab('devices')" id="tabBtn_devices" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition">
-            <i class="mdi mdi-devices text-sm"></i>
-            <span>Enheter</span>
-            <span id="navCountDevices" class="ml-0.5 px-1.5 py-0.2 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-mono">0</span>
-          </button>
+        <!-- 3. Statistik -->
+        <button
+          onclick="switchTab('stats')"
+          id="tabBtn_stats"
+          title="Statistik (KPI, 24h & Tidsseriegraf)"
+          class="sidebar-nav-btn w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition"
+        >
+          <div class="flex items-center gap-2.5 min-w-0">
+            <i class="mdi mdi-chart-areaspline text-lg leading-none shrink-0"></i>
+            <span class="sidebar-label truncate">Statistik</span>
+          </div>
+        </button>
 
-          <button onclick="switchTab('system')" id="tabBtn_system" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition">
-            <i class="mdi mdi-console text-sm"></i>
-            <span>System &amp; Logg</span>
-          </button>
-        </div>
+        <!-- 4. Inställningar -->
+        <button
+          onclick="switchTab('settings')"
+          id="tabBtn_settings"
+          title="Inställningar (SDR, MQTT, HA & Databas)"
+          class="sidebar-nav-btn w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition"
+        >
+          <div class="flex items-center gap-2.5 min-w-0">
+            <i class="mdi mdi-cog-outline text-lg leading-none shrink-0"></i>
+            <span class="sidebar-label truncate">Inställningar</span>
+          </div>
+        </button>
 
-        <div class="hidden xl:flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 font-mono">
-          <i class="mdi mdi-terminal"></i>
-          <span id="headerCmdPreview" class="truncate max-w-xl"></span>
-        </div>
+        <!-- 5. Loggar & Diagnostik -->
+        <button
+          onclick="switchTab('logs')"
+          id="tabBtn_logs"
+          title="Loggar & Diagnostik (rtl_433 stderr)"
+          class="sidebar-nav-btn relative w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition"
+        >
+          <div class="flex items-center gap-2.5 min-w-0">
+            <i class="mdi mdi-console-line text-lg leading-none shrink-0"></i>
+            <span class="sidebar-label truncate">Loggar &amp; Diagnostik</span>
+          </div>
+          <span id="navLogErrorDot" class="hidden w-2 h-2 rounded-full bg-rose-500 shrink-0"></span>
+        </button>
       </nav>
     </div>
-  </header>
 
-  <!-- MAIN CONTENT CONTAINER (Full Width 1920px) -->
-  <main class="flex-1 max-w-[1920px] w-full mx-auto px-3 sm:px-6 py-3">
+    <!-- Bottom Section: Sidebar Footer (Version, App Uptime, SDR Uptime & Collapse Button) -->
+    <div class="p-2 border-t border-slate-200 dark:border-slate-800 space-y-2 shrink-0">
+      <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.7</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
+            <i class="mdi mdi-clock-check-outline text-sky-500"></i>App Uptime
+          </span>
+          <span id="sidebarAppUptime" class="font-mono font-semibold text-slate-700 dark:text-slate-200">0s</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
+            <i class="mdi mdi-radio-tower text-emerald-500"></i>SDR Uptime
+          </span>
+          <span id="sidebarSdrUptime" class="font-mono font-semibold text-slate-700 dark:text-slate-200">0s</span>
+        </div>
+      </div>
 
-    <!-- =================================================================== -->
-    <!-- TAB 1: LIVE & HISTORIK (SIGNALER)                                   -->
-    <!-- =================================================================== -->
-    <section id="tabPanel_signals" class="space-y-2.5">
+      <button
+        id="sidebarCollapseBtn"
+        onclick="toggleSidebarCollapse()"
+        title="Fäll ihop eller expandera sidopanelen"
+        class="hidden lg:flex w-full items-center justify-center gap-2 py-2 px-2.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition"
+      >
+        <i id="sidebarCollapseIcon" class="mdi mdi-chevron-double-left text-base leading-none"></i>
+        <span class="sidebar-label">Fäll ihop meny</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===================================================================== -->
+  <!-- RIGHT SHELL: TOPBAR + SCROLLABLE MAIN VIEWPORT                        -->
+  <!-- ===================================================================== -->
+  <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+
+    <!-- TOPBAR -->
+    <header class="z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-xs shrink-0">
+      <div class="px-3 sm:px-6 py-2">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+          
+          <!-- Left: Mobile Hamburger + Active View Title + Status Pills -->
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2.5">
+              <button
+                onclick="toggleMobileSidebar(true)"
+                class="lg:hidden w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200"
+                title="Öppna meny"
+              >
+                <i class="mdi mdi-menu text-lg leading-none"></i>
+              </button>
+
+              <div class="flex items-center gap-2">
+                <i id="activeViewIcon" class="mdi mdi-access-point-network text-lg text-sky-500"></i>
+                <h2 id="activeViewTitle" class="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white">Signaler</h2>
+              </div>
+
+              <!-- Live Status Pills (WS, SDR, MQTT) -->
+              <div class="flex items-center gap-1.5 ml-1">
+                <div id="wsStatusBadge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400" title="Realtidsanslutning (WebSocket)">
+                  <span id="wsStatusDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+                  <span id="wsStatusText" class="hidden md:inline">WS: Ansluter</span>
+                </div>
+
+                <div id="sdrStatusBadge" class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300" title="Status för rtl_433-processen">
+                  <span id="sdrStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+                  <span id="sdrStatusText">SDR: Initierar</span>
+                </div>
+
+                <div id="mqttStatusBadge" class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400" title="Status för MQTT-anslutning">
+                  <span id="mqttStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+                  <span id="mqttStatusText" class="hidden sm:inline">MQTT: Frånkopplad</span>
+                  <span class="sm:hidden">MQTT</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Mobile-visible Pause & Theme Toggle -->
+            <div class="flex lg:hidden items-center gap-1.5">
+              <button onclick="togglePause()" class="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border transition bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700">
+                <i class="mdi mdi-pause text-sm leading-none"></i>
+              </button>
+              <button onclick="toggleTheme()" class="flex items-center justify-center w-7 h-7 rounded-lg text-sm border transition bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700">
+                <i class="mdi mdi-weather-sunny leading-none"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Quick Frequency Switcher + Pause + Theme Toggle -->
+          <div class="flex items-center justify-between lg:justify-end gap-2">
+            <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-950/90 p-1 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto">
+              <button onclick="switchFrequencyMode('433')" id="modeBtn_433" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
+                <i class="mdi mdi-sine-wave mr-0.5"></i>433.92 MHz
+              </button>
+              <button onclick="switchFrequencyMode('868')" id="modeBtn_868" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
+                <i class="mdi mdi-sine-wave mr-0.5"></i>868.3 MHz
+              </button>
+              <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
+                <i class="mdi mdi-swap-horizontal mr-0.5"></i>Dual Hop 433/868
+              </button>
+              <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
+                <i class="mdi mdi-tune-variant mr-0.5"></i>Custom
+              </button>
+            </div>
+
+            <div class="hidden lg:flex items-center gap-1.5">
+              <button id="pauseBtn" onclick="togglePause()" class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700" title="Pausa eller återuppta live-flödet">
+                <i id="pauseIcon" class="mdi mdi-pause text-sm leading-none"></i>
+                <span id="pauseBtnText">Pausa</span>
+              </button>
+
+              <button id="themeToggleBtn" onclick="toggleTheme()" class="flex items-center justify-center w-8 h-8 rounded-lg text-sm border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700" title="Växla mellan Ljust och Mörkt läge">
+                <i id="themeToggleIcon" class="mdi mdi-weather-sunny leading-none"></i>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Error Banner (shown only if SDR reports an error) -->
+        <div id="sdrErrorBanner" class="hidden mt-2 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-700/70 text-rose-800 dark:text-rose-200 text-xs flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <i class="mdi mdi-alert-circle-outline text-base text-rose-600 dark:text-rose-400 shrink-0"></i>
+            <span id="sdrErrorText" class="truncate font-mono"></span>
+          </div>
+          <button onclick="switchTab('logs')" class="shrink-0 underline hover:opacity-80 font-semibold">Visa logg</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN SCROLLABLE WORKSPACE -->
+    <main class="flex-1 overflow-y-auto px-3 sm:px-6 py-3">
+      <div class="max-w-[1920px] w-full mx-auto">
+
+        <!-- =================================================================== -->
+        <!-- VIEW 1: SIGNALER (#view-signals)                                    -->
+        <!-- =================================================================== -->
+        <section id="view-signals" class="space-y-2.5">
       
       <!-- Filter & View Controls Bar -->
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm space-y-2">
@@ -344,10 +475,10 @@
       </div>
     </section>
 
-    <!-- =================================================================== -->
-    <!-- TAB 2: ENHETSREGISTER (GRUPPERING, SORTERING & MULTI-SELECT)        -->
-    <!-- =================================================================== -->
-    <section id="tabPanel_devices" class="hidden space-y-2.5 pb-16">
+        <!-- =================================================================== -->
+        <!-- VIEW 2: ENHETER (#view-devices)                                     -->
+        <!-- =================================================================== -->
+        <section id="view-devices" class="hidden space-y-2.5 pb-16">
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm space-y-2">
         
         <!-- Row 1: Search, Group By, Sort By, Show Ignored -->
@@ -525,262 +656,427 @@
       </div>
     </div>
 
-    <!-- =================================================================== -->
-    <!-- TAB 3: STATISTIK & INSTÄLLNINGAR (SYSTEM & LOGG)                    -->
-    <!-- =================================================================== -->
-    <section id="tabPanel_system" class="hidden space-y-4">
-      
-      <!-- Overview KPI Cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
-          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Signaler idag / Totalt</span>
-            <i class="mdi mdi-counter text-base text-sky-500"></i>
-          </div>
-          <div class="mt-1 flex items-baseline gap-2">
-            <span id="statSignalsToday" class="text-xl font-bold text-slate-900 dark:text-white font-mono">0</span>
-            <span class="text-xs text-slate-400 dark:text-slate-500 font-mono">/ <span id="statSignalsTotal">0</span></span>
-          </div>
-          <div class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Debouncade dubbletter: <span id="statDebounced" class="font-mono font-semibold text-slate-700 dark:text-slate-300">0</span></div>
-        </div>
+        <!-- =================================================================== -->
+        <!-- VIEW 3: STATISTIK (#view-stats) - DEDICATED VIEW                    -->
+        <!-- =================================================================== -->
+        <section id="view-stats" class="hidden space-y-4">
+          
+          <!-- Overview KPI Cards -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
+              <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span>Signaler idag / Totalt</span>
+                <i class="mdi mdi-counter text-base text-sky-500"></i>
+              </div>
+              <div class="mt-1 flex items-baseline gap-2">
+                <span id="statSignalsToday" class="text-xl font-bold text-slate-900 dark:text-white font-mono">0</span>
+                <span class="text-xs text-slate-400 dark:text-slate-500 font-mono">/ <span id="statSignalsTotal">0</span></span>
+              </div>
+              <div class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Debouncade dubbletter: <span id="statDebounced" class="font-mono font-semibold text-slate-700 dark:text-slate-300">0</span></div>
+            </div>
 
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
-          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Aktiva enheter</span>
-            <i class="mdi mdi-devices text-base text-emerald-500"></i>
-          </div>
-          <div class="mt-1 flex items-baseline gap-2">
-            <span id="statActiveDevices" class="text-xl font-bold text-emerald-600 dark:text-emerald-400 font-mono">0</span>
-            <span class="text-xs text-slate-400 dark:text-slate-500 font-mono">(<span id="statIgnoredDevices">0</span> ignorerade)</span>
-          </div>
-          <div class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Unika sändare i registret</div>
-        </div>
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
+              <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span>Aktiva enheter</span>
+                <i class="mdi mdi-devices text-base text-emerald-500"></i>
+              </div>
+              <div class="mt-1 flex items-baseline gap-2">
+                <span id="statActiveDevices" class="text-xl font-bold text-emerald-600 dark:text-emerald-400 font-mono">0</span>
+                <span class="text-xs text-slate-400 dark:text-slate-500 font-mono">(<span id="statIgnoredDevices">0</span> ignorerade)</span>
+              </div>
+              <div class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Unika sändare i registret</div>
+            </div>
 
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
-          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Bandfördelning (433 vs 868 MHz)</span>
-            <i class="mdi mdi-sine-wave text-base text-indigo-500"></i>
-          </div>
-          <div class="mt-1 flex items-center justify-between text-xs font-mono">
-            <span class="text-sky-600 dark:text-sky-400">433: <strong id="statBand433">0</strong></span>
-            <span class="text-indigo-600 dark:text-indigo-400">868: <strong id="statBand868">0</strong></span>
-          </div>
-          <div class="mt-2 w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden flex">
-            <div id="statBandBar433" class="bg-sky-500 h-full transition-all" style="width: 50%"></div>
-            <div id="statBandBar868" class="bg-indigo-500 h-full transition-all" style="width: 50%"></div>
-          </div>
-        </div>
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
+              <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span>Bandfördelning (433 vs 868 MHz)</span>
+                <i class="mdi mdi-sine-wave text-base text-indigo-500"></i>
+              </div>
+              <div class="mt-1 flex items-center justify-between text-xs font-mono">
+                <span class="text-sky-600 dark:text-sky-400">433: <strong id="statBand433">0</strong></span>
+                <span class="text-indigo-600 dark:text-indigo-400">868: <strong id="statBand868">0</strong></span>
+              </div>
+              <div class="mt-2 w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden flex">
+                <div id="statBandBar433" class="bg-sky-500 h-full transition-all" style="width: 50%"></div>
+                <div id="statBandBar868" class="bg-indigo-500 h-full transition-all" style="width: 50%"></div>
+              </div>
+            </div>
 
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
-          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>SDR Uptime &amp; MQTT</span>
-            <i class="mdi mdi-timer-outline text-base text-amber-500"></i>
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
+              <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span>SDR Uptime &amp; MQTT</span>
+                <i class="mdi mdi-timer-outline text-base text-amber-500"></i>
+              </div>
+              <div class="mt-1 flex items-baseline justify-between">
+                <span id="statUptime" class="text-lg font-bold text-slate-900 dark:text-white font-mono">0s</span>
+                <span class="text-xs text-slate-500 dark:text-slate-400 font-mono">MQTT tx: <strong id="statMqttPublished" class="text-slate-800 dark:text-slate-200">0</strong></span>
+              </div>
+              <div class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Omstarter (watchdog): <span id="statRestarts" class="font-mono font-semibold text-slate-700 dark:text-slate-300">0</span></div>
+            </div>
           </div>
-          <div class="mt-1 flex items-baseline justify-between">
-            <span id="statUptime" class="text-lg font-bold text-slate-900 dark:text-white font-mono">0s</span>
-            <span class="text-xs text-slate-500 dark:text-slate-400 font-mono">MQTT tx: <strong id="statMqttPublished" class="text-slate-800 dark:text-slate-200">0</strong></span>
-          </div>
-          <div class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Omstarter (watchdog): <span id="statRestarts" class="font-mono font-semibold text-slate-700 dark:text-slate-300">0</span></div>
-        </div>
-      </div>
 
-      <!-- Charts Row: 24h Hourly Activity + Top 10 Devices -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
-        <div class="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
-              <i class="mdi mdi-chart-bar mr-1 text-sky-500"></i>Signaler per timme (senaste 24h)
-            </h3>
-            <button onclick="loadStats()" class="text-xs text-sky-600 dark:text-sky-400 hover:underline">
-              <i class="mdi mdi-refresh mr-0.5"></i>Uppdatera
-            </button>
-          </div>
-          <div id="hourlyChartContainer" class="h-36 flex items-end gap-1 pt-4 border-b border-slate-200 dark:border-slate-800">
-            <!-- Bars rendered by JS -->
-          </div>
-          <div id="hourlyChartLabels" class="flex justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-1">
-            <!-- Labels rendered by JS -->
-          </div>
-        </div>
+          <!-- Charts Row: 24h Hourly Activity + Top 10 Devices -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            <div class="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                  <i class="mdi mdi-chart-bar mr-1 text-sky-500"></i>Signaler per timme (senaste 24h)
+                </h3>
+                <button onclick="loadStats()" class="text-xs text-sky-600 dark:text-sky-400 hover:underline">
+                  <i class="mdi mdi-refresh mr-0.5"></i>Uppdatera
+                </button>
+              </div>
+              <div id="hourlyChartContainer" class="h-44 flex items-end gap-1 pt-4 border-b border-slate-200 dark:border-slate-800">
+                <!-- Bars rendered by JS -->
+              </div>
+              <div id="hourlyChartLabels" class="flex justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-1">
+                <!-- Labels rendered by JS -->
+              </div>
+            </div>
 
-        <div class="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm">
-          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 mb-2">
-            <i class="mdi mdi-trophy-outline mr-1 text-amber-500"></i>Topp 10 mest aktiva enheter
-          </h3>
-          <div id="topDevicesList" class="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-            <!-- Rendered by JS -->
+            <div class="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 mb-2">
+                <i class="mdi mdi-trophy-outline mr-1 text-amber-500"></i>Topp 10 mest aktiva enheter
+              </h3>
+              <div id="topDevicesList" class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                <!-- Rendered by JS -->
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <!-- Settings Form & Live Terminal Row -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
-        
-        <!-- System & SDR & MQTT Configuration Form -->
-        <div class="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm space-y-3.5">
-          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+          <!-- Interactive Chart.js History Graph -->
+          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+              <div>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                  <i class="mdi mdi-chart-areaspline mr-1 text-sky-500"></i>Historikgraf &amp; Trendanalys (Chart.js)
+                </h3>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400">Välj enhet för att plotta temperatur/energi/signalstyrka över tid, eller visa 24h RF-aktivitet</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <select
+                  id="statsChartDeviceSelect"
+                  onchange="renderStatsHistoryChart()"
+                  class="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                >
+                  <option value="__hourly__">24h Signalaktivitet (Alla sändare)</option>
+                </select>
+              </div>
+            </div>
+            <div class="relative h-64 w-full">
+              <canvas id="statsHistoryChartCanvas"></canvas>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- =================================================================== -->
+        <!-- VIEW 4: INSTÄLLNINGAR (#view-settings) - DEDICATED VIEW             -->
+        <!-- =================================================================== -->
+        <section id="view-settings" class="hidden space-y-4">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left Column: RTL-SDR, MQTT & Home Assistant Settings Form -->
+            <div class="lg:col-span-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900 dark:text-white">System-, SDR- &amp; MQTT-inställningar</h3>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400">Sparas permanent i SQLite och tillämpas direkt utan omstart av containern</p>
+                </div>
+                <button onclick="restartSdrProcess()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition">
+                  <i class="mdi mdi-restart"></i>
+                  <span>Starta om SDR</span>
+                </button>
+              </div>
+
+              <form id="settingsForm" onsubmit="saveSettings(event)" class="space-y-4 text-xs">
+                <div class="space-y-2.5">
+                  <div class="text-[11px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">
+                    <i class="mdi mdi-radio-tower mr-1"></i>RTL-SDR Blog V4 &amp; Frekvensstyrning
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Enhetsindex / Serienummer (-d)</label>
+                      <input type="text" id="set_device_index" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0 eller 00000433" />
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Aktivt frekvensläge</label>
+                      <select id="set_mode" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100">
+                        <option value="433">433.92 MHz (Fast)</option>
+                        <option value="868">868.3 MHz (Fast)</option>
+                        <option value="hop">Dual Hop (433.92 + 868.3 MHz)</option>
+                        <option value="custom">Custom (Egna frekvenser)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Hopp-intervall (-H sek)</label>
+                      <input type="number" id="set_hop_interval" min="5" max="3600" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom-frekvenser (kommaseparerade)</label>
+                      <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M,868.3M" />
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom Sample Rate (-s)</label>
+                      <input type="text" id="set_custom_sample_rate" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1024k" />
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Gain (-g)</label>
+                      <input type="text" id="set_gain" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="auto eller 40.2" />
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">PPM-korrigering (-p)</label>
+                      <input type="number" id="set_ppm" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0" />
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Debounce (sek)</label>
+                      <input type="number" step="0.1" min="0" max="60" id="set_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Retention (dagar)</label>
+                      <input type="number" min="1" max="3650" id="set_retention_days" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- MQTT Section -->
+                <div class="space-y-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      <i class="mdi mdi-transit-connection-variant mr-1"></i>MQTT Broker (Rå JSON)
+                    </span>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" id="set_mqtt_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500" />
+                      <span class="text-slate-700 dark:text-slate-300 font-medium">MQTT Aktiverad</span>
+                    </label>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div class="sm:col-span-2">
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">MQTT Host / IP</label>
+                      <input type="text" id="set_mqtt_host" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="192.168.1.121" />
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Port</label>
+                      <input type="number" id="set_mqtt_port" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1883" />
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Användarnamn</label>
+                      <input type="text" id="set_mqtt_user" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100" />
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Lösenord</label>
+                      <input type="password" id="set_mqtt_pass" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100" />
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Topic Prefix</label>
+                      <input type="text" id="set_mqtt_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="sensor_scanner" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Home Assistant Auto-Discovery Section (Optional, OFF by default) -->
+                <div class="space-y-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">
+                      <i class="mdi mdi-home-assistant mr-1"></i>Home Assistant MQTT Auto-Discovery (Valfritt)
+                    </span>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" id="set_ha_discovery_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500" />
+                      <span class="text-slate-700 dark:text-slate-300 font-medium">Aktivera Home Assistant MQTT Auto-Discovery</span>
+                    </label>
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
+                    <div>
+                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Discovery Prefix</label>
+                      <input type="text" id="set_ha_discovery_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="homeassistant" />
+                    </div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug pt-3">
+                      Avstängt som standard. När det är avstängt döljs alla HA Discovery-knappar i gränssnittet och ev. aktiva discovery-topics rensas.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="pt-2 flex items-center justify-end gap-2.5">
+                  <span id="settingsSaveFeedback" class="text-xs text-emerald-600 dark:text-emerald-400 hidden">Inställningar sparade!</span>
+                  <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition">
+                    <i class="mdi mdi-content-save-outline text-sm"></i>
+                    <span>Spara &amp; Tillämpa</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Right Column: Database & Maintenance (Backup/Export/Import & Optimize DB) -->
+            <div class="lg:col-span-4 space-y-4">
+              <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-3.5 text-xs">
+                <div class="border-b border-slate-200 dark:border-slate-800 pb-2.5">
+                  <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <i class="mdi mdi-database-cog-outline text-sky-500 text-base"></i>
+                    <span>Databas &amp; Underhåll</span>
+                  </h3>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Backup, export och import av enhetsregister (Alias, Grupper, Kategorier &amp; Ignorerade) samt SQLite-optimering</p>
+                </div>
+
+                <div class="space-y-2.5">
+                  <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div class="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <i class="mdi mdi-download-outline text-sky-500 text-sm"></i>
+                      <span>Exportera Enhetsregister (JSON)</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Ladda ner en komplett JSON-backup med alla dina konfigurerade enheter, alias, grupper och systeminställningar.</p>
+                    <button
+                      type="button"
+                      onclick="exportDatabaseBackup()"
+                      class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold transition"
+                    >
+                      <i class="mdi mdi-file-export-outline"></i>
+                      <span>Exportera Backup (.json)</span>
+                    </button>
+                  </div>
+
+                  <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div class="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <i class="mdi mdi-upload-outline text-emerald-500 text-sm"></i>
+                      <span>Importera Enhetsregister (JSON)</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Återställ eller slå ihop enheter, alias och gruppnamn från en tidigare sparad JSON-backupfil.</p>
+                    <input type="file" id="backupImportFileInput" accept=".json,application/json" onchange="importDatabaseBackup(event)" class="hidden" />
+                    <button
+                      type="button"
+                      onclick="document.getElementById('backupImportFileInput').click()"
+                      class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-semibold transition"
+                    >
+                      <i class="mdi mdi-file-import-outline"></i>
+                      <span>Välj JSON-fil att importera...</span>
+                    </button>
+                  </div>
+
+                  <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div class="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <i class="mdi mdi-database-check-outline text-amber-500 text-sm"></i>
+                      <span>Optimera SQLite-databas (WAL)</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Kör retention-rensning av gamla signaler, tömmer WAL-journalen och kör <code class="font-mono">PRAGMA optimize</code>.</p>
+                    <button
+                      type="button"
+                      onclick="optimizeDatabaseNow()"
+                      class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-semibold transition"
+                    >
+                      <i class="mdi mdi-broom"></i>
+                      <span>Rensa &amp; Optimera DB nu</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- =================================================================== -->
+        <!-- VIEW 5: LOGGAR & DIAGNOSTIK (#view-logs) - DEDICATED VIEW           -->
+        <!-- =================================================================== -->
+        <section id="view-logs" class="hidden space-y-3">
+          
+          <!-- Process Status & Active Command Card -->
+          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+              <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                  <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Process-status</div>
+                  <div id="logRtlState" class="font-mono font-bold text-slate-800 dark:text-slate-100 mt-0.5">Initierar...</div>
+                </div>
+                <i class="mdi mdi-cpu-64-bit text-xl text-sky-500"></i>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                  <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Aktivt Frekvensläge</div>
+                  <div id="logRtlMode" class="font-mono font-bold text-slate-800 dark:text-slate-100 mt-0.5">-</div>
+                </div>
+                <i class="mdi mdi-sine-wave text-xl text-indigo-500"></i>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                  <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Mottagna paket / Debounce</div>
+                  <div id="logRtlPackets" class="font-mono font-bold text-slate-800 dark:text-slate-100 mt-0.5">0 / 0</div>
+                </div>
+                <i class="mdi mdi-access-point-check text-xl text-emerald-500"></i>
+              </div>
+            </div>
+
             <div>
-              <h3 class="text-sm font-bold text-slate-900 dark:text-white">System-, SDR- &amp; MQTT-inställningar</h3>
-              <p class="text-[11px] text-slate-500 dark:text-slate-400">Sparas permanent i SQLite och tillämpas direkt</p>
+              <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1">
+                <span class="font-semibold"><i class="mdi mdi-terminal mr-1 text-sky-500"></i>Aktiv <code class="font-mono">rtl_433</code>-kommandorad:</span>
+                <button onclick="copyRtlCommand()" class="inline-flex items-center gap-1 text-sky-600 dark:text-sky-400 hover:underline font-medium">
+                  <i class="mdi mdi-content-copy"></i>
+                  <span>Kopiera kommando</span>
+                </button>
+              </div>
+              <div id="terminalCommandBox" class="px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-950 border border-slate-800 font-mono text-xs text-sky-400 break-all">
+                rtl_433 ...
+              </div>
             </div>
-            <button onclick="restartSdrProcess()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition">
-              <i class="mdi mdi-restart"></i>
-              <span>Starta om SDR</span>
-            </button>
           </div>
 
-          <form id="settingsForm" onsubmit="saveSettings(event)" class="space-y-3.5 text-xs">
-            <div class="space-y-2">
-              <div class="text-[11px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">RTL-SDR Blog V4 &amp; Frekvensstyrning</div>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Enhetsindex / Serienummer (-d)</label>
-                  <input type="text" id="set_device_index" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0 eller 00000433" />
-                </div>
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Aktivt frekvensläge</label>
-                  <select id="set_mode" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100">
-                    <option value="433">433.92 MHz (Fast)</option>
-                    <option value="868">868.3 MHz (Fast)</option>
-                    <option value="hop">Dual Hop (433.92 + 868.3 MHz)</option>
-                    <option value="custom">Custom (Egna frekvenser)</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Hopp-intervall (-H sek)</label>
-                  <input type="number" id="set_hop_interval" min="5" max="3600" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
-                </div>
+          <!-- Full-Width Dark Live Terminal for rtl_433 stderr -->
+          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5 mb-2.5">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white">SDR Diagnostik &amp; rtl_433 Live-Logg (stderr)</h3>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400">Fullbredds live-utskrift från RTL-SDR Blog V4 (R828D) och rtl_433</p>
               </div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom-frekvenser (kommaseparerade)</label>
-                  <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M,868.3M" />
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="relative">
+                  <i class="mdi mdi-magnify text-sm text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2"></i>
+                  <input
+                    type="text"
+                    id="logSearchInput"
+                    oninput="filterTerminalLog()"
+                    placeholder="Filtrera loggrader..."
+                    class="pl-7 pr-2.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-sky-500"
+                  />
                 </div>
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom Sample Rate (-s)</label>
-                  <input type="text" id="set_custom_sample_rate" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1024k" />
-                </div>
-              </div>
 
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Gain (-g)</label>
-                  <input type="text" id="set_gain" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="auto eller 40.2" />
-                </div>
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">PPM-korrigering (-p)</label>
-                  <input type="number" id="set_ppm" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0" />
-                </div>
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Debounce (sek)</label>
-                  <input type="number" step="0.1" min="0" max="60" id="set_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
-                </div>
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Retention (dagar)</label>
-                  <input type="number" min="1" max="3650" id="set_retention_days" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
-                </div>
-              </div>
-            </div>
-
-            <!-- MQTT Section -->
-            <div class="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-              <div class="flex items-center justify-between">
-                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">MQTT Broker (Rå JSON)</span>
-                <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                  <input type="checkbox" id="set_mqtt_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500" />
-                  <span class="text-slate-700 dark:text-slate-300 font-medium">MQTT Aktiverad</span>
+                <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-300 px-2 py-1 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                  <input type="checkbox" id="logAutoScrollToggle" checked class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500" />
+                  <span>Auto-scroll</span>
                 </label>
-              </div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div class="sm:col-span-2">
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">MQTT Host / IP</label>
-                  <input type="text" id="set_mqtt_host" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="192.168.1.121" />
-                </div>
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Port</label>
-                  <input type="number" id="set_mqtt_port" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1883" />
-                </div>
-              </div>
+                <button onclick="restartSdrProcess()" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold">
+                  <i class="mdi mdi-restart"></i>
+                  <span>Starta om SDR</span>
+                </button>
 
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Användarnamn</label>
-                  <input type="text" id="set_mqtt_user" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100" />
-                </div>
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Lösenord</label>
-                  <input type="password" id="set_mqtt_pass" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100" />
-                </div>
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Topic Prefix</label>
-                  <input type="text" id="set_mqtt_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="sensor_scanner" />
-                </div>
+                <button onclick="clearTerminalLog()" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs border border-slate-200 dark:border-slate-700 font-semibold">
+                  <i class="mdi mdi-broom"></i>
+                  <span>Töm vy</span>
+                </button>
               </div>
             </div>
 
-            <!-- Home Assistant Auto-Discovery Section (Optional, OFF by default) -->
-            <div class="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-              <div class="flex items-center justify-between gap-2">
-                <span class="text-[11px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">
-                  <i class="mdi mdi-home-assistant mr-1"></i>Home Assistant MQTT Auto-Discovery (Valfritt)
-                </span>
-                <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                  <input type="checkbox" id="set_ha_discovery_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500" />
-                  <span class="text-slate-700 dark:text-slate-300 font-medium">Aktivera Home Assistant MQTT Auto-Discovery</span>
-                </label>
-              </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
-                <div>
-                  <label class="block text-slate-500 dark:text-slate-400 mb-1">Discovery Prefix</label>
-                  <input type="text" id="set_ha_discovery_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="homeassistant" />
-                </div>
-                <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug pt-3">
-                  Avstängt som standard. När det är avstängt döljs alla HA Discovery-knappar i gränssnittet och ev. aktiva discovery-topics rensas.
-                </p>
-              </div>
-            </div>
-
-            <div class="pt-1 flex items-center justify-end gap-2.5">
-              <span id="settingsSaveFeedback" class="text-xs text-emerald-600 dark:text-emerald-400 hidden">Inställningar sparade!</span>
-              <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition">
-                <i class="mdi mdi-content-save-outline text-sm"></i>
-                <span>Spara &amp; Tillämpa</span>
-              </button>
-            </div>
-          </form>
-        </div>
-
-        <!-- Live Diagnostic Terminal (rtl_433 command + stderr) -->
-        <div class="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col">
-          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2 mb-2.5">
-            <div>
-              <h3 class="text-sm font-bold text-slate-900 dark:text-white">SDR Diagnostik &amp; rtl_433 Logg (stderr)</h3>
-              <p class="text-[11px] text-slate-500 dark:text-slate-400">Live-utskrift från RTL-SDR Blog V4 (R828D) och rtl_433</p>
-            </div>
-            <button onclick="clearTerminalLog()" class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs border border-slate-200 dark:border-slate-700">
-              <i class="mdi mdi-broom"></i>
-              <span>Töm vy</span>
-            </button>
-          </div>
-
-          <div class="mb-2">
-            <div class="text-[11px] text-slate-500 dark:text-slate-400 mb-1">Aktiv kommandorad:</div>
-            <div id="terminalCommandBox" class="px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-950 border border-slate-800 font-mono text-xs text-sky-400 break-all">
-              rtl_433 ...
+            <div id="terminalStderrBox" class="w-full min-h-[58vh] max-h-[68vh] overflow-y-auto p-3.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs leading-relaxed text-slate-300 space-y-1">
+              <!-- Stderr lines appended here -->
             </div>
           </div>
 
-          <div id="terminalStderrBox" class="flex-1 min-h-[250px] max-h-[370px] overflow-y-auto p-3 rounded-lg bg-slate-950 border border-slate-800 font-mono text-[11px] leading-relaxed text-slate-300 space-y-1">
-            <!-- Stderr lines appended here -->
-          </div>
-        </div>
+        </section>
 
       </div>
-    </section>
-
-  </main>
+    </main>
+  </div>
 
   <!-- ===================================================================== -->
   <!-- REDESIGNED TELEMETRY DETAIL MODAL                                     -->
@@ -922,10 +1218,17 @@
   <script>
     let activeTab = 'signals';
     let isPaused = false;
+    let sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
     let viewMode = localStorage.getItem('ss_view_mode') || 'grid';
     let groupDevices = localStorage.getItem('ss_group_devices') !== 'false';
     let activeQuickPill = 'all';
     let haDiscoveryEnabled = false;
+
+    let appUptimeSeconds = 0;
+    let sdrUptimeSeconds = 0;
+    let sdrIsRunning = false;
+    let statsHistoryChart = null;
+    let cachedHourly24h = [];
 
     // Enheter Tab Grouping, Sorting, Quick Filter & Multi-select state
     let deviceGroupBy = localStorage.getItem('ss_dev_group_by') || 'custom_group';
@@ -958,6 +1261,7 @@
     // -----------------------------------------------------------------------
     window.addEventListener('DOMContentLoaded', () => {
       syncThemeIcon();
+      applySidebarCollapseState();
       syncViewModeButtons();
       syncGroupDevicesButton();
       syncQuickPillButtons();
@@ -969,6 +1273,15 @@
       loadDevices();
       loadSettingsForm();
       connectWebSocket();
+
+      // Tick App Uptime and SDR Uptime every 1 second in the Sidebar Footer & Stats KPI
+      setInterval(() => {
+        appUptimeSeconds += 1;
+        if (sdrIsRunning) {
+          sdrUptimeSeconds += 1;
+        }
+        renderUptimeCounters();
+      }, 1000);
 
       // Update relative timestamps every 2 seconds across the entire DOM
       setInterval(() => {
@@ -991,6 +1304,102 @@
         }
       });
     });
+
+    function renderUptimeCounters() {
+      const appEl = document.getElementById('sidebarAppUptime');
+      const sdrEl = document.getElementById('sidebarSdrUptime');
+      const statEl = document.getElementById('statUptime');
+      if (appEl) appEl.textContent = formatDuration(appUptimeSeconds);
+      if (sdrEl) sdrEl.textContent = sdrIsRunning ? formatDuration(sdrUptimeSeconds) : 'Stoppad';
+      if (statEl) statEl.textContent = formatDuration(sdrUptimeSeconds);
+    }
+
+    function toggleSidebarCollapse() {
+      sidebarCollapsed = !sidebarCollapsed;
+      localStorage.setItem('sidebarCollapsed', sidebarCollapsed ? 'true' : 'false');
+      applySidebarCollapseState();
+    }
+
+    function applySidebarCollapseState() {
+      const sb = document.getElementById('sidebar');
+      const icon = document.getElementById('sidebarCollapseIcon');
+      const brandHdr = document.getElementById('sidebarBrandHeader');
+      if (!sb) return;
+
+      if (sidebarCollapsed) {
+        sb.classList.remove('w-60');
+        sb.classList.add('w-16');
+        if (icon) icon.className = 'mdi mdi-chevron-double-right text-base leading-none';
+        if (brandHdr) {
+          brandHdr.classList.remove('px-3.5', 'justify-between');
+          brandHdr.classList.add('px-2', 'justify-center');
+        }
+        document.querySelectorAll('#sidebar .sidebar-label, #sidebar .sidebar-badge').forEach((el) => {
+          el.classList.add('hidden');
+        });
+        document.querySelectorAll('#sidebar .sidebar-nav-btn').forEach((btn) => {
+          btn.classList.remove('justify-between', 'px-3');
+          btn.classList.add('justify-center', 'px-2');
+        });
+      } else {
+        sb.classList.remove('w-16');
+        sb.classList.add('w-60');
+        if (icon) icon.className = 'mdi mdi-chevron-double-left text-base leading-none';
+        if (brandHdr) {
+          brandHdr.classList.remove('px-2', 'justify-center');
+          brandHdr.classList.add('px-3.5', 'justify-between');
+        }
+        document.querySelectorAll('#sidebar .sidebar-label, #sidebar .sidebar-badge').forEach((el) => {
+          el.classList.remove('hidden');
+        });
+        document.querySelectorAll('#sidebar .sidebar-nav-btn').forEach((btn) => {
+          btn.classList.remove('justify-center', 'px-2');
+          btn.classList.add('justify-between', 'px-3');
+        });
+      }
+      updateNewDevicesNavBadge();
+    }
+
+    function toggleMobileSidebar(forceOpen) {
+      const sb = document.getElementById('sidebar');
+      const bd = document.getElementById('sidebarBackdrop');
+      if (!sb || !bd) return;
+      const isOpen = !sb.classList.contains('-translate-x-full');
+      const shouldOpen = forceOpen !== undefined ? Boolean(forceOpen) : !isOpen;
+      if (shouldOpen) {
+        sb.classList.remove('-translate-x-full');
+        bd.classList.remove('hidden');
+      } else {
+        sb.classList.add('-translate-x-full');
+        bd.classList.add('hidden');
+      }
+    }
+
+    function updateNewDevicesNavBadge(explicitCount) {
+      let newCount = explicitCount;
+      if (newCount === undefined || newCount === null) {
+        newCount = devicesList.filter(
+          (d) => Number(d.ignored) === 0 && Number(d.is_new ?? 1) === 1 && !(d.alias && d.alias.trim()) && !(d.group_name && d.group_name.trim())
+        ).length;
+      }
+      const badge = document.getElementById('navNewDevicesBadge');
+      const dot = document.getElementById('navCollapsedNewDot');
+      if (badge) {
+        if (newCount > 0) {
+          badge.textContent = `+${newCount} NY`;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+      if (dot) {
+        if (newCount > 0 && sidebarCollapsed) {
+          dot.classList.remove('hidden');
+        } else {
+          dot.classList.add('hidden');
+        }
+      }
+    }
 
     // -----------------------------------------------------------------------
     // Theme Toggle (Light / Dark Mode)
@@ -1725,6 +2134,13 @@
       const mqtt = status.mqtt || {};
       const counts = status.counts || {};
 
+      if (status.app_uptime_seconds !== undefined) {
+        appUptimeSeconds = Number(status.app_uptime_seconds) || 0;
+      }
+      sdrIsRunning = Boolean(rtl.running);
+      sdrUptimeSeconds = Number(rtl.uptime_seconds || 0);
+      renderUptimeCounters();
+
       const prevHaEnabled = haDiscoveryEnabled;
       haDiscoveryEnabled = Boolean(mqtt.ha_discovery_enabled);
       syncHaDiscoveryUiVisibility();
@@ -1735,6 +2151,9 @@
 
       document.getElementById('navCountSignals').textContent = counts.signals_today ?? 0;
       document.getElementById('navCountDevices').textContent = counts.active_devices ?? 0;
+      if (counts.new_devices !== undefined) {
+        updateNewDevicesNavBadge(Number(counts.new_devices));
+      }
 
       const sdrDot = document.getElementById('sdrStatusDot');
       const sdrText = document.getElementById('sdrStatusText');
@@ -1743,20 +2162,23 @@
       if (rtl.running) {
         sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse-subtle';
         sdrText.textContent = `SDR: Aktiv (${(rtl.mode || 'hop').toUpperCase()})`;
-        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300';
+        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300';
       } else {
         sdrDot.className = 'w-2 h-2 rounded-full bg-rose-500';
         sdrText.textContent = `SDR: ${rtl.state === 'starting' ? 'Startar...' : 'Fel / Stoppad'}`;
-        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-700/60 text-rose-800 dark:text-rose-300';
+        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-700/60 text-rose-800 dark:text-rose-300';
       }
 
       const errBanner = document.getElementById('sdrErrorBanner');
       const errText = document.getElementById('sdrErrorText');
+      const navLogErrDot = document.getElementById('navLogErrorDot');
       if (rtl.last_error) {
         errText.textContent = rtl.last_error;
         errBanner.classList.remove('hidden');
+        if (navLogErrDot) navLogErrDot.classList.remove('hidden');
       } else {
         errBanner.classList.add('hidden');
+        if (navLogErrDot) navLogErrDot.classList.add('hidden');
       }
 
       const mqttDot = document.getElementById('mqttStatusDot');
@@ -1766,11 +2188,11 @@
       if (mqtt.connected) {
         mqttDot.className = 'w-2 h-2 rounded-full bg-emerald-500';
         mqttText.textContent = `MQTT: Ansluten (${mqtt.host})`;
-        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300';
+        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300';
       } else {
         mqttDot.className = 'w-2 h-2 rounded-full bg-slate-400';
         mqttText.textContent = mqtt.enabled ? 'MQTT: Frånkopplad' : 'MQTT: Avstängd';
-        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400';
+        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400';
       }
 
       ['433', '868', 'hop', 'custom'].forEach((m) => {
@@ -1784,15 +2206,37 @@
       });
 
       if (rtl.command) {
-        document.getElementById('headerCmdPreview').textContent = rtl.command;
-        document.getElementById('terminalCommandBox').textContent = rtl.command;
+        const cmdBox = document.getElementById('terminalCommandBox');
+        if (cmdBox) cmdBox.textContent = rtl.command;
+      }
+
+      const logStateEl = document.getElementById('logRtlState');
+      const logModeEl = document.getElementById('logRtlMode');
+      const logPacketsEl = document.getElementById('logRtlPackets');
+      if (logStateEl) {
+        logStateEl.textContent = rtl.running ? `Körs (Omstarter: ${rtl.restart_count ?? 0})` : (rtl.state || 'Stoppad');
+      }
+      if (logModeEl) {
+        const modeMap = {
+          '433': '433.92 MHz (Fast)',
+          '868': '868.3 MHz (Fast)',
+          'hop': 'Dual Hop 433.92 / 868.3 MHz',
+          'custom': 'Custom Frekvenser'
+        };
+        logModeEl.textContent = modeMap[rtl.mode] || (rtl.mode || 'hop').toUpperCase();
+      }
+      if (logPacketsEl) {
+        logPacketsEl.textContent = `${rtl.received_count ?? 0} mottagna / ${rtl.debounced_count ?? 0} debouncade`;
       }
 
       const stderrBox = document.getElementById('terminalStderrBox');
-      if (Array.isArray(rtl.stderr_tail) && stderrBox.children.length === 0) {
+      if (Array.isArray(rtl.stderr_tail) && stderrBox && stderrBox.children.length === 0) {
         stderrBox.innerHTML = '';
         rtl.stderr_tail.forEach((line) => {
           const div = document.createElement('div');
+          if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) {
+            div.className = 'text-rose-400';
+          }
           div.textContent = line;
           stderrBox.appendChild(div);
         });
@@ -1804,7 +2248,6 @@
       document.getElementById('statActiveDevices').textContent = counts.active_devices ?? 0;
       document.getElementById('statIgnoredDevices').textContent = counts.ignored_devices ?? 0;
       document.getElementById('statDebounced').textContent = rtl.debounced_count ?? 0;
-      document.getElementById('statUptime').textContent = formatDuration(rtl.uptime_seconds || 0);
       document.getElementById('statMqttPublished').textContent = mqtt.published_count ?? 0;
       document.getElementById('statRestarts').textContent = rtl.restart_count ?? 0;
     }
@@ -1822,21 +2265,49 @@
 
     function appendStderrLine(line, lastError) {
       const stderrBox = document.getElementById('terminalStderrBox');
+      if (!stderrBox) return;
       const div = document.createElement('div');
       if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) {
         div.className = 'text-rose-400';
       }
       div.textContent = line;
+      const searchQ = (document.getElementById('logSearchInput')?.value || '').trim().toLowerCase();
+      if (searchQ && !line.toLowerCase().includes(searchQ)) {
+        div.classList.add('hidden');
+      }
       stderrBox.appendChild(div);
-      while (stderrBox.children.length > 200) {
+      while (stderrBox.children.length > 300) {
         stderrBox.removeChild(stderrBox.firstChild);
       }
-      stderrBox.scrollTop = stderrBox.scrollHeight;
+      const autoScroll = document.getElementById('logAutoScrollToggle');
+      if (!autoScroll || autoScroll.checked) {
+        stderrBox.scrollTop = stderrBox.scrollHeight;
+      }
 
       if (lastError) {
         document.getElementById('sdrErrorText').textContent = lastError;
         document.getElementById('sdrErrorBanner').classList.remove('hidden');
       }
+    }
+
+    function filterTerminalLog() {
+      const searchQ = (document.getElementById('logSearchInput')?.value || '').trim().toLowerCase();
+      const stderrBox = document.getElementById('terminalStderrBox');
+      if (!stderrBox) return;
+      Array.from(stderrBox.children).forEach((div) => {
+        if (!searchQ || (div.textContent || '').toLowerCase().includes(searchQ)) {
+          div.classList.remove('hidden');
+        } else {
+          div.classList.add('hidden');
+        }
+      });
+    }
+
+    function copyRtlCommand() {
+      const cmd = document.getElementById('terminalCommandBox')?.textContent || '';
+      if (!cmd) return;
+      navigator.clipboard.writeText(cmd.trim());
+      showToast('Kommandorad kopierad till urklipp');
     }
 
     function clearTerminalLog() {
@@ -1847,8 +2318,8 @@
     // Frequency Switching & Pause
     // -----------------------------------------------------------------------
     async function switchFrequencyMode(mode) {
-      if (mode === 'custom' && activeTab !== 'system') {
-        switchTab('system');
+      if (mode === 'custom' && activeTab !== 'settings') {
+        switchTab('settings');
         document.getElementById('set_mode').value = 'custom';
         document.getElementById('set_custom_freqs').focus();
       }
@@ -1894,42 +2365,65 @@
       if (isPaused) {
         icon.className = 'mdi mdi-play text-sm leading-none';
         txt.textContent = 'Återuppta';
-        btn.className = 'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40';
+        btn.className = 'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40';
         banner.classList.remove('hidden');
       } else {
         icon.className = 'mdi mdi-pause text-sm leading-none';
         txt.textContent = 'Pausa';
-        btn.className = 'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700';
+        btn.className = 'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700';
         banner.classList.add('hidden');
         loadSignals();
       }
     }
 
     // -----------------------------------------------------------------------
-    // Tab Navigation
+    // 5-View Sidebar Navigation
     // -----------------------------------------------------------------------
+    const VIEW_METADATA = {
+      signals: { title: 'Signaler', icon: 'mdi-access-point-network' },
+      devices: { title: 'Enheter', icon: 'mdi-devices' },
+      stats: { title: 'Statistik', icon: 'mdi-chart-areaspline' },
+      settings: { title: 'Inställningar', icon: 'mdi-cog-outline' },
+      logs: { title: 'Loggar & Diagnostik', icon: 'mdi-console-line' }
+    };
+
     function switchTab(tab, skipLoad = false) {
+      if (tab === 'system') tab = 'settings';
+      if (!VIEW_METADATA[tab]) tab = 'signals';
       activeTab = tab;
-      ['signals', 'devices', 'system'].forEach((t) => {
-        const panel = document.getElementById(`tabPanel_${t}`);
+
+      const meta = VIEW_METADATA[tab];
+      const titleEl = document.getElementById('activeViewTitle');
+      const iconEl = document.getElementById('activeViewIcon');
+      if (titleEl) titleEl.textContent = meta.title;
+      if (iconEl) iconEl.className = `mdi ${meta.icon} text-lg text-sky-500`;
+
+      const justifyCls = sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-3';
+
+      ['signals', 'devices', 'stats', 'settings', 'logs'].forEach((t) => {
+        const panel = document.getElementById(`view-${t}`);
         const btn = document.getElementById(`tabBtn_${t}`);
-        if (t === tab) {
-          panel.classList.remove('hidden');
-          btn.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition bg-sky-500/15 text-sky-700 dark:text-sky-400 border border-sky-500/30';
-        } else {
-          panel.classList.add('hidden');
-          btn.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 border border-transparent';
+        if (panel) {
+          if (t === tab) panel.classList.remove('hidden');
+          else panel.classList.add('hidden');
+        }
+        if (btn) {
+          if (t === tab) {
+            btn.className = `sidebar-nav-btn relative w-full flex items-center ${justifyCls} gap-2.5 py-2.5 rounded-xl text-xs font-semibold transition bg-sky-500/15 text-sky-700 dark:text-sky-400 border border-sky-500/30 shadow-xs`;
+          } else {
+            btn.className = `sidebar-nav-btn relative w-full flex items-center ${justifyCls} gap-2.5 py-2.5 rounded-xl text-xs font-semibold transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/70 border border-transparent`;
+          }
         }
       });
 
+      toggleMobileSidebar(false);
       syncMultiSelectBar();
       if (skipLoad) return;
       if (tab === 'signals') loadSignals();
       if (tab === 'devices') loadDevices();
-      if (tab === 'system') {
-        loadStats();
-        loadSettingsForm();
-      }
+      if (tab === 'stats') loadStats();
+      if (tab === 'settings') loadSettingsForm();
+      if (tab === 'logs') loadStatus();
     }
 
     // -----------------------------------------------------------------------
@@ -2766,6 +3260,7 @@
         const data = await res.json();
         devicesList = data.devices || [];
         updateExistingGroupsDatalist();
+        updateNewDevicesNavBadge();
         renderDevicesList();
       } catch (e) {
         console.error(e);
@@ -2783,6 +3278,7 @@
       } else {
         devicesList[idx] = { ...devicesList[idx], ...dev };
       }
+      updateNewDevicesNavBadge();
 
       // Live DOM update in Enheter tab WITHOUT overwriting active inputs!
       const cardEl = document.querySelector(`[data-device-card="${CSS.escape(devKey)}"]`);
@@ -2867,6 +3363,7 @@
     function handleDeviceUpdated(dev) {
       syncDeviceToCaches(dev);
       updateExistingGroupsDatalist();
+      updateNewDevicesNavBadge();
       if (activeTab === 'signals') renderSignalsView();
       if (activeTab === 'devices') renderDevicesList();
     }
@@ -2874,6 +3371,7 @@
     function handleDevicesBulkUpdated(devs) {
       devs.forEach((d) => syncDeviceToCaches(d));
       updateExistingGroupsDatalist();
+      updateNewDevicesNavBadge();
       if (activeTab === 'signals') renderSignalsView();
       if (activeTab === 'devices') renderDevicesList();
     }
@@ -3434,6 +3932,7 @@
         document.getElementById('statBandBar868').style.width = `${Math.round((b868 / totalBands) * 100)}%`;
 
         const hourly = data.hourly_24h || [];
+        cachedHourly24h = hourly;
         const maxHourly = Math.max(1, ...hourly.map((h) => h.count));
         const chartContainer = document.getElementById('hourlyChartContainer');
         const chartLabels = document.getElementById('hourlyChartLabels');
@@ -3476,8 +3975,174 @@
             </div>
           `).join('');
         }
+
+        populateStatsChartDeviceSelect();
+        await renderStatsHistoryChart();
       } catch (e) {
         console.error(e);
+      }
+    }
+
+    function populateStatsChartDeviceSelect() {
+      const sel = document.getElementById('statsChartDeviceSelect');
+      if (!sel) return;
+      const currentVal = sel.value || '__hourly__';
+      const activeDevs = devicesList.filter((d) => Number(d.ignored) === 0);
+      sel.innerHTML = '<option value="__hourly__">24h Signalaktivitet (Alla sändare)</option>';
+      activeDevs.forEach((d) => {
+        const opt = document.createElement('option');
+        opt.value = d.device_key;
+        opt.textContent = `${d.alias || d.model} (ID: ${d.device_id})`;
+        if (d.device_key === currentVal) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
+    async function renderStatsHistoryChart() {
+      const canvas = document.getElementById('statsHistoryChartCanvas');
+      if (!canvas || typeof Chart === 'undefined') return;
+      const selVal = document.getElementById('statsChartDeviceSelect')?.value || '__hourly__';
+
+      let labels = [];
+      let datasets = [];
+
+      if (selVal === '__hourly__') {
+        labels = cachedHourly24h.map((h) => h.hour);
+        datasets = [
+          {
+            label: 'Mottagna signaler per timme',
+            data: cachedHourly24h.map((h) => h.count),
+            borderColor: '#0ea5e9',
+            backgroundColor: 'rgba(14, 165, 233, 0.18)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3
+          }
+        ];
+      } else {
+        try {
+          const res = await fetch(`/api/devices/${encodeURIComponent(selVal)}`);
+          if (res.ok) {
+            const data = await res.json();
+            const history = (data.history || []).slice().reverse();
+            labels = history.map((h) => formatTimestamp(h.timestamp).slice(11, 19));
+            const tempPoints = history.map((h) => {
+              const p = h.payload || {};
+              if (h.temperature_c !== null && h.temperature_c !== undefined) return Number(h.temperature_c);
+              if (p.temperature_C !== undefined) return Number(p.temperature_C);
+              if (p.temperature_2_F !== undefined) return Number((((Number(p.temperature_2_F) - 32) * 5) / 9).toFixed(1));
+              return null;
+            });
+            const rssiPoints = history.map((h) => (h.rssi !== null && h.rssi !== undefined ? Number(h.rssi) : null));
+
+            if (tempPoints.some((v) => v !== null && !Number.isNaN(v))) {
+              datasets.push({
+                label: 'Temperatur (°C)',
+                data: tempPoints,
+                borderColor: '#f59e0b',
+                backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                fill: true,
+                tension: 0.3
+              });
+            }
+            datasets.push({
+              label: 'Signalstyrka RSSI (dB)',
+              data: rssiPoints,
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              fill: false,
+              tension: 0.3
+            });
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      if (statsHistoryChart) {
+        statsHistoryChart.destroy();
+      }
+      statsHistoryChart = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#94a3b8', font: { size: 11 } } }
+          },
+          scales: {
+            x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+            y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(148, 163, 184, 0.1)' } }
+          }
+        }
+      });
+    }
+
+    async function exportDatabaseBackup() {
+      try {
+        const res = await fetch('/api/backup/export');
+        if (!res.ok) {
+          showToast('Kunde inte exportera backup', true);
+          return;
+        }
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const dateStr = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `sensor_scanner_backup_${dateStr}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast('Backup exporterad (.json)');
+      } catch (e) {
+        showToast('Fel vid export av backup', true);
+      }
+    }
+
+    async function importDatabaseBackup(event) {
+      const file = event.target?.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        const res = await fetch('/api/backup/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(json)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          showToast(`Importerade ${data.imported_devices ?? 0} enheter från backup`);
+          loadDevices();
+          loadSignals();
+          loadStatus();
+        } else {
+          showToast('Kunde inte importera backupfil', true);
+        }
+      } catch (e) {
+        showToast('Ogiltig JSON-fil vid import', true);
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    async function optimizeDatabaseNow() {
+      try {
+        const res = await fetch('/api/database/optimize', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          const mb = ((data.size_bytes || 0) / (1024 * 1024)).toFixed(2);
+          showToast(`Databas optimerad (Rensade ${data.deleted_signals ?? 0} äldre signaler • Storlek: ${mb} MB)`);
+          loadStatus();
+        } else {
+          showToast('Kunde inte optimera databasen', true);
+        }
+      } catch (e) {
+        showToast('Fel vid optimering av databas', true);
       }
     }
 
