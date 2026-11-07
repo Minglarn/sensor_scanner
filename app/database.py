@@ -230,6 +230,20 @@ def sanitize_key(text: str) -> str:
     return res or "unknown"
 
 
+def _is_older_than_15_min(ts_str: Any) -> bool:
+    if not ts_str:
+        return False
+    try:
+        clean = str(ts_str).strip()
+        dt = datetime.fromisoformat(clean.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc).astimezone()
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=now.tzinfo)
+        return (now - dt).total_seconds() > 900.0
+    except Exception:
+        return False
+
+
 class Database:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
@@ -238,6 +252,50 @@ class Database:
             os.makedirs(db_dir, exist_ok=True)
         self._lock = threading.RLock()
         self._init_db()
+        self.expire_new_devices()
+
+    def expire_new_devices(self) -> int:
+        """
+        Clears is_new = 0 for any device that has hit_count > 5, has an alias/group,
+        or whose first_seen is older than 15 minutes.
+        """
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    cur = conn.execute(
+                        """
+                        UPDATE devices
+                        SET is_new = 0
+                        WHERE is_new = 1
+                          AND (
+                              hit_count > 5
+                              OR (alias IS NOT NULL AND alias != '')
+                              OR (group_name IS NOT NULL AND group_name != '')
+                              OR ignored = 1
+                              OR first_seen < datetime('now', '-15 minutes')
+                              OR datetime(first_seen) < datetime('now', '-15 minutes')
+                          );
+                        """
+                    )
+                    changed = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+                    rows = conn.execute(
+                        "SELECT device_key, first_seen FROM devices WHERE is_new = 1;"
+                    ).fetchall()
+                    expired_keys = [
+                        r["device_key"] for r in rows if _is_older_than_15_min(r["first_seen"])
+                    ]
+                    if expired_keys:
+                        placeholders = ",".join("?" for _ in expired_keys)
+                        cur2 = conn.execute(
+                            f"UPDATE devices SET is_new = 0 WHERE device_key IN ({placeholders});",
+                            expired_keys,
+                        )
+                        if cur2.rowcount and cur2.rowcount > 0:
+                            changed += cur2.rowcount
+                    return changed
+            finally:
+                conn.close()
 
     def _get_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
@@ -309,11 +367,22 @@ class Database:
                         pass
                     try:
                         conn.execute("ALTER TABLE devices ADD COLUMN is_new INTEGER DEFAULT 1;")
-                        conn.execute(
-                            "UPDATE devices SET is_new = 0 WHERE (alias IS NOT NULL AND TRIM(alias) != '') OR (group_name IS NOT NULL AND TRIM(group_name) != '') OR ignored = 1;"
-                        )
                     except Exception:
                         pass
+
+                    # Always run NY-badge cleanup at startup so old/established devices never stay marked as NY
+                    conn.execute(
+                        """
+                        UPDATE devices
+                        SET is_new = 0
+                        WHERE hit_count > 5
+                           OR (alias IS NOT NULL AND alias != '')
+                           OR (group_name IS NOT NULL AND group_name != '')
+                           OR ignored = 1
+                           OR first_seen < datetime('now', '-15 minutes')
+                           OR datetime(first_seen) < datetime('now', '-15 minutes');
+                        """
+                    )
 
                     conn.execute(
                         """
@@ -462,7 +531,8 @@ class Database:
                         "SELECT * FROM devices WHERE device_key = ?;", (device_key,)
                     ).fetchone()
 
-                    if existing_dev is None:
+                    is_brand_new = existing_dev is None
+                    if is_brand_new:
                         conn.execute(
                             """
                             INSERT INTO devices (
@@ -475,16 +545,39 @@ class Database:
                     else:
                         cur_cat = existing_dev["category"] or "Sensor"
                         updated_cat = inferred_cat if cur_cat in ("Sensor", "Unknown", "") and inferred_cat != "Sensor" else cur_cat
+                        next_hits = int(existing_dev["hit_count"] or 0) + 1
+                        cur_is_new = int(existing_dev["is_new"] or 0)
+                        has_alias = bool(existing_dev["alias"] and str(existing_dev["alias"]).strip())
+                        has_group = bool(existing_dev["group_name"] and str(existing_dev["group_name"]).strip())
+                        if (
+                            cur_is_new == 0
+                            or next_hits > 5
+                            or has_alias
+                            or has_group
+                            or int(existing_dev["ignored"] or 0) == 1
+                            or _is_older_than_15_min(existing_dev["first_seen"])
+                        ):
+                            next_is_new = 0
+                        else:
+                            next_is_new = 1
+
                         conn.execute(
                             """
                             UPDATE devices
                             SET category = ?,
                                 last_seen = ?,
                                 hit_count = hit_count + 1,
+                                is_new = CASE
+                                    WHEN ? = 0 THEN 0
+                                    WHEN (hit_count + 1) > 5 THEN 0
+                                    WHEN alias IS NOT NULL AND alias != '' THEN 0
+                                    WHEN first_seen < datetime('now', '-15 minutes') THEN 0
+                                    ELSE is_new
+                                END,
                                 last_payload = ?
                             WHERE device_key = ?;
                             """,
-                            (updated_cat, timestamp, raw_json, device_key),
+                            (updated_cat, timestamp, next_is_new, raw_json, device_key),
                         )
 
                     dev_row = conn.execute(
@@ -493,6 +586,7 @@ class Database:
                     device_dict = dict(dev_row)
                     device_dict["group_name"] = device_dict.get("group_name") or ""
                     device_dict["last_payload"] = payload
+                    device_dict["is_brand_new"] = is_brand_new
 
                     if int(device_dict.get("ignored", 0)) == 1:
                         return None, device_dict
@@ -568,19 +662,31 @@ class Database:
             try:
                 with conn:
                     existing_dev = conn.execute(
-                        "SELECT device_key FROM devices WHERE device_key = ?;", (device_key,)
+                        "SELECT device_key, first_seen, hit_count, is_new, alias, group_name FROM devices WHERE device_key = ?;", (device_key,)
                     ).fetchone()
                     if existing_dev is None:
                         return False
+                    next_hits = int(existing_dev["hit_count"] or 0) + 1
+                    cur_is_new = int(existing_dev["is_new"] or 0)
+                    has_alias = bool(existing_dev["alias"] and str(existing_dev["alias"]).strip())
+                    has_group = bool(existing_dev["group_name"] and str(existing_dev["group_name"]).strip())
+                    next_is_new = 0 if (cur_is_new == 0 or next_hits > 5 or has_alias or has_group or _is_older_than_15_min(existing_dev["first_seen"])) else 1
                     conn.execute(
                         """
                         UPDATE devices
                         SET last_seen = ?,
                             hit_count = hit_count + 1,
+                            is_new = CASE
+                                WHEN ? = 0 THEN 0
+                                WHEN (hit_count + 1) > 5 THEN 0
+                                WHEN alias IS NOT NULL AND alias != '' THEN 0
+                                WHEN first_seen < datetime('now', '-15 minutes') THEN 0
+                                ELSE is_new
+                            END,
                             last_payload = ?
                         WHERE device_key = ?;
                         """,
-                        (timestamp, raw_json, device_key),
+                        (timestamp, next_is_new, raw_json, device_key),
                     )
                     return True
             finally:
@@ -640,7 +746,10 @@ class Database:
                     d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
                     COALESCE(d.category, 'Sensor') AS category,
                     COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
-                    COALESCE(d.ignored, 0) AS ignored, COALESCE(d.is_new, 1) AS is_new, COALESCE(d.hit_count, 1) AS hit_count
+                    COALESCE(d.ignored, 0) AS ignored,
+                    CASE WHEN COALESCE(d.is_new, 0) = 1 AND COALESCE(d.hit_count, 1) <= 5 AND COALESCE(TRIM(d.alias), '') = '' THEN 1 ELSE 0 END AS is_new,
+                    COALESCE(d.hit_count, 1) AS hit_count,
+                    d.first_seen AS first_seen
                 FROM signals s
                 INNER JOIN (
                     SELECT MAX(s2.id) AS max_id
@@ -667,7 +776,10 @@ class Database:
                     d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
                     COALESCE(d.category, 'Sensor') AS category,
                     COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
-                    COALESCE(d.ignored, 0) AS ignored, COALESCE(d.is_new, 1) AS is_new, COALESCE(d.hit_count, 1) AS hit_count
+                    COALESCE(d.ignored, 0) AS ignored,
+                    CASE WHEN COALESCE(d.is_new, 0) = 1 AND COALESCE(d.hit_count, 1) <= 5 AND COALESCE(TRIM(d.alias), '') = '' THEN 1 ELSE 0 END AS is_new,
+                    COALESCE(d.hit_count, 1) AS hit_count,
+                    d.first_seen AS first_seen
                 FROM signals s
                 LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
                 WHERE {where_sql}
@@ -763,6 +875,18 @@ class Database:
                 for r in rows:
                     d = dict(r)
                     d["group_name"] = d.get("group_name") or ""
+                    d["is_new"] = (
+                        1
+                        if (
+                            int(d.get("is_new") or 0) == 1
+                            and int(d.get("hit_count") or 1) <= 5
+                            and not (d.get("alias") or "").strip()
+                            and not (d.get("group_name") or "").strip()
+                            and int(d.get("ignored") or 0) == 0
+                            and not _is_older_than_15_min(d.get("first_seen"))
+                        )
+                        else 0
+                    )
                     try:
                         pl = json.loads(d["last_payload"])
                         d["last_payload"] = enrich_sparsnas_payload(pl) if isinstance(pl, dict) else {}
@@ -924,7 +1048,7 @@ class Database:
                     "SELECT COUNT(*) AS c FROM devices WHERE ignored = 1;"
                 ).fetchone()["c"]
                 new_devices = conn.execute(
-                    "SELECT COUNT(*) AS c FROM devices WHERE COALESCE(is_new, 1) = 1 AND ignored = 0 AND COALESCE(TRIM(alias), '') = '' AND COALESCE(TRIM(group_name), '') = '';"
+                    "SELECT COUNT(*) AS c FROM devices WHERE COALESCE(is_new, 0) = 1 AND COALESCE(hit_count, 1) <= 5 AND ignored = 0 AND COALESCE(TRIM(alias), '') = '' AND COALESCE(TRIM(group_name), '') = '';"
                 ).fetchone()["c"]
                 ble_devices = conn.execute(
                     "SELECT COUNT(*) AS c FROM devices WHERE ignored = 0 AND (model LIKE '%BLE%' OR model IN ('Enhauto-S3XY', 'Plejd-Mesh', 'Xiaomi-MiBeacon') OR last_payload LIKE '%\"mod\": \"BLE\"%' OR last_payload LIKE '%\"mod\":\"BLE\"%');"

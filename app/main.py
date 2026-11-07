@@ -20,9 +20,11 @@ from app.mqtt_client import MQTTManager
 from app.rtl_manager import RTLManager
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+logging.getLogger("uvicorn.access").disabled = True
+logging.getLogger("uvicorn.access").propagate = False
 logger = logging.getLogger("sensor_scanner.main")
 
 
@@ -162,12 +164,99 @@ async def check_github_updates(force: bool = False) -> Dict[str, Any]:
     return dict(_version_cache)
 
 
+_last_logged_mqtt_state: Optional[bool] = None
+_last_logged_rtl_state: Optional[str] = None
+_last_logged_ble_state: Optional[str] = None
+
+
 def _on_mqtt_status_threadsafe(mqtt_status: Dict[str, Any]) -> None:
+    global _last_logged_mqtt_state
+    conn_state = bool(mqtt_status.get("connected"))
+    if _last_logged_mqtt_state != conn_state:
+        _last_logged_mqtt_state = conn_state
+        if conn_state:
+            print(f"[SYSTEM] MQTT connected to {mqtt_status.get('host')}:{mqtt_status.get('port')}", flush=True)
+        elif mqtt_status.get("enabled"):
+            print(f"[SYSTEM] MQTT disconnected ({mqtt_status.get('last_error') or 'offline'})", flush=True)
     if main_loop and main_loop.is_running():
         asyncio.run_coroutine_threadsafe(broadcast_full_status(), main_loop)
 
 
 mqtt_manager = MQTTManager(status_callback=_on_mqtt_status_threadsafe)
+
+
+def _log_signal_stdout(signal_rec: Dict[str, Any], device_rec: Dict[str, Any]) -> None:
+    payload = signal_rec.get("payload") or {}
+    model = str(signal_rec.get("model") or "Unknown")
+    device_id = str(signal_rec.get("device_id") or "")
+    alias = str(device_rec.get("alias") or "").strip()
+    local_name = str(payload.get("local_name") or "").strip()
+    freq = signal_rec.get("freq")
+    mod = str(payload.get("mod") or "").upper()
+    rssi = signal_rec.get("rssi")
+
+    is_ble = mod == "BLE" or (freq is not None and float(freq) >= 2400.0) or "BLE" in model
+    band_str = "2.4 GHz BLE" if is_ble else (f"{float(freq):.2f} MHz" if freq is not None else "RF")
+    rssi_str = (
+        f"RSSI: {int(round(float(rssi)))} dBm"
+        if (rssi is not None and is_ble)
+        else (f"RSSI: {float(rssi):.1f} dB" if rssi is not None else "RSSI: -")
+    )
+
+    is_brand_new = bool(device_rec.get("is_brand_new"))
+    if is_brand_new:
+        label = f"{local_name} ({model}, ID: {device_id})" if (local_name and local_name != model) else f"{model} (ID: {device_id})"
+        print(f"[NEW DEVICE] {band_str} | {label} | {rssi_str}", flush=True)
+        return
+
+    # Skip passive BLE beacons without telemetry
+    if payload.get("is_beacon_only") is True:
+        return
+
+    metrics: List[str] = []
+    temp_c = signal_rec.get("temperature_c")
+    if temp_c is not None:
+        metrics.append(f"{float(temp_c):.1f}°C")
+    hum = signal_rec.get("humidity")
+    if hum is not None:
+        metrics.append(f"{int(round(float(hum)))}%")
+    power_w = payload.get("power_W") or payload.get("calculated_power_W")
+    if power_w is not None:
+        metrics.append(f"{power_w} W")
+    kwh = payload.get("cumulative_kwh") or payload.get("energy_kWh")
+    if kwh is not None:
+        metrics.append(f"{kwh} kWh")
+    press = payload.get("pressure_hPa") or payload.get("pressure_kPa")
+    if press is not None:
+        unit = "hPa" if payload.get("pressure_hPa") is not None else "kPa"
+        metrics.append(f"{press} {unit}")
+    bat_pct = payload.get("battery_pct")
+    if bat_pct is not None:
+        metrics.append(f"Batt: {int(round(float(bat_pct)))}%")
+    elif signal_rec.get("battery_ok") is not None:
+        metrics.append(f"Batt: {'OK' if int(signal_rec['battery_ok']) == 1 else 'LOW'}")
+    if model == "Tesla-Vehicle-BLE" or payload.get("vehicle_status"):
+        metrics.append("Tesla Närvarande")
+    if not metrics and not is_ble:
+        state_val = payload.get("state") or payload.get("cmd") or payload.get("button")
+        if state_val is not None:
+            metrics.append(f"State: {state_val}")
+
+    if not metrics and is_ble:
+        return
+
+    if alias:
+        name_part = f"{alias} ({model})"
+    elif local_name and local_name != model:
+        name_part = f"{local_name} ({model})"
+    else:
+        name_part = f"{model} (ID: {device_id})"
+
+    metrics_str = ", ".join(metrics)
+    if metrics_str:
+        print(f"[UPDATE] {band_str} | {name_part} | {metrics_str} | {rssi_str}", flush=True)
+    else:
+        print(f"[UPDATE] {band_str} | {name_part} | {rssi_str}", flush=True)
 
 
 async def on_rtl_signal(payload: Dict[str, Any]) -> None:
@@ -176,6 +265,7 @@ async def on_rtl_signal(payload: Dict[str, Any]) -> None:
     if signal_rec is None:
         return
 
+    _log_signal_stdout(signal_rec, device_rec)
     await asyncio.to_thread(mqtt_manager.publish_signal, device_rec, signal_rec["payload"])
     counts = await asyncio.to_thread(db.get_summary_counts)
 
@@ -192,6 +282,14 @@ async def on_rtl_signal(payload: Dict[str, Any]) -> None:
 
 
 async def on_rtl_status_change(rtl_status: Dict[str, Any]) -> None:
+    global _last_logged_rtl_state
+    st_key = f"{rtl_status.get('state')}:{rtl_status.get('mode')}:{rtl_status.get('current_tuned_freq')}"
+    if _last_logged_rtl_state != st_key:
+        _last_logged_rtl_state = st_key
+        print(
+            f"[SYSTEM] SDR state={rtl_status.get('state')} mode={rtl_status.get('mode')} freq={rtl_status.get('current_tuned_freq')}",
+            flush=True,
+        )
     await broadcast_full_status()
 
 
@@ -224,6 +322,14 @@ rtl_manager = RTLManager(
 
 
 async def on_ble_status_change(ble_status: Dict[str, Any]) -> None:
+    global _last_logged_ble_state
+    st_key = f"{ble_status.get('state')}:{ble_status.get('mode')}"
+    if _last_logged_ble_state != st_key:
+        _last_logged_ble_state = st_key
+        print(
+            f"[SYSTEM] BLE state={ble_status.get('state')} mode={ble_status.get('mode')}",
+            flush=True,
+        )
     await broadcast_full_status()
 
 
@@ -268,6 +374,17 @@ async def retention_worker() -> None:
         await asyncio.sleep(86400)
 
 
+async def new_device_expiry_worker() -> None:
+    while True:
+        try:
+            changed = await asyncio.to_thread(db.expire_new_devices)
+            if changed > 0:
+                await broadcast_full_status()
+        except Exception as exc:
+            logger.debug("Error in new_device_expiry_worker: %s", exc)
+        await asyncio.sleep(60)
+
+
 async def github_update_worker() -> None:
     await asyncio.sleep(3)
     while True:
@@ -275,6 +392,11 @@ async def github_update_worker() -> None:
             prev_avail = _version_cache.get("update_available")
             prev_remote = _version_cache.get("remote_sha")
             res = await check_github_updates(force=True)
+            if res.get("update_available") and (not prev_avail or res.get("remote_sha") != prev_remote):
+                print(
+                    f"[SYSTEM] GitHub update available: {res.get('remote_sha')} - {res.get('commit_message')}",
+                    flush=True,
+                )
             if res.get("update_available") != prev_avail or res.get("remote_sha") != prev_remote:
                 await broadcast_full_status()
         except Exception as exc:
@@ -287,26 +409,26 @@ async def lifespan(app: FastAPI):
     global main_loop
     main_loop = asyncio.get_running_loop()
 
+    await asyncio.to_thread(db.expire_new_devices)
     settings = db.get_settings()
     mqtt_manager.configure_and_connect(settings)
     await rtl_manager.start()
     await ble_manager.start()
     retention_task = asyncio.create_task(retention_worker(), name="retention_worker")
+    expiry_task = asyncio.create_task(new_device_expiry_worker(), name="new_device_expiry_worker")
     update_task = asyncio.create_task(github_update_worker(), name="github_update_worker")
 
     try:
         yield
     finally:
         update_task.cancel()
+        expiry_task.cancel()
         retention_task.cancel()
-        try:
-            await update_task
-        except asyncio.CancelledError:
-            pass
-        try:
-            await retention_task
-        except asyncio.CancelledError:
-            pass
+        for t in (update_task, expiry_task, retention_task):
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
         await ble_manager.stop()
         await rtl_manager.stop()
         mqtt_manager.disconnect()

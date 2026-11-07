@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.17</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.18</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -568,10 +568,10 @@
                 <th
                   id="sigTh_name"
                   onclick="toggleSignalSort('name')"
-                  class="min-w-[220px] w-64 py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap"
+                  class="w-64 min-w-[230px] py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap"
                   title="Klicka för att sortera alfabetiskt på Enhet / Alias"
                 >
-                  <div class="inline-flex items-center gap-1.5">
+                  <div class="flex items-center justify-between gap-1.5 w-full">
                     <span id="sigThLabel_name" class="inline-flex items-center gap-1">
                       <span>Enhet / Alias</span>
                       <span id="sigSortIcon_name" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
@@ -581,7 +581,7 @@
                       id="sigThBtn_hits"
                       onclick="event.stopPropagation(); toggleSignalSort('hits')"
                       title="Sortera på Antal träffar (paket)"
-                      class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900 hover:border-sky-500/60 text-[10px] font-mono normal-case transition"
+                      class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900 hover:border-sky-500/60 text-[10px] font-mono normal-case transition shrink-0"
                     >
                       <i class="mdi mdi-counter text-sky-500"></i>
                       <span id="sigSortIcon_hits" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40"></i></span>
@@ -1832,12 +1832,37 @@
       }
     }
 
+    function isDeviceTrulyNew(sigOrDev, devObj = null) {
+      const obj = sigOrDev || {};
+      const devKey = obj.device_key || `${obj.model}_${obj.device_id}`;
+      const dev = devObj || devicesList.find((d) => d.device_key === devKey);
+      if (dev && Number(dev.ignored) === 1) return false;
+      if (Number(obj.ignored) === 1) return false;
+
+      const alias = String(obj.alias || (dev && dev.alias) || '').trim();
+      const group = String(obj.group_name || (dev && dev.group_name) || '').trim();
+      if (alias || group) return false;
+
+      const hits = Number(obj.hit_count ?? (dev && dev.hit_count) ?? 1);
+      if (hits > 5) return false;
+
+      const rawIsNew = dev && dev.is_new !== undefined ? Number(dev.is_new) : Number(obj.is_new ?? 0);
+      if (rawIsNew !== 1) return false;
+
+      const firstSeen = obj.first_seen || (dev && dev.first_seen) || '';
+      if (firstSeen) {
+        const parsed = Date.parse(String(firstSeen).includes('T') ? firstSeen : String(firstSeen).replace(' ', 'T'));
+        if (!Number.isNaN(parsed) && (Date.now() - parsed) > 15 * 60 * 1000) {
+          return false;
+        }
+      }
+      return true;
+    }
+
     function updateNewDevicesNavBadge(explicitCount) {
       let newCount = explicitCount;
       if (newCount === undefined || newCount === null) {
-        newCount = devicesList.filter(
-          (d) => Number(d.ignored) === 0 && Number(d.is_new ?? 1) === 1 && !(d.alias && d.alias.trim()) && !(d.group_name && d.group_name.trim())
-        ).length;
+        newCount = devicesList.filter((d) => isDeviceTrulyNew(d, d)).length;
       }
       const badge = document.getElementById('navNewDevicesBadge');
       const dot = document.getElementById('navCollapsedNewDot');
@@ -3825,9 +3850,8 @@
         const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
         const devObj = devicesList.find((d) => d.device_key === devKey);
         const hasAlias = Boolean(sig.alias && sig.alias.trim()) || Boolean(devObj && devObj.alias && devObj.alias.trim());
-        const isNewFlag = devObj ? Number(devObj.is_new ?? 1) === 1 : Number(sig.is_new ?? 0) === 1;
         const hitCount = Number(sig.hit_count || (devObj && devObj.hit_count) || 1);
-        const isBrandNewDiscovery = isNewFlag && hitCount <= 1;
+        const isBrandNewDiscovery = isDeviceTrulyNew(sig, devObj) && hitCount <= 1;
         if (!hasRealTelemetryMetrics(sig, p) && !hasAlias && !isBrandNewDiscovery) {
           return false;
         }
@@ -3850,10 +3874,7 @@
       if (selectedSignalStatusFilters.has('new')) {
         const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
         const devObj = devicesList.find((d) => d.device_key === devKey);
-        const hasAlias = Boolean(sig.alias && sig.alias.trim()) || Boolean(devObj && devObj.alias && devObj.alias.trim());
-        const hasGroup = Boolean(sig.group_name && sig.group_name.trim()) || Boolean(devObj && devObj.group_name && devObj.group_name.trim());
-        const isNewFlag = devObj ? Number(devObj.is_new ?? 1) === 1 : true;
-        if (hasAlias || hasGroup || !isNewFlag) return false;
+        if (!isDeviceTrulyNew(sig, devObj)) return false;
       }
 
       // 3. Multi-Select Categories filter
@@ -4153,6 +4174,15 @@
             const hitsTarget = existingEl.querySelector('[data-sig-hits]');
             if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${sig.hit_count || 1}`;
 
+            const newBadgeTarget = existingEl.querySelector('[data-sig-new]');
+            if (newBadgeTarget) {
+              if (isDeviceTrulyNew(sig, dev)) {
+                newBadgeTarget.classList.remove('hidden');
+              } else {
+                newBadgeTarget.classList.add('hidden');
+              }
+            }
+
             const tsTarget = existingEl.querySelector('[data-timestamp]');
             if (tsTarget) {
               const freshUntil = Date.now() + 10000;
@@ -4311,6 +4341,8 @@
       const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
       const hitCount = sig.hit_count || 1;
       const isHaActive = Number(sig.ha_discovery) === 1;
+      const devObj = devicesList.find((d) => d.device_key === devKey);
+      const isNewDevice = isDeviceTrulyNew(sig, devObj);
 
       const haButtonHtml = haDiscoveryEnabled
         ? `<button onclick="quickHaDiscovery(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 ${isHaActive ? 'text-sky-500' : 'text-slate-400'} hover:text-sky-500 flex items-center justify-center transition" title="Home Assistant Auto-Discovery">
@@ -4325,17 +4357,18 @@
           onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})"
           class="cursor-pointer group bg-white dark:bg-slate-900 hover:bg-slate-50/90 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-sky-500/50 rounded-xl p-2.5 transition duration-200 shadow-sm flex flex-col justify-between gap-2"
         >
-          <!-- Row 1: Header (Two-line stacked Name & Model without truncation) -->
+          <!-- Row 1: Header (Left: Name & Model stacked cleanly; Right: Fixed badge slot) -->
           <div class="flex flex-col gap-1">
-            <div class="flex items-start justify-between gap-1.5">
-              <div class="flex items-start gap-1.5 min-w-0 flex-1">
-                <i class="mdi ${catIcon} text-base shrink-0 mt-0.5"></i>
-                <div class="flex flex-col leading-snug min-w-0 flex-1">
-                  <span data-sig-title class="text-xs font-bold text-slate-900 dark:text-white break-words [overflow-wrap:anywhere]">${escapeHtml(primaryName)}</span>
-                  <span data-sig-subtitle class="${secondaryName ? 'text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 break-words [overflow-wrap:anywhere]' : 'hidden text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 break-words [overflow-wrap:anywhere]'}">${secondaryName ? escapeHtml(secondaryName) : ''}</span>
+            <div class="flex items-start justify-between gap-2 w-full">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <i class="mdi ${catIcon} text-base shrink-0"></i>
+                  <span data-sig-title class="text-xs font-semibold text-slate-800 dark:text-slate-100 leading-tight break-words [overflow-wrap:anywhere]">${escapeHtml(primaryName)}</span>
                 </div>
+                <div data-sig-subtitle class="${secondaryName ? 'text-[11px] text-slate-400 leading-tight mt-0.5 pl-5 break-words [overflow-wrap:anywhere]' : 'hidden text-[11px] text-slate-400 leading-tight mt-0.5 pl-5 break-words [overflow-wrap:anywhere]'}">${secondaryName ? escapeHtml(secondaryName) : ''}</div>
               </div>
-              <div class="flex items-center gap-0.5 shrink-0">
+              <div class="shrink-0 flex items-center gap-1 self-start">
+                <span data-sig-new class="${isNewDevice ? '' : 'hidden '}px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>
                 <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
                 <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias, Grupp & Kategori">
                   <i class="mdi mdi-pencil-outline text-sm"></i>
@@ -4468,9 +4501,8 @@
       const p = sig.payload || {};
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       const devObj = devicesList.find((d) => d.device_key === devKey);
-      const hasAlias = Boolean(sig.alias && sig.alias.trim()) || Boolean(devObj && devObj.alias && devObj.alias.trim());
       const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
-      const isNewDevice = !hasAlias && !hasGroup && (devObj ? Number(devObj.is_new ?? 1) === 1 : false);
+      const isNewDevice = isDeviceTrulyNew(sig, devObj);
       const catIcon = getCategoryIcon(sig.category);
       const exactTime = formatTimestamp(sig.timestamp);
       const timeInnerHtml = renderSignalTimeInnerHtml(sig.timestamp, freshUntilMs);
@@ -4493,16 +4525,20 @@
           <td data-sig-time class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400 align-top" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
             ${timeInnerHtml}
           </td>
-          <td class="min-w-[220px] w-64 py-2 px-2.5 align-top">
-            <div class="flex flex-col leading-snug">
-              <div class="flex flex-wrap items-center gap-1.5">
-                <i class="mdi ${catIcon} text-sm shrink-0"></i>
-                <span data-sig-title class="font-semibold text-slate-800 dark:text-slate-100 break-words [overflow-wrap:anywhere]">${escapeHtml(primaryName)}</span>
-                <span data-sig-hits class="inline-flex items-center px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500 border border-slate-200/70 dark:border-slate-700/70"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}</span>
-                ${isNewDevice ? '<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>' : ''}
-                ${hasGroup ? `<span class="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25 break-words [overflow-wrap:anywhere]"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</span>` : ''}
+          <td class="w-64 min-w-[230px] py-2 px-2.5 align-top">
+            <div class="flex items-center justify-between gap-2 w-full">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <i class="mdi ${catIcon} text-sm shrink-0"></i>
+                  <span data-sig-title class="font-semibold text-slate-800 dark:text-slate-100 leading-tight break-words [overflow-wrap:anywhere]">${escapeHtml(primaryName)}</span>
+                </div>
+                <div data-sig-subtitle class="${secondaryName ? 'text-[11px] text-slate-400 leading-tight mt-0.5 pl-5 break-words [overflow-wrap:anywhere]' : 'hidden text-[11px] text-slate-400 leading-tight mt-0.5 pl-5 break-words [overflow-wrap:anywhere]'}">${secondaryName ? escapeHtml(secondaryName) : ''}</div>
+                ${hasGroup ? `<div class="text-[10px] text-sky-600 dark:text-sky-400 leading-tight mt-0.5 pl-5 break-words [overflow-wrap:anywhere]"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</div>` : ''}
               </div>
-              <div data-sig-subtitle class="${secondaryName ? 'text-xs text-slate-400 dark:text-slate-500 pl-5 mt-0.5 break-words [overflow-wrap:anywhere]' : 'hidden text-xs text-slate-400 dark:text-slate-500 pl-5 mt-0.5 break-words [overflow-wrap:anywhere]'}">${secondaryName ? escapeHtml(secondaryName) : ''}</div>
+              <div class="shrink-0 flex items-center gap-1 self-center">
+                <span data-sig-new class="${isNewDevice ? '' : 'hidden '}px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>
+                <span data-sig-hits class="inline-flex items-center px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500 border border-slate-200/70 dark:border-slate-700/70"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}</span>
+              </div>
             </div>
           </td>
           <td class="w-24 py-2 px-2.5 whitespace-nowrap align-top">
@@ -5040,8 +5076,7 @@
 
       // 1. Multi-Select Status filters ('new', 'low_battery', 'aliased', 'grouped', 'ungrouped')
       if (selectedDeviceStatusFilters.has('new')) {
-        const isNew = Number(dev.is_new ?? 1) === 1 && !hasAlias && !grp;
-        if (!isNew) return false;
+        if (!isDeviceTrulyNew(dev, dev)) return false;
       }
       if (selectedDeviceStatusFilters.has('low_battery')) {
         const isLow = (p.battery_ok !== undefined && Number(p.battery_ok) === 0) || Number(p.battery_low) === 1;
@@ -5245,25 +5280,28 @@
                 title="Markera enhet för gruppåtgärd"
               />
               <div class="min-w-0 flex-1 flex flex-col leading-snug">
-                <div class="flex items-center gap-1.5 flex-wrap">
+                <div class="flex items-center gap-1.5">
                   <i class="mdi ${catIcon} text-base shrink-0"></i>
-                  <span class="text-xs font-bold text-slate-900 dark:text-white break-words [overflow-wrap:anywhere]">${escapeHtml(resolveSignalDisplayNames(dev, lastPayload).primaryName)}</span>
-                  <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700">${escapeHtml(dev.category || 'Sensor')}</span>
+                  <span class="text-xs font-semibold text-slate-800 dark:text-slate-100 leading-tight break-words [overflow-wrap:anywhere]">${escapeHtml(resolveSignalDisplayNames(dev, lastPayload).primaryName)}</span>
                 </div>
-                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 break-words [overflow-wrap:anywhere]">
+                <div class="text-[11px] font-mono text-slate-400 leading-tight mt-0.5 pl-5 break-words [overflow-wrap:anywhere]">
                   ${escapeHtml(dev.model)}
                 </div>
-                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 break-words [overflow-wrap:anywhere]">
+                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 pl-5 break-words [overflow-wrap:anywhere]">
                   ID: <strong class="text-slate-700 dark:text-slate-200 break-words [overflow-wrap:anywhere]">${escapeHtml(dev.device_id)}</strong>
                   <span data-dev-freq>${radio.freqMHz ? `• ${escapeHtml(radio.freqLabel)}` : ''}</span>
                 </div>
               </div>
             </div>
 
-            <div class="text-right font-mono text-[11px] shrink-0">
-              <span data-dev-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold" title="Totalt antal mottagna träffar">
-                <i class="mdi mdi-counter text-sky-500 mr-0.5"></i>${dev.hit_count}
-              </span>
+            <div class="text-right font-mono text-[11px] shrink-0 flex flex-col items-end gap-0.5">
+              <div class="flex items-center justify-end gap-1">
+                ${isDeviceTrulyNew(dev, dev) ? '<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>' : ''}
+                <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700">${escapeHtml(dev.category || 'Sensor')}</span>
+                <span data-dev-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold border border-slate-200/70 dark:border-slate-700/70" title="Totalt antal mottagna träffar">
+                  <i class="mdi mdi-counter text-sky-500 mr-0.5"></i>${dev.hit_count}
+                </span>
+              </div>
               <div
                 data-dev-lastseen
                 data-timestamp="${escapeHtml(dev.last_seen)}"
