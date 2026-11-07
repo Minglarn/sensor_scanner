@@ -533,8 +533,9 @@ class MQTTManager:
                 payload = {}
         payload = enrich_sparsnas_payload(dict(payload))
 
-        category = str(device.get("category") or payload.get("category") or "Sensor").strip()
+        category = str(device.get("category") or payload.get("category") or "Generic").strip()
         is_vehicle = category == "Vehicle" or model.endswith("-Vehicle-BLE")
+        is_tracker = category == "Tracker"
         is_ibeacon = (
             str(payload.get("apple_type") or "") == "iBeacon"
             or model == "iBeacon-BLE"
@@ -546,9 +547,10 @@ class MQTTManager:
             or float(payload.get("freq") or 0) >= 2400.0
             or "BLE" in model
             or is_vehicle
+            or is_tracker
             or is_ibeacon
         )
-        needs_presence = is_vehicle or is_ibeacon or is_beacon_only
+        needs_presence = is_vehicle or is_tracker or is_ibeacon or is_beacon_only
 
         manufacturer = str(
             payload.get("manufacturer_name")

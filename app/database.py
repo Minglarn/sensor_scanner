@@ -80,10 +80,41 @@ def enrich_sparsnas_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
+STANDARD_CATEGORIES = (
+    "Climate",
+    "Energy",
+    "Vehicle",
+    "TPMS",
+    "Security",
+    "Switch",
+    "Tracker",
+    "Generic",
+)
+
+
+def normalize_category(cat: Optional[str], model: str = "") -> str:
+    c = (cat or "").strip()
+    if model in ("iBeacon-BLE", "Apple-AirTag") and c != "Vehicle":
+        return "Tracker"
+    if c in ("Weather", "Soil/Moisture", "Soil", "Climate"):
+        return "Climate"
+    if c in ("Meter", "Power", "Energy"):
+        return "Energy"
+    if c in ("Smoke/Fire", "Smoke", "Alarm", "Security"):
+        return "Security"
+    if c in ("Sensor", "Other", "Unknown", "", "Generic"):
+        return "Generic"
+    if c in STANDARD_CATEGORIES:
+        return c
+    return "Generic"
+
+
 def infer_category(model: str, payload: Dict[str, Any]) -> str:
     explicit_cat = str(payload.get("category") or "").strip()
-    if explicit_cat and explicit_cat not in ("Sensor", "Unknown"):
-        return explicit_cat
+    if explicit_cat:
+        norm_exp = normalize_category(explicit_cat, model)
+        if norm_exp != "Generic":
+            return norm_exp
 
     model_lower = (model or "").lower()
     keys = {k.lower() for k in payload.keys()}
@@ -92,7 +123,7 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
     if (
         "vehicle_status" in keys
         or "beacon_hash" in keys
-        or any(w in model_lower for w in ("tesla", "zeekr", "polestar", "volvo", "bmw", "s3xy", "enhauto", "vehicle"))
+        or any(w in model_lower for w in ("tesla", "zeekr", "polestar", "volvo", "bmw", "s3xy", "enhauto", "vehicle", "keyfob"))
     ):
         return "Vehicle"
 
@@ -120,10 +151,12 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
             "water",
             "consumption",
             "current_a",
-            "voltage_v",
         )
-    ) or any(w in model_lower for w in ("sparsnas", "efergy", "owl", "cm180", "wmbus", "meter", "energy", "water", "emon", "gas")):
-        return "Meter"
+    ) or (
+        any(w in model_lower for w in ("sparsnas", "efergy", "owl", "cm180", "wmbus", "meter", "energy", "water", "emon", "gas"))
+        and not any(c_word in model_lower for c_word in ("thermometer", "hygrometer", "barometer", "anemometer", "weather", "atc"))
+    ):
+        return "Energy"
 
     if (
         any(
@@ -156,26 +189,33 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
             )
         )
         or any(k.startswith("temperature_") or k.startswith("humidity_") for k in keys)
-        or any(w in model_lower for w in ("wgr800", "pcr800", "ft0385", "weather", "wind", "rain", "therm"))
+        or any(w in model_lower for w in ("wgr800", "pcr800", "ft0385", "weather", "wind", "rain", "therm", "atc", "ruuvi", "bthome", "mijia", "qingping", "soil"))
     ):
-        return "Weather"
+        return "Climate"
 
     if (
-        any(k in keys for k in ("motion", "contact_open"))
+        any(k in keys for k in ("motion", "contact_open", "smoke", "tamper", "leak"))
         or str(payload.get("subtype") or "").strip().lower() in ("motion", "contact", "alarm", "tamper", "smoke")
         or any(k.startswith("switch") and len(k) > 6 and k[6:].lstrip("_").isdigit() for k in keys)
         or any(
-            w in model_lower for w in ("smoke", "pir", "motion", "alarm", "security", "door", "contact", "dsc", "honeywell")
+            w in model_lower for w in ("smoke", "pir", "motion", "alarm", "security", "door", "contact", "dsc", "honeywell", "fire")
         )
     ):
         return "Security"
 
     if any(k in keys for k in ("state", "cmd", "button", "switch", "unit", "group")) or any(
-        w in model_lower for w in ("switch", "remote", "nexa", "proove", "intertechno", "kaku", "chuango", "kerui")
+        w in model_lower for w in ("switch", "remote", "nexa", "proove", "intertechno", "kaku", "chuango", "kerui", "plejd", "relay")
     ):
         return "Switch"
 
-    return "Sensor"
+    if (
+        "ibeacon_uuid" in keys
+        or str(payload.get("apple_type") or "") in ("iBeacon", "Apple FindMy / AirTag")
+        or any(w in model_lower for w in ("ibeacon", "airtag", "findmy", "tile", "smarttag", "tracker"))
+    ):
+        return "Tracker"
+
+    return "Generic"
 
 
 def extract_device_id(payload: Dict[str, Any]) -> str:
@@ -370,7 +410,7 @@ class Database:
                             device_id TEXT NOT NULL,
                             alias TEXT DEFAULT '',
                             group_name TEXT DEFAULT '',
-                            category TEXT DEFAULT 'Sensor',
+                            category TEXT DEFAULT 'Generic',
                             mqtt_enabled INTEGER DEFAULT 1,
                             ha_discovery INTEGER DEFAULT 0,
                             ignored INTEGER DEFAULT 0,
@@ -431,13 +471,13 @@ class Database:
 
                     # Explicit category upgrades for IKEA Sparsnäs and Oregon rain/weather sensors
                     conn.execute(
-                        "UPDATE devices SET category = 'Meter' WHERE model LIKE '%Sparsnas%' OR last_payload LIKE '%cumulative_kwh%';"
+                        "UPDATE devices SET category = 'Energy' WHERE model LIKE '%Sparsnas%' OR last_payload LIKE '%cumulative_kwh%';"
                     )
                     conn.execute(
-                        "UPDATE devices SET category = 'Weather' WHERE model LIKE '%Oregon-PCR%' OR last_payload LIKE '%rain%';"
+                        "UPDATE devices SET category = 'Climate' WHERE model LIKE '%Oregon-PCR%' OR last_payload LIKE '%rain%';"
                     )
 
-                    # Migrate any legacy ATC-BLE / ATC-Thermo-BLE devices to ATC-Thermometer (Weather)
+                    # Migrate any legacy ATC-BLE / ATC-Thermo-BLE devices to ATC-Thermometer (Climate)
                     atc_rows = conn.execute(
                         "SELECT device_key, device_id FROM devices WHERE model IN ('ATC-BLE', 'ATC-Thermo-BLE');"
                     ).fetchall()
@@ -452,7 +492,7 @@ class Database:
                             conn.execute("DELETE FROM devices WHERE device_key = ?;", (old_key,))
                         else:
                             conn.execute(
-                                "UPDATE devices SET device_key = ?, model = 'ATC-Thermometer', category = 'Weather' WHERE device_key = ?;",
+                                "UPDATE devices SET device_key = ?, model = 'ATC-Thermometer', category = 'Climate' WHERE device_key = ?;",
                                 (new_key, old_key),
                             )
                     conn.execute(
@@ -485,7 +525,25 @@ class Database:
                         """
                     )
 
-                    # Auto-categorize existing devices that still have generic 'Sensor' or 'Unknown' category
+                    # Standardize all device categories to the 8 official categories:
+                    # Climate, Energy, Vehicle, TPMS, Security, Switch, Tracker, Generic
+                    conn.execute(
+                        "UPDATE devices SET category = 'Climate' WHERE category IN ('Weather', 'Soil/Moisture', 'Soil') OR model = 'ATC-Thermometer';"
+                    )
+                    conn.execute(
+                        "UPDATE devices SET category = 'Energy' WHERE category IN ('Meter', 'Power');"
+                    )
+                    conn.execute(
+                        "UPDATE devices SET category = 'Security' WHERE category IN ('Smoke/Fire', 'Smoke', 'Alarm');"
+                    )
+                    conn.execute(
+                        "UPDATE devices SET category = 'Tracker' WHERE model IN ('iBeacon-BLE', 'Apple-AirTag') AND category != 'Vehicle';"
+                    )
+                    conn.execute(
+                        "UPDATE devices SET category = 'Generic' WHERE category IN ('Sensor', 'Other', 'Unknown') OR category IS NULL;"
+                    )
+
+                    # Auto-categorize existing devices that still have generic category
                     existing_Rows = conn.execute(
                         "SELECT device_key, model, category, last_payload FROM devices;"
                     ).fetchall()
@@ -511,12 +569,13 @@ class Database:
                             except (ValueError, TypeError):
                                 pass
                         new_cat = infer_category(r["model"], enriched_pl)
-                        cur_cat = r["category"] or "Sensor"
+                        cur_cat = normalize_category(r["category"], r["model"])
+                        target_cat = new_cat if cur_cat == "Generic" and new_cat != "Generic" else cur_cat
                         new_pl_json = json.dumps(enriched_pl, ensure_ascii=False)
-                        if (cur_cat in ("Sensor", "Unknown", "") and new_cat != "Sensor") or new_pl_json != r["last_payload"]:
+                        if target_cat != r["category"] or new_pl_json != r["last_payload"]:
                             conn.execute(
                                 "UPDATE devices SET category = ?, last_payload = ? WHERE device_key = ?;",
-                                (new_cat if cur_cat in ("Sensor", "Unknown", "") else cur_cat, new_pl_json, r["device_key"]),
+                                (target_cat, new_pl_json, r["device_key"]),
                             )
 
                     # Backfill center frequency for FSK signals with freq1 and freq2
@@ -711,8 +770,8 @@ class Database:
                             (device_key, model, device_id, auto_alias, inferred_cat, init_is_new, timestamp, timestamp, raw_json),
                         )
                     else:
-                        cur_cat = existing_dev["category"] or "Sensor"
-                        updated_cat = inferred_cat if cur_cat in ("Sensor", "Unknown", "") and inferred_cat != "Sensor" else cur_cat
+                        cur_cat = normalize_category(existing_dev["category"], model)
+                        updated_cat = inferred_cat if cur_cat == "Generic" and inferred_cat != "Generic" else cur_cat
                         next_hits = int(existing_dev["hit_count"] or 0) + 1
                         cur_is_new = int(existing_dev["is_new"] or 0)
                         cur_alias = str(existing_dev["alias"] or "").strip()
@@ -915,7 +974,7 @@ class Database:
                     s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
                     s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
                     d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
-                    COALESCE(d.category, 'Sensor') AS category,
+                    COALESCE(d.category, 'Generic') AS category,
                     COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
                     COALESCE(d.ignored, 0) AS ignored,
                     CASE WHEN COALESCE(d.is_new, 0) = 1 AND COALESCE(d.hit_count, 1) <= 5 AND COALESCE(TRIM(d.alias), '') = '' THEN 1 ELSE 0 END AS is_new,
@@ -945,7 +1004,7 @@ class Database:
                     s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
                     s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
                     d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
-                    COALESCE(d.category, 'Sensor') AS category,
+                    COALESCE(d.category, 'Generic') AS category,
                     COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
                     COALESCE(d.ignored, 0) AS ignored,
                     CASE WHEN COALESCE(d.is_new, 0) = 1 AND COALESCE(d.hit_count, 1) <= 5 AND COALESCE(TRIM(d.alias), '') = '' THEN 1 ELSE 0 END AS is_new,
@@ -1109,7 +1168,7 @@ class Database:
 
                 new_alias = alias.strip() if alias is not None else (row["alias"] or "")
                 new_group = group_name.strip() if group_name is not None else (row["group_name"] or "")
-                new_cat = category.strip() if category is not None else (row["category"] or "Sensor")
+                new_cat = normalize_category(category.strip() if category is not None else (row["category"] or "Generic"), row["model"])
                 new_mqtt = int(bool(mqtt_enabled)) if mqtt_enabled is not None else row["mqtt_enabled"]
                 new_ha = int(bool(ha_discovery)) if ha_discovery is not None else row["ha_discovery"]
                 new_ignored = int(bool(ignored)) if ignored is not None else row["ignored"]
@@ -1148,7 +1207,10 @@ class Database:
                         if not row:
                             continue
                         new_group = group_name.strip() if group_name is not None else (row["group_name"] or "")
-                        new_cat = category.strip() if (category is not None and category.strip() != "") else (row["category"] or "Sensor")
+                        new_cat = normalize_category(
+                            category.strip() if (category is not None and category.strip() != "") else (row["category"] or "Generic"),
+                            row["model"],
+                        )
                         new_ignored = int(bool(ignored)) if ignored is not None else row["ignored"]
                         conn.execute(
                             """
@@ -1379,7 +1441,7 @@ class Database:
                             continue
                         alias = str(dev.get("alias") or "").strip()
                         group_name = str(dev.get("group_name") or "").strip()
-                        category = str(dev.get("category") or "Sensor").strip()
+                        category = normalize_category(str(dev.get("category") or "Generic").strip(), model)
                         mqtt_en = int(bool(dev.get("mqtt_enabled", 1)))
                         ha_disc = int(bool(dev.get("ha_discovery", 0)))
                         ignored = int(bool(dev.get("ignored", 0)))

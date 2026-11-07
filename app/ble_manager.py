@@ -1055,7 +1055,7 @@ class BLEManager:
             or theengs_model == "ATC-Thermometer"
         ):
             model = "ATC-Thermometer"
-            payload["category"] = "Weather"
+            payload["category"] = "Climate"
 
         # F. Govee Devices (ihoment_*, Govee_*, GVH*, B5178*, H5074*, H5075* or Manufacturer 0xEC88)
         elif (
@@ -1064,7 +1064,7 @@ class BLEManager:
         ):
             model = "Govee-BLE"
             if "temperature_C" in payload or "humidity" in payload or name_upper.startswith("GVH"):
-                payload["category"] = "Weather"
+                payload["category"] = "Climate"
             else:
                 payload["category"] = "Switch"
 
@@ -1076,17 +1076,23 @@ class BLEManager:
         # H. Xiaomi / Aqara / BTHome / Qingping / RuuviTag
         elif theengs_model:
             model = theengs_model
+            if model in ("iBeacon-BLE", "Apple-AirTag"):
+                payload["category"] = "Tracker"
         elif any(
             name_upper.startswith(p)
             for p in ("MIJIA", "QINGPING", "CGD1", "CGG1", "RUUVI", "BTHOME")
         ):
             clean_p = re.sub(r"[^A-Za-z0-9]+", "-", local_name).strip("-").split("-")[0]
             model = f"{clean_p}-BLE"
-            payload["category"] = "Weather"
+            payload["category"] = "Climate"
 
         # I. Apple Continuity Identified Devices (AirPods, AirPlay, AirTag, iBeacon)
         elif apple_model:
             model = apple_model
+            if model in ("iBeacon-BLE", "Apple-AirTag"):
+                payload["category"] = "Tracker"
+            else:
+                payload["category"] = "Generic"
 
         # J. Other Named BLE Devices (e.g. ZAG*, ZAP*, GPN*, zq*, Shelly*, Hue*, etc.)
         elif local_name:

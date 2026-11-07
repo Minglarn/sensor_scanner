@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.25</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.26</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -816,13 +816,14 @@
             class="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-sky-400 text-xs"
           >
             <option value="">Behåll kategori</option>
-            <option value="Vehicle">Vehicle</option>
-            <option value="Meter">Meter</option>
-            <option value="Weather">Weather</option>
-            <option value="TPMS">TPMS</option>
-            <option value="Switch">Switch</option>
-            <option value="Security">Security</option>
-            <option value="Sensor">Sensor</option>
+            <option value="Climate">Klimat &amp; Väder</option>
+            <option value="Energy">Energi &amp; Mätare</option>
+            <option value="Vehicle">Fordon &amp; Nycklar</option>
+            <option value="TPMS">Däcktryck (TPMS)</option>
+            <option value="Security">Larm &amp; Säkerhet</option>
+            <option value="Switch">Brytare &amp; Styrning</option>
+            <option value="Tracker">Spårare &amp; Beacons</option>
+            <option value="Generic">Övrig Telemetri</option>
           </select>
 
           <button
@@ -1388,17 +1389,14 @@
             <div class="sm:col-span-3">
               <label class="block text-slate-500 dark:text-slate-400 mb-1">Kategori</label>
               <select id="modalCategorySelect" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100">
-                <option value="Weather">Weather</option>
-                <option value="TPMS">TPMS</option>
-                <option value="Vehicle">Vehicle</option>
-                <option value="Meter">Meter</option>
-                <option value="Switch">Switch</option>
-                <option value="Security">Security</option>
-                <option value="Soil/Moisture">Soil/Moisture</option>
-                <option value="Smoke/Fire">Smoke/Fire</option>
-                <option value="Water">Water</option>
-                <option value="Remote">Remote</option>
-                <option value="Sensor">Sensor</option>
+                <option value="Climate">Klimat &amp; Väder</option>
+                <option value="Energy">Energi &amp; Mätare</option>
+                <option value="Vehicle">Fordon &amp; Nycklar</option>
+                <option value="TPMS">Däcktryck (TPMS)</option>
+                <option value="Security">Larm &amp; Säkerhet</option>
+                <option value="Switch">Brytare &amp; Styrning</option>
+                <option value="Tracker">Spårare &amp; Beacons</option>
+                <option value="Generic">Övrig Telemetri</option>
               </select>
             </div>
             <div class="sm:col-span-2 flex items-center gap-2">
@@ -1658,18 +1656,93 @@
 
     // Multi-Select Filter Sets (Signaler & Enheter)
     const BASE_CATEGORIES = [
-      'Weather',
-      'TPMS',
+      'Climate',
+      'Energy',
       'Vehicle',
-      'Meter',
-      'Switch',
+      'TPMS',
       'Security',
-      'Soil/Moisture',
-      'Smoke/Fire',
-      'Water',
-      'Remote',
-      'Sensor'
+      'Switch',
+      'Tracker',
+      'Generic'
     ];
+
+    function getCategoryMeta(cat) {
+      const c = String(cat || '').trim().toLowerCase();
+      if (c === 'climate' || c === 'weather' || c.includes('soil') || c.includes('moisture')) {
+        return {
+          id: 'Climate',
+          label: 'Klimat & Väder',
+          icon: 'mdi-weather-partly-cloudy',
+          iconClass: 'mdi-weather-partly-cloudy text-sky-500',
+          badgeClass: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30'
+        };
+      }
+      if (c === 'energy' || c === 'meter' || c === 'power' || c === 'water') {
+        return {
+          id: 'Energy',
+          label: 'Energi & Mätare',
+          icon: 'mdi-flash',
+          iconClass: 'mdi-flash text-emerald-500',
+          badgeClass: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+        };
+      }
+      if (c === 'vehicle') {
+        return {
+          id: 'Vehicle',
+          label: 'Fordon & Nycklar',
+          icon: 'mdi-car-connected',
+          iconClass: 'mdi-car-connected text-teal-500',
+          badgeClass: 'bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/30'
+        };
+      }
+      if (c === 'tpms') {
+        return {
+          id: 'TPMS',
+          label: 'Däcktryck (TPMS)',
+          icon: 'mdi-car-tire-alert',
+          iconClass: 'mdi-car-tire-alert text-purple-500',
+          badgeClass: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30'
+        };
+      }
+      if (c === 'security' || c.includes('smoke') || c.includes('fire') || c === 'alarm') {
+        return {
+          id: 'Security',
+          label: 'Larm & Säkerhet',
+          icon: 'mdi-shield-alert',
+          iconClass: 'mdi-shield-alert text-rose-500',
+          badgeClass: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
+        };
+      }
+      if (c === 'switch' || c === 'remote') {
+        return {
+          id: 'Switch',
+          label: 'Brytare & Styrning',
+          icon: 'mdi-toggle-switch-outline',
+          iconClass: 'mdi-toggle-switch-outline text-indigo-500',
+          badgeClass: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30'
+        };
+      }
+      if (c === 'tracker') {
+        return {
+          id: 'Tracker',
+          label: 'Spårare & Beacons',
+          icon: 'mdi-bullseye',
+          iconClass: 'mdi-bullseye text-violet-500',
+          badgeClass: 'bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30'
+        };
+      }
+      return {
+        id: 'Generic',
+        label: 'Övrig Telemetri',
+        icon: 'mdi-access-point-network',
+        iconClass: 'mdi-access-point-network text-slate-400',
+        badgeClass: 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30'
+      };
+    }
+
+    function getCategoryIcon(category) {
+      return getCategoryMeta(category).iconClass;
+    }
     let selectedSignalModels = new Set();
     let selectedSignalStatusFilters = new Set(); // 'new', 'low_battery', 'aliased'
     let selectedSignalCategories = new Set();
@@ -2110,18 +2183,22 @@
 
       devicesList.forEach((dev) => {
         if (Number(dev.ignored) === 1 && !document.getElementById('deviceShowIgnored')?.checked) return;
-        const c = (dev.category || 'Sensor').trim() || 'Sensor';
+        const c = getCategoryMeta(dev.category).id;
         countsMap.set(c, (countsMap.get(c) || 0) + 1);
       });
 
       rawSignalsList.forEach((sig) => {
-        const c = (sig.category || 'Sensor').trim() || 'Sensor';
+        const c = getCategoryMeta(sig.category).id;
         if (!countsMap.has(c)) {
           countsMap.set(c, 0);
         }
       });
 
       return Array.from(countsMap.entries()).sort((a, b) => {
+        const hasA = a[1] > 0;
+        const hasB = b[1] > 0;
+        if (hasA !== hasB) return hasA ? -1 : 1;
+        if (hasA && hasB && b[1] !== a[1]) return b[1] - a[1];
         const idxA = BASE_CATEGORIES.indexOf(a[0]);
         const idxB = BASE_CATEGORIES.indexOf(b[0]);
         if (idxA !== -1 && idxB !== -1) return idxA - idxB;
@@ -2283,21 +2360,26 @@
           <div class="pt-1.5 border-t border-slate-100 dark:border-slate-800">
             <div class="px-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Sensortyper / Kategorier</div>
             <div class="space-y-0.5">
-              ${catsWithCounts.map(([cat, count]) => `
-                <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer select-none">
-                  <span class="flex items-center gap-2 min-w-0">
-                    <input
-                      type="checkbox"
-                      ${selectedSignalCategories.has(cat) ? 'checked' : ''}
-                      onchange="toggleSignalCategoryFilter('${escapeHtml(cat)}', this.checked)"
-                      class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
-                    />
-                    <i class="mdi ${getCategoryIcon(cat)} text-sm leading-none"></i>
-                    <span class="truncate text-slate-800 dark:text-slate-200">${escapeHtml(cat)}</span>
-                  </span>
-                  <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">(${count})</span>
-                </label>
-              `).join('')}
+              ${catsWithCounts.map(([cat, count]) => {
+                const meta = getCategoryMeta(cat);
+                const isChecked = selectedSignalCategories.has(meta.id);
+                const dimClass = count === 0 && !isChecked ? 'opacity-50' : '';
+                return `
+                  <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer select-none ${dimClass}">
+                    <span class="flex items-center gap-2 min-w-0">
+                      <input
+                        type="checkbox"
+                        ${isChecked ? 'checked' : ''}
+                        onchange="toggleSignalCategoryFilter('${escapeHtml(meta.id)}', this.checked)"
+                        class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
+                      />
+                      <i class="mdi ${meta.iconClass} text-sm leading-none"></i>
+                      <span class="truncate text-slate-800 dark:text-slate-200">${escapeHtml(meta.label)}</span>
+                    </span>
+                    <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">(${count})</span>
+                  </label>
+                `;
+              }).join('')}
             </div>
           </div>
         `;
@@ -2336,21 +2418,26 @@
           <div class="pt-1.5 border-t border-slate-100 dark:border-slate-800">
             <div class="px-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Sensortyper / Kategorier</div>
             <div class="space-y-0.5">
-              ${catsWithCounts.map(([cat, count]) => `
-                <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer select-none">
-                  <span class="flex items-center gap-2 min-w-0">
-                    <input
-                      type="checkbox"
-                      ${selectedDeviceCategories.has(cat) ? 'checked' : ''}
-                      onchange="toggleDeviceCategoryFilter('${escapeHtml(cat)}', this.checked)"
-                      class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
-                    />
-                    <i class="mdi ${getCategoryIcon(cat)} text-sm leading-none"></i>
-                    <span class="truncate text-slate-800 dark:text-slate-200">${escapeHtml(cat)}</span>
-                  </span>
-                  <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">(${count})</span>
-                </label>
-              `).join('')}
+              ${catsWithCounts.map(([cat, count]) => {
+                const meta = getCategoryMeta(cat);
+                const isChecked = selectedDeviceCategories.has(meta.id);
+                const dimClass = count === 0 && !isChecked ? 'opacity-50' : '';
+                return `
+                  <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer select-none ${dimClass}">
+                    <span class="flex items-center gap-2 min-w-0">
+                      <input
+                        type="checkbox"
+                        ${isChecked ? 'checked' : ''}
+                        onchange="toggleDeviceCategoryFilter('${escapeHtml(meta.id)}', this.checked)"
+                        class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
+                      />
+                      <i class="mdi ${meta.iconClass} text-sm leading-none"></i>
+                      <span class="truncate text-slate-800 dark:text-slate-200">${escapeHtml(meta.label)}</span>
+                    </span>
+                    <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">(${count})</span>
+                  </label>
+                `;
+              }).join('')}
             </div>
           </div>
         `;
@@ -4055,7 +4142,7 @@
 
       // 3. Multi-Select Categories filter
       if (selectedSignalCategories.size > 0) {
-        const cat = (sig.category || 'Sensor').trim() || 'Sensor';
+        const cat = getCategoryMeta(sig.category).id;
         if (!selectedSignalCategories.has(cat)) return false;
       }
 
@@ -4070,7 +4157,8 @@
 
       // 5. Free-text search
       if (search) {
-        const hay = `${sig.model || ''} ${sig.device_id || ''} ${sig.alias || ''} ${sig.group_name || ''} ${sig.category || ''} ${JSON.stringify(p)}`.toLowerCase();
+        const catLabel = getCategoryMeta(sig.category).label;
+        const hay = `${sig.model || ''} ${sig.device_id || ''} ${sig.alias || ''} ${sig.group_name || ''} ${sig.category || ''} ${catLabel} ${JSON.stringify(p)}`.toLowerCase();
         if (!hay.includes(search)) return false;
       }
       return true;
@@ -4173,8 +4261,8 @@
       }
 
       if (f === 'category') {
-        const catA = (a.category || 'Sensor').trim().toLowerCase();
-        const catB = (b.category || 'Sensor').trim().toLowerCase();
+        const catA = getCategoryMeta(a.category).label.toLowerCase();
+        const catB = getCategoryMeta(b.category).label.toLowerCase();
         const cmp = catA.localeCompare(catB, 'sv', { numeric: true });
         if (cmp !== 0) return cmp * mult;
         const nameA = resolveSignalDisplayNames(a, a.payload).primaryName.toLowerCase();
@@ -4470,26 +4558,12 @@
     // -----------------------------------------------------------------------
     // Card & Table Builders for Signaler
     // -----------------------------------------------------------------------
-    function getCategoryIcon(category) {
-      const c = (category || '').toLowerCase();
-      if (c === 'weather') return 'mdi-weather-partly-cloudy text-sky-500';
-      if (c === 'tpms') return 'mdi-car-tire-alert text-purple-500';
-      if (c === 'vehicle') return 'mdi-car-connected text-emerald-500';
-      if (c === 'meter') return 'mdi-lightning-bolt text-emerald-500';
-      if (c === 'switch') return 'mdi-toggle-switch-outline text-indigo-500';
-      if (c === 'security') return 'mdi-shield-alert-outline text-rose-500';
-      if (c.includes('soil') || c.includes('moisture')) return 'mdi-sprout-outline text-emerald-500';
-      if (c.includes('smoke') || c.includes('fire')) return 'mdi-fire-alert text-rose-500';
-      if (c.includes('water')) return 'mdi-water-pump text-blue-500';
-      if (c.includes('remote')) return 'mdi-remote text-amber-500';
-      return 'mdi-access-point text-slate-400';
-    }
-
     function buildSignalCardHtml(sig, freshUntilMs = 0) {
       const p = sig.payload || {};
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
-      const catIcon = getCategoryIcon(sig.category);
+      const catMeta = getCategoryMeta(sig.category);
+      const catIcon = catMeta.iconClass;
       const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, p);
 
       const groupBadgeHtml = hasGroup
@@ -4547,7 +4621,7 @@
               </div>
               <div class="shrink-0 flex items-center gap-1 self-start">
                 <span data-sig-new class="${isNewDevice ? '' : 'hidden '}px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>
-                <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
+                <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold border ${catMeta.badgeClass}"><i class="mdi ${catMeta.icon} text-xs leading-none"></i><span>${escapeHtml(catMeta.label)}</span></span>
                 <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias, Grupp & Kategori">
                   <i class="mdi mdi-pencil-outline text-sm"></i>
                 </button>
@@ -4739,7 +4813,8 @@
       const devObj = devicesList.find((d) => d.device_key === devKey);
       const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
       const isNewDevice = isDeviceTrulyNew(sig, devObj);
-      const catIcon = getCategoryIcon(sig.category);
+      const catMeta = getCategoryMeta(sig.category);
+      const catIcon = catMeta.iconClass;
       const exactTime = formatTimestamp(sig.timestamp);
       const timeInnerHtml = renderSignalTimeInnerHtml(sig.timestamp, freshUntilMs);
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
@@ -4777,8 +4852,8 @@
               </div>
             </div>
           </td>
-          <td class="w-24 py-2 px-2.5 whitespace-nowrap align-top">
-            <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
+          <td class="w-36 py-2 px-2.5 whitespace-nowrap align-top">
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${catMeta.badgeClass}"><i class="mdi ${catMeta.icon} text-xs leading-none"></i><span>${escapeHtml(catMeta.label)}</span></span>
           </td>
           <td class="min-w-[140px] w-36 py-2 px-2.5 font-mono text-[11px] break-words [overflow-wrap:anywhere] text-slate-600 dark:text-slate-300 align-top">
             ${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ` <span class="text-slate-400 whitespace-nowrap">/ K${escapeHtml(sig.channel)}</span>` : ''}
@@ -5023,16 +5098,19 @@
 
         currentModalPayload = (matchingSig && matchingSig.payload) || dev.last_payload || {};
         const { primaryName, secondaryName } = resolveSignalDisplayNames(dev, currentModalPayload);
+        const catMeta = getCategoryMeta(dev.category);
 
-        document.getElementById('modalCategoryIcon').className = `mdi ${getCategoryIcon(dev.category)} text-lg`;
+        document.getElementById('modalCategoryIcon').className = `mdi ${catMeta.iconClass} text-lg`;
         document.getElementById('modalTitle').textContent = secondaryName ? `${primaryName} (${secondaryName})` : primaryName;
         document.getElementById('modalSubtitle').textContent = `Key: ${dev.device_key} • ID: ${dev.device_id} • Träffar: ${dev.hit_count}`;
-        document.getElementById('modalCategoryBadge').textContent = dev.category || 'Sensor';
+        const modalBadgeEl = document.getElementById('modalCategoryBadge');
+        modalBadgeEl.className = `inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${catMeta.badgeClass}`;
+        modalBadgeEl.innerHTML = `<i class="mdi ${catMeta.icon} text-xs leading-none"></i><span>${escapeHtml(catMeta.label)}</span>`;
         document.getElementById('modalPacketTime').textContent = formatTimestamp(currentModalPayload.time || dev.last_seen);
 
         document.getElementById('modalAliasInput').value = dev.alias || '';
         document.getElementById('modalGroupInput').value = dev.group_name || '';
-        document.getElementById('modalCategorySelect').value = dev.category || 'Sensor';
+        document.getElementById('modalCategorySelect').value = catMeta.id;
         document.getElementById('modalMqttToggle').checked = Boolean(dev.mqtt_enabled);
         document.getElementById('modalHaDiscoveryToggle').checked = Boolean(dev.ha_discovery);
         document.getElementById('modalIgnoredToggle').checked = Boolean(dev.ignored);
@@ -5414,6 +5492,16 @@
 
     function handleDeviceUpdated(dev) {
       syncDeviceToCaches(dev);
+      if (currentModalDeviceKey && dev && currentModalDeviceKey === dev.device_key) {
+        const catMeta = getCategoryMeta(dev.category);
+        const iconEl = document.getElementById('modalCategoryIcon');
+        const badgeEl = document.getElementById('modalCategoryBadge');
+        if (iconEl) iconEl.className = `mdi ${catMeta.iconClass} text-lg`;
+        if (badgeEl) {
+          badgeEl.className = `inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${catMeta.badgeClass}`;
+          badgeEl.innerHTML = `<i class="mdi ${catMeta.icon} text-xs leading-none"></i><span>${escapeHtml(catMeta.label)}</span>`;
+        }
+      }
       updateExistingGroupsDatalist();
       updateNewDevicesNavBadge();
       renderCategoryFilterDropdowns();
@@ -5435,7 +5523,8 @@
       if (!showIgnored && Number(dev.ignored) === 1) return false;
 
       const p = dev.last_payload || {};
-      const cat = (dev.category || 'Sensor').trim() || 'Sensor';
+      const catMeta = getCategoryMeta(dev.category);
+      const cat = catMeta.id;
       const grp = (dev.group_name || '').trim();
       const hasAlias = Boolean(dev.alias && dev.alias.trim());
 
@@ -5459,7 +5548,7 @@
       // 3. Free-text search
       const search = document.getElementById('deviceSearchInput').value.trim().toLowerCase();
       if (search) {
-        const hay = `${dev.model || ''} ${dev.device_id || ''} ${dev.alias || ''} ${dev.group_name || ''} ${dev.category || ''} ${JSON.stringify(p)}`.toLowerCase();
+        const hay = `${dev.model || ''} ${dev.device_id || ''} ${dev.alias || ''} ${dev.group_name || ''} ${dev.category || ''} ${catMeta.label} ${JSON.stringify(p)}`.toLowerCase();
         if (!hay.includes(search)) return false;
       }
       return true;
@@ -5530,7 +5619,7 @@
           const g = (dev.group_name || '').trim();
           gKey = g ? g : ungroupedKey;
         } else if (deviceGroupBy === 'category') {
-          gKey = dev.category || 'Sensor';
+          gKey = getCategoryMeta(dev.category).id;
         } else if (deviceGroupBy === 'model') {
           gKey = dev.model || 'Unknown';
         }
@@ -5541,13 +5630,20 @@
       const sortedGroupKeys = Array.from(groupsMap.keys()).sort((a, b) => {
         if (a === ungroupedKey) return 1;
         if (b === ungroupedKey) return -1;
+        if (deviceGroupBy === 'category') {
+          const labelA = getCategoryMeta(a).label;
+          const labelB = getCategoryMeta(b).label;
+          return labelA.localeCompare(labelB, 'sv', { numeric: true, sensitivity: 'base' });
+        }
         return a.localeCompare(b, 'sv', { numeric: true, sensitivity: 'base' });
       });
 
       container.innerHTML = sortedGroupKeys.map((gKey) => {
         const groupDevs = sortDevicesArray(groupsMap.get(gKey));
         const isUngrouped = gKey === ungroupedKey;
-        const groupTitle = isUngrouped ? 'Ogrupperade enheter' : gKey;
+        const groupTitle = isUngrouped
+          ? 'Ogrupperade enheter'
+          : (deviceGroupBy === 'category' ? getCategoryMeta(gKey).label : gKey);
         const groupIcon = isUngrouped
           ? 'mdi-folder-open-outline text-slate-400'
           : (deviceGroupBy === 'category' ? getCategoryIcon(gKey) : 'mdi-folder-outline text-sky-500');
@@ -5603,7 +5699,8 @@
       const isMqtt = Number(dev.mqtt_enabled) === 1;
       const isHa = Number(dev.ha_discovery) === 1;
       const isSelected = selectedDeviceKeys.has(devKey);
-      const catIcon = getCategoryIcon(dev.category);
+      const catMeta = getCategoryMeta(dev.category);
+      const catIcon = catMeta.iconClass;
       const lastPayload = dev.last_payload || {};
       const { badgesHtml } = extractAndFormatMetrics(lastPayload);
       const radio = extractRadioMetadata(null, lastPayload);
@@ -5662,7 +5759,7 @@
             <div class="text-right font-mono text-[11px] shrink-0 flex flex-col items-end gap-0.5">
               <div class="flex items-center justify-end gap-1">
                 ${isDeviceTrulyNew(dev, dev) ? '<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>' : ''}
-                <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700">${escapeHtml(dev.category || 'Sensor')}</span>
+                <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold border ${catMeta.badgeClass}"><i class="mdi ${catMeta.icon} text-xs leading-none"></i><span>${escapeHtml(catMeta.label)}</span></span>
                 <span data-dev-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold border border-slate-200/70 dark:border-slate-700/70" title="Totalt antal mottagna träffar">
                   <i class="mdi mdi-counter text-sky-500 mr-0.5"></i>${dev.hit_count}
                 </span>
@@ -5723,7 +5820,7 @@
                   class="w-full px-1.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-800 dark:text-slate-200 text-xs"
                 >
                   ${BASE_CATEGORIES.map(
-                    (c) => `<option value="${c}" ${dev.category === c ? 'selected' : ''}>${c}</option>`
+                    (c) => `<option value="${c}" ${catMeta.id === c ? 'selected' : ''}>${escapeHtml(getCategoryMeta(c).label)}</option>`
                   ).join('')}
                 </select>
               </div>
@@ -5813,7 +5910,7 @@
           const g = (dev.group_name || '').trim();
           return (g ? g : '__UNGROUPED__') === groupKey;
         }
-        if (deviceGroupBy === 'category') return (dev.category || 'Sensor') === groupKey;
+        if (deviceGroupBy === 'category') return getCategoryMeta(dev.category).id === groupKey;
         if (deviceGroupBy === 'model') return (dev.model || 'Unknown') === groupKey;
         return false;
       });
