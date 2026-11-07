@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.11</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.12</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -422,6 +422,11 @@
           <!-- Synchronized Sort Dropdown + Group Duplicates + View Switcher + Visible Count -->
           <div class="lg:col-span-4 xl:col-span-3 flex flex-wrap items-center justify-between sm:justify-end gap-1.5">
             
+            <!-- Hover Lock Indicator Badge -->
+            <span id="hover-lock-badge" class="hidden inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
+              <i class="mdi mdi-cursor-default-click-outline"></i> Flöde låst vid hover
+            </span>
+
             <!-- Synchronized Signal Sort Dropdown -->
             <div class="relative flex items-center min-w-0 flex-1 sm:flex-initial">
               <i class="mdi mdi-sort-variant text-sky-500 text-sm absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
@@ -495,104 +500,121 @@
         <button onclick="togglePause()" class="px-2.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 font-semibold">Återuppta nu</button>
       </div>
 
-      <!-- Signals Multi-Column Card Grid (3-5 Columns) -->
-      <div id="signalsGridContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-        <!-- Rendered by JS -->
-      </div>
+      <!-- Signals Scroll / Hover-Lock Container -->
+      <div
+        id="signals-scroll-container"
+        onmouseenter="setSignalsHoverLock(true)"
+        onmouseleave="setSignalsHoverLock(false)"
+      >
+        <!-- Signals Multi-Column Card Grid (3-5 Columns) -->
+        <div
+          id="signalsGridContainer"
+          onmouseenter="setSignalsHoverLock(true)"
+          onmouseleave="setSignalsHoverLock(false)"
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3"
+        >
+          <!-- Rendered by JS -->
+        </div>
 
-      <!-- Signals Dense Table View -->
-      <div id="signalsTableContainer" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr class="bg-slate-50 dark:bg-slate-950/90 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider">
-                <th
-                  id="sigTh_time"
-                  onclick="toggleSignalSort('time')"
-                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                  title="Klicka för att sortera på Tid"
-                >
-                  <span class="inline-flex items-center gap-1">
-                    <span>Tid</span>
-                    <span id="sigSortIcon_time" class="inline-flex items-center"><i class="mdi mdi-arrow-down"></i></span>
-                  </span>
-                </th>
-                <th
-                  id="sigTh_name"
-                  onclick="toggleSignalSort('name')"
-                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                  title="Klicka för att sortera alfabetiskt på Enhet / Alias"
-                >
-                  <div class="inline-flex items-center gap-2">
-                    <span id="sigThLabel_name" class="inline-flex items-center gap-1">
-                      <span>Enhet / Alias</span>
-                      <span id="sigSortIcon_name" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+        <!-- Signals Dense Table View -->
+        <div id="signalsTableContainer" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 dark:bg-slate-950/90 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider">
+                  <th
+                    id="sigTh_time"
+                    onclick="toggleSignalSort('time')"
+                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                    title="Klicka för att sortera på Tid"
+                  >
+                    <span class="inline-flex items-center gap-1">
+                      <span>Tid</span>
+                      <span id="sigSortIcon_time" class="inline-flex items-center"><i class="mdi mdi-arrow-down"></i></span>
                     </span>
-                    <button
-                      type="button"
-                      id="sigThBtn_hits"
-                      onclick="event.stopPropagation(); toggleSignalSort('hits')"
-                      title="Sortera på Antal träffar (paket)"
-                      class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900 hover:border-sky-500/60 text-[10px] font-mono normal-case transition"
-                    >
-                      <i class="mdi mdi-counter text-sky-500"></i>
-                      <span>Träffar</span>
-                      <span id="sigSortIcon_hits" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40"></i></span>
-                    </button>
-                  </div>
-                </th>
-                <th
-                  id="sigTh_category"
-                  onclick="toggleSignalSort('category')"
-                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                  title="Klicka för att sortera på Kategori"
-                >
-                  <span class="inline-flex items-center gap-1">
-                    <span>Kategori</span>
-                    <span id="sigSortIcon_category" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
-                  </span>
-                </th>
-                <th
-                  id="sigTh_id"
-                  onclick="toggleSignalSort('id')"
-                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                  title="Klicka för att sortera på ID / Kanal"
-                >
-                  <span class="inline-flex items-center gap-1">
-                    <span>ID / Kanal</span>
-                    <span id="sigSortIcon_id" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
-                  </span>
-                </th>
-                <th class="py-2 px-2.5 whitespace-nowrap">Mätvärden</th>
-                <th
-                  id="sigTh_freq"
-                  onclick="toggleSignalSort('freq')"
-                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                  title="Klicka för att sortera på Radio &amp; Frekvens"
-                >
-                  <span class="inline-flex items-center gap-1">
-                    <span>Radio &amp; Frekvens</span>
-                    <span id="sigSortIcon_freq" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
-                  </span>
-                </th>
-                <th
-                  id="sigTh_rssi"
-                  onclick="toggleSignalSort('rssi')"
-                  class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
-                  title="Klicka för att sortera på RSSI / Signalstyrka"
-                >
-                  <span class="inline-flex items-center gap-1">
-                    <span>RSSI / SNR</span>
-                    <span id="sigSortIcon_rssi" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
-                  </span>
-                </th>
-                <th class="py-2 px-2.5 text-right whitespace-nowrap">Åtgärder</th>
-              </tr>
-            </thead>
-            <tbody id="signalsTableBody" class="divide-y divide-slate-200/70 dark:divide-slate-800/70">
-              <!-- Rendered by JS -->
-            </tbody>
-          </table>
+                  </th>
+                  <th
+                    id="sigTh_name"
+                    onclick="toggleSignalSort('name')"
+                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                    title="Klicka för att sortera alfabetiskt på Enhet / Alias"
+                  >
+                    <div class="inline-flex items-center gap-2">
+                      <span id="sigThLabel_name" class="inline-flex items-center gap-1">
+                        <span>Enhet / Alias</span>
+                        <span id="sigSortIcon_name" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                      </span>
+                      <button
+                        type="button"
+                        id="sigThBtn_hits"
+                        onclick="event.stopPropagation(); toggleSignalSort('hits')"
+                        title="Sortera på Antal träffar (paket)"
+                        class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900 hover:border-sky-500/60 text-[10px] font-mono normal-case transition"
+                      >
+                        <i class="mdi mdi-counter text-sky-500"></i>
+                        <span>Träffar</span>
+                        <span id="sigSortIcon_hits" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40"></i></span>
+                      </button>
+                    </div>
+                  </th>
+                  <th
+                    id="sigTh_category"
+                    onclick="toggleSignalSort('category')"
+                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                    title="Klicka för att sortera på Kategori"
+                  >
+                    <span class="inline-flex items-center gap-1">
+                      <span>Kategori</span>
+                      <span id="sigSortIcon_category" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                    </span>
+                  </th>
+                  <th
+                    id="sigTh_id"
+                    onclick="toggleSignalSort('id')"
+                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                    title="Klicka för att sortera på ID / Kanal"
+                  >
+                    <span class="inline-flex items-center gap-1">
+                      <span>ID / Kanal</span>
+                      <span id="sigSortIcon_id" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                    </span>
+                  </th>
+                  <th class="py-2 px-2.5 whitespace-nowrap">Mätvärden</th>
+                  <th
+                    id="sigTh_freq"
+                    onclick="toggleSignalSort('freq')"
+                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                    title="Klicka för att sortera på Radio &amp; Frekvens"
+                  >
+                    <span class="inline-flex items-center gap-1">
+                      <span>Radio &amp; Frekvens</span>
+                      <span id="sigSortIcon_freq" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                    </span>
+                  </th>
+                  <th
+                    id="sigTh_rssi"
+                    onclick="toggleSignalSort('rssi')"
+                    class="py-2 px-2.5 cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group whitespace-nowrap"
+                    title="Klicka för att sortera på RSSI / Signalstyrka"
+                  >
+                    <span class="inline-flex items-center gap-1">
+                      <span>RSSI / SNR</span>
+                      <span id="sigSortIcon_rssi" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
+                    </span>
+                  </th>
+                  <th class="py-2 px-2.5 text-right whitespace-nowrap">Åtgärder</th>
+                </tr>
+              </thead>
+              <tbody
+                id="signalsTableBody"
+                onmouseenter="setSignalsHoverLock(true)"
+                onmouseleave="setSignalsHoverLock(false)"
+                class="divide-y divide-slate-200/70 dark:divide-slate-800/70"
+              >
+                <!-- Rendered by JS -->
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -1524,6 +1546,8 @@
     let rawSignalsList = [];
     let devicesList = [];
     let knownModels = new Set();
+    let isHoverLocked = false;
+    let pendingReorderCount = 0;
     let currentModalDeviceKey = null;
     let currentModalPayload = null;
     let searchDebounceTimer = null;
@@ -1540,7 +1564,7 @@
       'mode', 'pulses_per_kwh', 'calculated_power_W', 'mac', 'local_name',
       'manufacturer_data', 'manufacturer_id', 'manufacturer_name', 'service_data',
       'service_uuids', 'tx_power', 'distance_m', 'beacon_hash', 'vehicle_status',
-      'category'
+      'ibeacon_uuid', 'uuid', 'major', 'minor', 'category'
     ]);
 
     // -----------------------------------------------------------------------
@@ -2139,25 +2163,67 @@
       return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
     }
 
+    function resolveSignalDisplayNames(sigOrDev, payload = null) {
+      const obj = sigOrDev || {};
+      const p = (payload && typeof payload === 'object') ? payload : (obj.payload || obj.last_payload || {});
+      const rawAlias = obj.alias ? String(obj.alias).trim() : '';
+      const rawModel = obj.model ? String(obj.model).trim() : (p.model ? String(p.model).trim() : 'Unknown');
+      const rawLocalName = p.local_name ? String(p.local_name).trim() : '';
+      const rawMfg = p.manufacturer_name ? String(p.manufacturer_name).trim() : '';
+
+      // 1. User-defined alias always takes priority
+      if (rawAlias) {
+        return {
+          primaryName: rawAlias,
+          secondaryName: rawModel
+        };
+      }
+
+      // 2. If no alias, check BLE local_name
+      if (rawLocalName) {
+        if (rawLocalName === 'P mesh') {
+          return {
+            primaryName: 'Plejd-Mesh',
+            secondaryName: (rawMfg && rawMfg !== 'Plejd-Mesh') ? rawMfg : ''
+          };
+        }
+        let sub = rawModel;
+        if (!sub || sub === rawLocalName || sub.startsWith('BLE-')) {
+          sub = rawMfg && rawMfg !== rawLocalName ? rawMfg : (sub && sub !== rawLocalName ? sub : '');
+        }
+        return {
+          primaryName: rawLocalName,
+          secondaryName: sub
+        };
+      }
+
+      // 3. Fallback to model (and manufacturer_name if different)
+      return {
+        primaryName: rawModel,
+        secondaryName: (rawMfg && rawMfg !== rawModel) ? rawMfg : ''
+      };
+    }
+
     function extractAndFormatMetrics(payload, sig = null) {
       const p = payload && typeof payload === 'object' ? payload : {};
       const consumed = new Set();
       const badges = [];
       const kpis = [];
 
+      const palettes = {
+        purple: 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30',
+        amber: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
+        sky: 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30',
+        cyan: 'bg-cyan-50 text-cyan-800 border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30',
+        blue: 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30',
+        teal: 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30',
+        emerald: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30',
+        indigo: 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30',
+        rose: 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40',
+        neutral: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+      };
+
       function addMetric(icon, text, colorVariant, kpiLabel, kpiPrimary, kpiSecondary = '') {
-        const palettes = {
-          purple: 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30',
-          amber: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',
-          sky: 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30',
-          cyan: 'bg-cyan-50 text-cyan-800 border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30',
-          blue: 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30',
-          teal: 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30',
-          emerald: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30',
-          indigo: 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30',
-          rose: 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40',
-          neutral: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-        };
         const cls = palettes[colorVariant] || palettes.neutral;
         badges.push(`
           <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold border ${cls}">
@@ -2173,35 +2239,86 @@
         });
       }
 
-      // Always mark IKEA Sparsnäs & energy meter internal keys as consumed so they never appear as raw fallback tags
-      ['cumulative_kwh', 'cumulative_kWh', 'energy_kWh', 'total_kWh', 'energy_mWh', 'effect', 'pulses', 'pulse_count', 'pulses_per_kwh', 'sequence', 'mode', 'calculated_power_W'].forEach((k) => consumed.add(k));
+      function addModalOnlyKpi(icon, colorVariant, kpiLabel, kpiPrimary, kpiSecondary = '') {
+        const cls = palettes[colorVariant] || palettes.neutral;
+        kpis.push({
+          icon,
+          label: kpiLabel,
+          primary: kpiPrimary,
+          secondary: kpiSecondary,
+          cls
+        });
+      }
 
-      // 0. BLE & Vehicle Telemetry (Tesla BLE, Enhauto S3XY, BLE Local Name, Manufacturer, Illuminance, Distance)
-      const isTeslaModel = (sig && sig.model === 'Tesla-Vehicle-BLE') || p.model === 'Tesla-Vehicle-BLE';
-      if (p.vehicle_status || isTeslaModel) {
-        consumed.add('vehicle_status');
-        const vStatus = p.vehicle_status ? String(p.vehicle_status) : 'Tesla Närvarande (BLE)';
-        addMetric('mdi-car-wireless', isTeslaModel ? 'Tesla Närvarande' : vStatus, 'emerald', 'Fordonsstatus', vStatus, p.mac ? `MAC: ${p.mac}` : '');
-      }
-      if (p.beacon_hash) {
-        consumed.add('beacon_hash');
-        addMetric('mdi-key-wireless', `Beacon: ${p.beacon_hash}`, 'teal', 'Tesla BLE Beacon', String(p.beacon_hash));
-      }
-      if (p.local_name && !p.beacon_hash) {
-        consumed.add('local_name');
-        addMetric('mdi-broadcast', `Namn: ${p.local_name}`, 'indigo', 'BLE Advertised Name', String(p.local_name));
+      // Always mark internal & BLE envelope metadata keys as consumed (handledKeys) so they NEVER create duplicate badges in MÄTVÄRDEN
+      [
+        'cumulative_kwh', 'cumulative_kWh', 'energy_kWh', 'total_kWh', 'energy_mWh',
+        'effect', 'pulses', 'pulse_count', 'pulses_per_kwh', 'sequence', 'mode',
+        'calculated_power_W', 'local_name', 'manufacturer_name', 'manufacturer_id',
+        'service_uuids', 'tx_power', 'distance_m', 'beacon_hash', 'ibeacon_uuid',
+        'uuid', 'major', 'minor'
+      ].forEach((k) => consumed.add(k));
+
+      // Keep local_name & manufacturer_name visible inside the Detail Modal KPI grid only
+      if (p.local_name) {
+        addModalOnlyKpi('mdi-broadcast', 'indigo', 'BLE Advertised Name', String(p.local_name));
       }
       if (p.manufacturer_name) {
-        consumed.add('manufacturer_name');
-        addMetric('mdi-domain', `Tillverkare: ${p.manufacturer_name}`, 'sky', 'BLE Tillverkare', String(p.manufacturer_name), p.manufacturer_id ? `ID: ${p.manufacturer_id}` : '');
+        addModalOnlyKpi('mdi-domain', 'sky', 'BLE Tillverkare', String(p.manufacturer_name), p.manufacturer_id ? `ID: ${p.manufacturer_id}` : '');
       }
+
+      // 0. BLE & Vehicle Telemetry (Tesla-Vehicle-BLE, iBeacon-BLE, Illuminance)
+      const modelStr = (sig && sig.model) ? String(sig.model) : (p.model ? String(p.model) : '');
+      const isTeslaModel = modelStr === 'Tesla-Vehicle-BLE' || Boolean(p.beacon_hash);
+      const isIbeaconModel = !isTeslaModel && (modelStr === 'iBeacon-BLE' || Boolean(p.ibeacon_uuid));
+
+      if (isTeslaModel || p.vehicle_status) {
+        consumed.add('vehicle_status');
+        if (isTeslaModel) {
+          // Determine Tesla BLE node position from the last character of beacon ID / local_name / device_id
+          const rawTeslaId = String(p.beacon_hash || p.local_name || (sig && sig.device_id) || '').trim();
+          const lastChar = rawTeslaId.length >= 18 ? rawTeslaId.slice(-1).toUpperCase() : '';
+          const nodeMap = {
+            C: 'Mittkonsol',
+            D: 'Förarsida',
+            P: 'Passagerarsida',
+            R: 'Bak'
+          };
+          const nodeName = nodeMap[lastChar] || '';
+          const badgeLabel = nodeName ? `Tesla Närvarande • ${nodeName} (${lastChar})` : 'Tesla Närvarande';
+          addMetric(
+            'mdi-car-connected',
+            badgeLabel,
+            'emerald',
+            'Fordonsstatus',
+            'Tesla Närvarande',
+            nodeName ? `Nod: ${nodeName} (${lastChar})` : (p.mac ? `MAC: ${p.mac}` : '')
+          );
+          if (rawTeslaId) {
+            addModalOnlyKpi('mdi-key-wireless', 'teal', 'Tesla BLE Beacon', rawTeslaId, p.ibeacon_uuid ? `UUID: ${p.ibeacon_uuid}` : '');
+          }
+        } else {
+          const vStatus = String(p.vehicle_status);
+          addMetric('mdi-car-connected', vStatus, 'emerald', 'Fordonsstatus', vStatus, p.mac ? `MAC: ${p.mac}` : '');
+        }
+      } else if (isIbeaconModel) {
+        const hasMajMin = p.major !== undefined && p.major !== null && p.minor !== undefined && p.minor !== null;
+        const majMinText = hasMajMin ? `${p.major} / ${p.minor}` : '';
+        const badgeText = majMinText ? `iBeacon (${majMinText})` : 'iBeacon';
+        addMetric(
+          'mdi-bullseye',
+          badgeText,
+          'indigo',
+          'Apple iBeacon',
+          majMinText ? `Major/Minor: ${majMinText}` : 'iBeacon',
+          p.ibeacon_uuid ? `UUID: ${p.ibeacon_uuid}` : ''
+        );
+      }
+
       if (p.lux !== undefined && p.lux !== null && !Number.isNaN(Number(p.lux))) {
         consumed.add('lux');
         addMetric('mdi-brightness-6', `${Number(p.lux).toFixed(0)} lx`, 'amber', 'Ljusstyrka', `${Number(p.lux).toFixed(0)} lx`);
       }
-      // Always consume distance_m & tx_power so misleading free-space distance (~99.9 m) is never shown on cards/table
-      consumed.add('distance_m');
-      consumed.add('tx_power');
 
       // 1. Energy / Cumulative Consumption (cumulative_kwh, energy_kWh, total_kWh, energy_mWh)
       let kwhVal = null;
@@ -2597,13 +2714,7 @@
         }
       }
 
-      // 11. Sequence Number (sequence)
-      if (p.sequence !== undefined && p.sequence !== null) {
-        consumed.add('sequence');
-        addMetric('mdi-pound', `Seq: ${p.sequence}`, 'neutral', 'Sekvens', `#${p.sequence}`);
-      }
-
-      // 12. Battery (battery_pct, battery_ok, battery_low, battery_mV, battery_V)
+      // 11. Battery (battery_pct, battery_ok, battery_low, battery_mV, battery_V)
       const batPct = p.battery_pct !== undefined && p.battery_pct !== null ? Number(p.battery_pct) : null;
       const batOk = p.battery_ok !== undefined ? p.battery_ok : (sig ? sig.battery_ok : undefined);
       const batLow = p.battery_low;
@@ -2669,7 +2780,7 @@
         addMetric('mdi-battery-outline', `Batteri: ${voltStr}`, 'emerald', 'Batterispänning', voltStr);
       }
 
-      // 13. SMART FALLBACK FOR ALL REMAINING PAYLOAD KEYS
+      // 12. SMART FALLBACK FOR ALL REMAINING PAYLOAD KEYS
       Object.keys(p).forEach((key) => {
         if (TECHNICAL_METADATA_KEYS.has(key) || consumed.has(key)) return;
         const val = p[key];
@@ -2677,6 +2788,29 @@
         const formattedVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
         addMetric('mdi-tag-outline', `${key}: ${formattedVal}`, 'neutral', key, formattedVal);
       });
+
+      // 13. Sequence Number (sequence) -> Hide in table/cards if real telemetry exists; always show in Detail Modal
+      const isBlePacket = String(p.mod || '').toUpperCase() === 'BLE' || (sig && Number(sig.freq) >= 2400) || Number(p.freq) >= 2400 || Boolean(p.mac);
+      if (p.sequence !== undefined && p.sequence !== null) {
+        consumed.add('sequence');
+        if (badges.length === 0 && !isBlePacket) {
+          addMetric('mdi-pound', `Seq: ${p.sequence}`, 'neutral', 'Sekvens', `#${p.sequence}`);
+        } else {
+          addModalOnlyKpi('mdi-pound', 'neutral', 'Sekvens', `#${p.sequence}`);
+        }
+      }
+
+      // 14. BLE devices without numeric sensor telemetry (e.g. Plejd-Mesh, TV, Printer)
+      if (badges.length === 0 && isBlePacket) {
+        const isPlejd = modelStr === 'Plejd-Mesh' || p.local_name === 'P mesh' || p.manufacturer_name === 'Plejd';
+        const statusLabel = isPlejd ? 'Mesh-nod' : 'Aktiv Beacon';
+        badges.push(`
+          <span class="inline-flex items-center gap-1 text-xs text-slate-400">
+            <i class="mdi mdi-broadcast"></i><span>${statusLabel}</span>
+          </span>
+        `);
+        addModalOnlyKpi('mdi-broadcast', 'neutral', 'BLE Status', statusLabel);
+      }
 
       return {
         badgesHtml: badges.join(''),
@@ -3439,13 +3573,35 @@
       }
     }
 
+    function setSignalsHoverLock(locked) {
+      const badge = document.getElementById('hover-lock-badge');
+      if (locked) {
+        isHoverLocked = true;
+        if (badge) badge.classList.remove('hidden');
+      } else {
+        // Keep hover lock active if the Detail Modal is currently open
+        const detailModal = document.getElementById('detailModal');
+        if (detailModal && !detailModal.classList.contains('hidden')) {
+          return;
+        }
+        isHoverLocked = false;
+        if (badge) badge.classList.add('hidden');
+        if (pendingReorderCount > 0) {
+          pendingReorderCount = 0;
+          if (activeTab === 'signals') {
+            renderSignalsView();
+          }
+        }
+      }
+    }
+
     function compareSignals(a, b) {
       const f = signalSort.field || 'time';
       const mult = signalSort.dir === 'asc' ? 1 : -1;
 
       if (f === 'name') {
-        const nameA = ((a.alias && a.alias.trim()) ? a.alias.trim() : (a.model || '')).toLowerCase();
-        const nameB = ((b.alias && b.alias.trim()) ? b.alias.trim() : (b.model || '')).toLowerCase();
+        const nameA = resolveSignalDisplayNames(a, a.payload).primaryName.toLowerCase();
+        const nameB = resolveSignalDisplayNames(b, b.payload).primaryName.toLowerCase();
         const cmp = nameA.localeCompare(nameB, 'sv', { numeric: true });
         if (cmp !== 0) return cmp * mult;
         return String(a.device_id || '').localeCompare(String(b.device_id || ''), 'sv', { numeric: true });
@@ -3462,8 +3618,8 @@
         const catB = (b.category || 'Sensor').trim().toLowerCase();
         const cmp = catA.localeCompare(catB, 'sv', { numeric: true });
         if (cmp !== 0) return cmp * mult;
-        const nameA = ((a.alias && a.alias.trim()) ? a.alias.trim() : (a.model || '')).toLowerCase();
-        const nameB = ((b.alias && b.alias.trim()) ? b.alias.trim() : (b.model || '')).toLowerCase();
+        const nameA = resolveSignalDisplayNames(a, a.payload).primaryName.toLowerCase();
+        const nameB = resolveSignalDisplayNames(b, b.payload).primaryName.toLowerCase();
         return nameA.localeCompare(nameB, 'sv', { numeric: true });
       }
 
@@ -3548,7 +3704,7 @@
 
       if (isPaused) return;
 
-      // 3. Update rawSignalsList cache (keep newest signal at index 0)
+      // 3. Always update rawSignalsList cache in background (newest signal at index 0)
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       if (groupDevices) {
         const existingIdx = rawSignalsList.findIndex(
@@ -3568,7 +3724,7 @@
         if (rawSignalsList.length > 100) rawSignalsList.length = 100;
       }
 
-      // 4. Live DOM update in Signaler tab (respecting active signalSort!)
+      // 4. Live DOM update in Signaler tab (respecting active signalSort AND isHoverLocked!)
       if (activeTab === 'signals' && signalMatchesActiveFilters(sig)) {
         const container = viewMode === 'table'
           ? document.getElementById('signalsTableBody')
@@ -3585,7 +3741,34 @@
 
         const isDefaultTimeDesc = signalSort.field === 'time' && signalSort.dir === 'desc';
 
-        if (groupDevices && container) {
+        if (isHoverLocked) {
+          // Hover Lock Active: NEVER reorder rows/cards or prepend new items!
+          // Silently update existing element's metrics/timestamp in place if visible.
+          pendingReorderCount += 1;
+          if (groupDevices && container) {
+            const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
+            if (existingEl) {
+              const { badgesHtml } = extractAndFormatMetrics(sig.payload || {}, sig);
+              const badgesTarget = existingEl.querySelector('[data-sig-badges]');
+              if (badgesTarget) badgesTarget.innerHTML = badgesHtml;
+
+              const strengthTarget = existingEl.querySelector('[data-sig-strength]');
+              if (strengthTarget) strengthTarget.innerHTML = buildFooterSignalStrength(sig.rssi, sig.snr, (sig.payload || {}).mod, sig.freq ?? (sig.payload || {}).freq);
+
+              const hitsTarget = existingEl.querySelector('[data-sig-hits]');
+              if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${sig.hit_count || 1}`;
+
+              const tsTarget = existingEl.querySelector('[data-timestamp]');
+              if (tsTarget) {
+                tsTarget.setAttribute('data-timestamp', sig.timestamp);
+                tsTarget.setAttribute('data-ts', sig.timestamp);
+                tsTarget.setAttribute('title', formatTimestamp(sig.timestamp));
+                const relLabel = tsTarget.querySelector('.rel-time-label');
+                if (relLabel) relLabel.textContent = formatRelativeTime(sig.timestamp);
+              }
+            }
+          }
+        } else if (groupDevices && container) {
           const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
           if (existingEl) {
             // Update existing card or row in place without full re-render
@@ -3663,7 +3846,7 @@
           }
         }
 
-        document.getElementById('visibleSignalCount').textContent = container ? container.children.length : getFilteredSignals().length;
+        document.getElementById('visibleSignalCount').textContent = getFilteredSignals().length;
       }
 
       // 5. Live update Detail Modal if open for this device
@@ -3740,13 +3923,13 @@
     function buildSignalCardHtml(sig) {
       const p = sig.payload || {};
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
-      const hasAlias = Boolean(sig.alias && sig.alias.trim());
       const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
       const catIcon = getCategoryIcon(sig.category);
+      const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, p);
 
-      const titleHtml = hasAlias
-        ? `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(sig.alias)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 truncate">(${escapeHtml(sig.model)})</span>`
-        : `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(sig.model)}</span>`;
+      const titleHtml = secondaryName
+        ? `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 truncate">(${escapeHtml(secondaryName)})</span>`
+        : `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span>`;
 
       const groupBadgeHtml = hasGroup
         ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25 truncate max-w-[130px]"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`
@@ -3791,7 +3974,7 @@
           <div class="flex items-center justify-between gap-1.5">
             <div class="flex items-center gap-1.5 min-w-0">
               <i class="mdi ${catIcon} text-base shrink-0"></i>
-              <div class="text-xs truncate flex items-baseline gap-1 min-w-0">${titleHtml}</div>
+              <div data-sig-title class="text-xs truncate flex items-baseline gap-1 min-w-0">${titleHtml}</div>
             </div>
             <div class="flex items-center gap-0.5 shrink-0">
               ${groupBadgeHtml}
@@ -3842,7 +4025,6 @@
     function buildSignalTableRowHtml(sig) {
       const p = sig.payload || {};
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
-      const hasAlias = Boolean(sig.alias && sig.alias.trim());
       const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
       const catIcon = getCategoryIcon(sig.category);
       const exactTime = formatTimestamp(sig.timestamp);
@@ -3852,6 +4034,7 @@
       const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
       const hitCount = sig.hit_count || 1;
       const isHaActive = Number(sig.ha_discovery) === 1;
+      const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, p);
 
       const haButtonHtml = haDiscoveryEnabled
         ? `<button onclick="quickHaDiscovery(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 ${isHaActive ? 'text-sky-500' : 'text-slate-400'} hover:text-sky-500 flex items-center justify-center" title="HA Discovery">
@@ -3867,8 +4050,10 @@
           <td class="py-1.5 px-2.5 whitespace-nowrap">
             <div class="flex items-center gap-1.5">
               <i class="mdi ${catIcon} text-sm"></i>
-              <span class="font-bold text-slate-900 dark:text-white">${escapeHtml(hasAlias ? sig.alias : sig.model)}</span>
-              ${hasAlias ? `<span class="text-[11px] text-slate-400">(${escapeHtml(sig.model)})</span>` : ''}
+              <span data-sig-title class="inline-flex items-baseline gap-1.5">
+                <span class="font-bold text-slate-900 dark:text-white">${escapeHtml(primaryName)}</span>
+                ${secondaryName ? `<span class="text-[11px] text-slate-400">(${escapeHtml(secondaryName)})</span>` : ''}
+              </span>
               ${hasGroup ? `<span class="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</span>` : ''}
               <span data-sig-hits class="ml-1 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}</span>
             </div>
@@ -4048,9 +4233,10 @@
         const history = data.history || [];
 
         currentModalPayload = (matchingSig && matchingSig.payload) || dev.last_payload || {};
+        const { primaryName, secondaryName } = resolveSignalDisplayNames(dev, currentModalPayload);
 
         document.getElementById('modalCategoryIcon').className = `mdi ${getCategoryIcon(dev.category)} text-lg`;
-        document.getElementById('modalTitle').textContent = dev.alias ? `${dev.alias} (${dev.model})` : dev.model;
+        document.getElementById('modalTitle').textContent = secondaryName ? `${primaryName} (${secondaryName})` : primaryName;
         document.getElementById('modalSubtitle').textContent = `Key: ${dev.device_key} • ID: ${dev.device_id} • Träffar: ${dev.hit_count}`;
         document.getElementById('modalCategoryBadge').textContent = dev.category || 'Sensor';
         document.getElementById('modalPacketTime').textContent = formatTimestamp(currentModalPayload.time || dev.last_seen);
@@ -4176,6 +4362,10 @@
     function closeDetailModal() {
       document.getElementById('detailModal').classList.add('hidden');
       currentModalDeviceKey = null;
+      const scrollWrap = document.getElementById('signals-scroll-container');
+      if (!scrollWrap || !scrollWrap.matches(':hover')) {
+        setSignalsHoverLock(false);
+      }
     }
 
     async function saveModalDevice() {
@@ -4614,7 +4804,7 @@
               <div class="min-w-0">
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <i class="mdi ${catIcon} text-base shrink-0"></i>
-                  <span class="text-xs font-bold text-slate-900 dark:text-white truncate">${escapeHtml(dev.alias || dev.model)}</span>
+                  <span class="text-xs font-bold text-slate-900 dark:text-white truncate">${escapeHtml(resolveSignalDisplayNames(dev, lastPayload).primaryName)}</span>
                   <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700">${escapeHtml(dev.category || 'Sensor')}</span>
                 </div>
                 <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 truncate">
