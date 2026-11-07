@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.27</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.28</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -962,264 +962,541 @@
         </section>
 
         <!-- =================================================================== -->
-        <!-- VIEW 4: INSTÄLLNINGAR (#view-settings) - DEDICATED VIEW             -->
+        <!-- VIEW 4: INSTÄLLNINGAR (#view-settings) - DEDICATED VIEW WITH SUB-TABS -->
         <!-- =================================================================== -->
         <section id="view-settings" class="hidden flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-6 py-3 space-y-4">
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            
-            <!-- Left Column: RTL-SDR, MQTT & Home Assistant Settings Form -->
-            <div class="lg:col-span-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
-              <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
+          <!-- Horizontal Sub-Tab Menu (4 Sub-Tabs) -->
+          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1.5 shadow-sm flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              id="settingsSubTabBtn_sdr"
+              onclick="switchSettingsSubTab('sdr')"
+              class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition bg-sky-600 text-white shadow-xs"
+            >
+              <i class="mdi mdi-antenna text-sm"></i>
+              <span>Radio &amp; SDR (rtl_433)</span>
+            </button>
+            <button
+              type="button"
+              id="settingsSubTabBtn_ble"
+              onclick="switchSettingsSubTab('ble')"
+              class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <i class="mdi mdi-bluetooth-settings text-sm"></i>
+              <span>Bluetooth (BLE) &amp; Fordon</span>
+            </button>
+            <button
+              type="button"
+              id="settingsSubTabBtn_mqtt"
+              onclick="switchSettingsSubTab('mqtt')"
+              class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <i class="mdi mdi-swap-horizontal text-sm"></i>
+              <span>MQTT &amp; Home Assistant</span>
+            </button>
+            <button
+              type="button"
+              id="settingsSubTabBtn_database"
+              onclick="switchSettingsSubTab('database')"
+              class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <i class="mdi mdi-database-cog text-sm"></i>
+              <span>Databas &amp; Automatisk Städning</span>
+            </button>
+          </div>
+
+          <form id="settingsForm" onsubmit="saveSettings(event)" class="space-y-4 text-xs">
+            <!-- =============================================================== -->
+            <!-- SUB-TAB 1: RADIO & SDR (rtl_433)                                -->
+            <!-- =============================================================== -->
+            <div id="settings-subtab-sdr" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
+              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
                 <div>
-                  <h3 class="text-sm font-bold text-slate-900 dark:text-white">System-, SDR- &amp; MQTT-inställningar</h3>
-                  <p class="text-[11px] text-slate-500 dark:text-slate-400">Sparas permanent i SQLite och tillämpas direkt utan omstart av containern</p>
+                  <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <i class="mdi mdi-antenna text-sky-500 text-base"></i>
+                    <span>Radio &amp; SDR (rtl_433) – Frekvensstyrning &amp; Tuner</span>
+                  </h3>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Konfigurera RTL-SDR Blog V4, frekvenshopp (433.92 / 868.3 MHz), förstärkning (Gain) och brusfiltrering</p>
                 </div>
-                <button onclick="restartSdrProcess()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition">
+                <button type="button" onclick="restartSdrProcess()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition">
                   <i class="mdi mdi-restart"></i>
                   <span>Starta om SDR</span>
                 </button>
               </div>
 
-              <form id="settingsForm" onsubmit="saveSettings(event)" class="space-y-4 text-xs">
-                <div class="space-y-2.5">
-                  <div class="text-[11px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">
-                    <i class="mdi mdi-radio-tower mr-1"></i>RTL-SDR Blog V4 &amp; Frekvensstyrning
+              <div class="space-y-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Enhetsindex / Serienummer (-d)</label>
+                    <input type="text" id="set_device_index" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0 eller 00000433" />
                   </div>
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Aktivt frekvensläge</label>
+                    <select id="set_mode" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100">
+                      <option value="433">433.92 MHz (Fast)</option>
+                      <option value="868">868.3 MHz (Fast)</option>
+                      <option value="hop">Dual Hop (433.92 + 868.3 MHz)</option>
+                      <option value="custom">Custom (Egna frekvenser)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Hopp-intervall (-H sek)</label>
+                    <input type="number" id="set_hop_interval" min="5" max="3600" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom-frekvenser (kommaseparerade)</label>
+                    <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M,868.3M" />
+                  </div>
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom Sample Rate (-s)</label>
+                    <input type="text" id="set_custom_sample_rate" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1024k" />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Gain (-g)</label>
+                    <input type="text" id="set_gain" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="auto eller 40.2" />
+                  </div>
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">PPM-korrigering (-p)</label>
+                    <input type="number" id="set_ppm" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0" />
+                  </div>
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Debounce (sek)</label>
+                    <input type="number" step="0.1" min="0" max="60" id="set_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
+                  </div>
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Global Retention (dagar)</label>
+                    <input type="number" min="1" max="3650" id="set_retention_days" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+                <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition">
+                  <i class="mdi mdi-content-save-outline text-sm"></i>
+                  <span>Spara &amp; Tillämpa</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- =============================================================== -->
+            <!-- SUB-TAB 2: BLUETOOTH (BLE) & FORDON                             -->
+            <!-- =============================================================== -->
+            <div id="settings-subtab-ble" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
+              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <i class="mdi mdi-bluetooth-settings text-indigo-500 text-base"></i>
+                    <span>Bluetooth Low Energy (BLE 2.4 GHz) &amp; Fordonsdetektering</span>
+                  </h3>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Smart-filtrering av roterande MAC-adresser, Tesla VCSEC VIN-verifiering och BLE-avståndsmodell</p>
+                </div>
+                <label class="inline-flex items-center gap-1.5 cursor-pointer px-2.5 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
+                  <input type="checkbox" id="set_ble_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-indigo-500" />
+                  <span class="text-indigo-700 dark:text-indigo-300 font-semibold">Aktivera BLE-skanning (2.4 GHz)</span>
+                </label>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="sm:col-span-2">
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">BLE Filterläge</label>
+                  <select id="set_ble_mode" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100">
+                    <option value="smart">Smart läge – Endast namngivna enheter, fordon &amp; sensorer (Filtrera bort anonyma MAC)</option>
+                    <option value="all">Alla BLE-enheter – Inklusive anonyma MAC-adresser</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-slate-500 dark:text-slate-400 mb-1">BLE Debounce (sek)</label>
+                  <input type="number" step="1" min="2" max="600" id="set_ble_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="15" />
+                </div>
+              </div>
+
+              <!-- Tesla VIN Matcher -->
+              <div class="p-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-slate-800 space-y-2.5">
+                <div class="flex items-center justify-between gap-2">
+                  <label for="set_tesla_vin" class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <i class="mdi mdi-car-connected text-sm"></i>Tesla VIN-Matchare (Automatisk identifiering av egen Tesla)
+                  </label>
+                  <span class="text-[10px] font-mono text-slate-400">SHA-1 BLE Nyckel-ID</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
+                  <div>
+                    <input
+                      type="text"
+                      id="set_tesla_vin"
+                      maxlength="17"
+                      oninput="updateTeslaVinPreview(this.value)"
+                      class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono uppercase tracking-wider text-xs"
+                      placeholder="T.ex. LRW3E7FA... (17 tecken VIN)"
+                    />
+                  </div>
+                  <div id="teslaVinHashPreview" class="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 text-[11px] font-mono text-slate-600 dark:text-slate-300 truncate">
+                    Ange ditt 17-ställiga VIN för att beräkna bilens BLE-ID
+                  </div>
+                </div>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                  Teslas BLE-fyr sänder <code class="font-mono text-slate-700 dark:text-slate-300">S + SHA1(VIN)[0:16] + Nod (C/D/P/R)</code>. När din bil matchar får den automatiskt alias <span class="font-semibold text-emerald-600 dark:text-emerald-400">Min Tesla (VIN-verifierad)</span> och skyddas mot automatisk rensning.
+                </p>
+              </div>
+
+              <div class="p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/20 flex items-start gap-2.5 text-[11px] text-slate-600 dark:text-slate-300">
+                <i class="mdi mdi-map-marker-distance text-base text-indigo-500 shrink-0 mt-0.5"></i>
+                <div>
+                  <span class="font-semibold text-slate-800 dark:text-slate-100">Log-Distance Path Loss &amp; EMA-utjämning:</span>
+                  Uppskattat avstånd (<code class="font-mono">distance_m</code>) beräknas automatiskt för BLE-sensorer, iBeacons och fordon med glidande medelvärde (<code class="font-mono">EMA 0.4/0.6</code>) och dämpningsfaktor <code class="font-mono">n = 2.5</code>.
+                </div>
+              </div>
+
+              <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+                <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition">
+                  <i class="mdi mdi-content-save-outline text-sm"></i>
+                  <span>Spara &amp; Tillämpa</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- =============================================================== -->
+            <!-- SUB-TAB 3: MQTT & HOME ASSISTANT                                -->
+            <!-- =============================================================== -->
+            <div id="settings-subtab-mqtt" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
+              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <i class="mdi mdi-swap-horizontal text-emerald-500 text-base"></i>
+                    <span>MQTT Broker &amp; Home Assistant Auto-Discovery</span>
+                  </h3>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Realtidspublicering av rå JSON-telemetri samt automatisk enhetsregistrering i Home Assistant</p>
+                </div>
+                <label class="inline-flex items-center gap-1.5 cursor-pointer px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                  <input type="checkbox" id="set_mqtt_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500" />
+                  <span class="text-emerald-700 dark:text-emerald-300 font-semibold">MQTT Aktiverad</span>
+                </label>
+              </div>
+
+              <div class="space-y-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div class="sm:col-span-2">
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">MQTT Host / IP</label>
+                    <input type="text" id="set_mqtt_host" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="192.168.1.121" />
+                  </div>
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Port</label>
+                    <input type="number" id="set_mqtt_port" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1883" />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Användarnamn</label>
+                    <input type="text" id="set_mqtt_user" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100" />
+                  </div>
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Lösenord</label>
+                    <input type="password" id="set_mqtt_pass" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100" />
+                  </div>
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Topic Prefix</label>
+                    <input type="text" id="set_mqtt_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="sensor_scanner" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Home Assistant Auto-Discovery Section -->
+              <div class="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">
+                    <i class="mdi mdi-home-assistant mr-1"></i>Home Assistant MQTT Auto-Discovery (Valfritt)
+                  </span>
+                  <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" id="set_ha_discovery_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500" />
+                    <span class="text-slate-700 dark:text-slate-300 font-medium">Aktivera Home Assistant MQTT Auto-Discovery</span>
+                  </label>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Discovery Prefix</label>
+                    <input type="text" id="set_ha_discovery_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="homeassistant" />
+                  </div>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug pt-3">
+                    Avstängt som standard. När det är avstängt döljs alla HA Discovery-knappar i gränssnittet och ev. aktiva discovery-topics rensas.
+                  </p>
+                </div>
+              </div>
+
+              <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+                <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition">
+                  <i class="mdi mdi-content-save-outline text-sm"></i>
+                  <span>Spara &amp; Tillämpa</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- =============================================================== -->
+            <!-- SUB-TAB 4: DATABAS & AUTOMATISK STÄDNING                        -->
+            <!-- =============================================================== -->
+            <div id="settings-subtab-database" class="hidden space-y-4">
+              <!-- 1. Överst – 4 KPI-kort med Databasstatus -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <!-- KPI 1: Databasstorlek på disk -->
+                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex flex-col justify-between gap-2">
+                  <div class="flex items-start justify-between gap-2">
                     <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Enhetsindex / Serienummer (-d)</label>
-                      <input type="text" id="set_device_index" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0 eller 00000433" />
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Databasstorlek på disk</div>
+                      <div id="dbStatSizeMb" class="text-lg font-extrabold font-mono text-slate-900 dark:text-white mt-0.5">- MB</div>
                     </div>
+                    <span class="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-500 shrink-0">
+                      <i class="mdi mdi-database-outline text-lg"></i>
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                    <span class="text-[10px] text-slate-400">Inkl. SQLite WAL/SHM</span>
+                    <button
+                      type="button"
+                      onclick="runDbMaintenance('vacuum')"
+                      class="inline-flex items-center gap-1 px-2 py-1 rounded bg-sky-500/15 hover:bg-sky-500/25 text-sky-700 dark:text-sky-300 border border-sky-500/30 text-[11px] font-semibold transition"
+                    >
+                      <i class="mdi mdi-compress"></i>
+                      <span>Optimera / VACUUM</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- KPI 2: Lagrad Signalhistorik -->
+                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex flex-col justify-between gap-2">
+                  <div class="flex items-start justify-between gap-2">
                     <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Aktivt frekvensläge</label>
-                      <select id="set_mode" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100">
-                        <option value="433">433.92 MHz (Fast)</option>
-                        <option value="868">868.3 MHz (Fast)</option>
-                        <option value="hop">Dual Hop (433.92 + 868.3 MHz)</option>
-                        <option value="custom">Custom (Egna frekvenser)</option>
-                      </select>
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Lagrad Signalhistorik</div>
+                      <div id="dbStatTotalSignals" class="text-lg font-extrabold font-mono text-slate-900 dark:text-white mt-0.5">- rader</div>
                     </div>
+                    <span class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500 shrink-0">
+                      <i class="mdi mdi-chart-timeline-variant text-lg"></i>
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span>Totalt <strong id="dbStatTotalDevices" class="font-mono text-slate-700 dark:text-slate-200">-</strong> enheter i DB</span>
+                  </div>
+                </div>
+
+                <!-- KPI 3: Fredade / Konfigurerade Enheter -->
+                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex flex-col justify-between gap-2">
+                  <div class="flex items-start justify-between gap-2">
                     <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Hopp-intervall (-H sek)</label>
-                      <input type="number" id="set_hop_interval" min="5" max="3600" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fredade / Konfigurerade Enheter</div>
+                      <div id="dbStatProtectedDevices" class="text-lg font-extrabold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">- st</div>
                     </div>
+                    <span class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 shrink-0">
+                      <i class="mdi mdi-shield-check text-lg"></i>
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-1 pt-1 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+                    <i class="mdi mdi-shield-lock-outline"></i>
+                    <span>Har alias/HA – raderas aldrig</span>
+                  </div>
+                </div>
+
+                <!-- KPI 4: Tillfälliga / Inaktiva Enheter -->
+                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-sm flex flex-col justify-between gap-2">
+                  <div class="flex items-start justify-between gap-2">
+                    <div>
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tillfälliga / Inaktiva Enheter</div>
+                      <div id="dbStatTransientDevices" class="text-lg font-extrabold font-mono text-amber-600 dark:text-amber-400 mt-0.5">- st</div>
+                    </div>
+                    <span class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+                      <i class="mdi mdi-clock-fast text-lg"></i>
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between gap-1 pt-1 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-amber-700 dark:text-amber-300 font-medium">
+                    <span><i class="mdi mdi-autorenew mr-0.5"></i>Rensas automatiskt</span>
+                    <span id="dbStatPrunableReady" class="font-mono text-[10px] text-slate-400"></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. Mitten – Konfigurerbara regler för Automatisk Städning (Auto-Prune) -->
+              <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+                  <div>
+                    <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <i class="mdi mdi-auto-fix text-sky-500 text-base"></i>
+                      <span>Regler för Automatisk Städning (Smart Auto-Prune)</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Bakgrundsjobbet körs automatiskt vid uppstart och varje timme för att hålla databasen fri från förbipasserande bilar och döda sensorer</p>
+                  </div>
+                  <span id="dbLastPruneBadge" class="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-mono text-slate-600 dark:text-slate-300">
+                    Senaste städning: -
+                  </span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label for="set_prune_ephemeral_hours" class="block text-slate-600 dark:text-slate-300 font-medium mb-1">
+                      Rensa förbipasserande sensorer (&lt;= 10 träffar utan alias) efter:
+                    </label>
+                    <select id="set_prune_ephemeral_hours" class="w-full px-2.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-medium">
+                      <option value="6">6 timmar</option>
+                      <option value="12">12 timmar</option>
+                      <option value="24">24 timmar (Standard)</option>
+                      <option value="48">48 timmar</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label for="set_prune_stale_days" class="block text-slate-600 dark:text-slate-300 font-medium mb-1">
+                      Rensa döda/inaktiva okända sensorer (utan alias) efter:
+                    </label>
+                    <select id="set_prune_stale_days" class="w-full px-2.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-medium">
+                      <option value="3">3 dygn</option>
+                      <option value="7">7 dygn (Standard)</option>
+                      <option value="14">14 dygn</option>
+                      <option value="30">30 dygn</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label for="set_max_signals_per_device" class="block text-slate-600 dark:text-slate-300 font-medium mb-1">
+                      Max antal sparade historikrader per enhet:
+                    </label>
+                    <select id="set_max_signals_per_device" class="w-full px-2.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-medium">
+                      <option value="50">50 rader</option>
+                      <option value="100">100 rader (Standard)</option>
+                      <option value="500">500 rader</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Skyddsregel-informationsruta -->
+                <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-[11px] text-emerald-900 dark:text-emerald-200">
+                  <i class="mdi mdi-shield-check text-base text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5"></i>
+                  <div>
+                    <span class="font-bold">Strikt skyddsregel (Fredade enheter):</span>
+                    Enheter som har tilldelats ett <strong>Alias</strong>, en <strong>Grupp</strong>, <strong>Home Assistant Auto-Discovery</strong> eller markerats som <strong>Ignorerad (Svartlistad)</strong> är alltid 100% skyddade och raderas aldrig av automatisk städning.
+                  </div>
+                </div>
+
+                <div class="pt-2 flex items-center justify-between gap-2.5 border-t border-slate-200 dark:border-slate-800">
+                  <div id="dbCategoryBreakdownChips" class="flex flex-wrap items-center gap-1.5 text-[11px]"></div>
+                  <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition shrink-0">
+                    <i class="mdi mdi-content-save-outline text-sm"></i>
+                    <span>Spara städningsregler</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 3. Nederst – Snabbåtgärder (Manuella underhållsknappar) + Backup & Reset -->
+              <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <!-- Manuella Snabbåtgärder -->
+                <div class="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-3.5">
+                  <div class="border-b border-slate-200 dark:border-slate-800 pb-2.5 flex items-center justify-between gap-2">
+                    <div>
+                      <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <i class="mdi mdi-wrench-clock text-amber-500 text-base"></i>
+                        <span>Snabbåtgärder &amp; Direktrensning</span>
+                      </h3>
+                      <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Kör manuell rensning av tillfälliga TPMS-däcksensorer, anonyma BLE-beacons eller komprimera SQLite-filen</p>
+                    </div>
+                  </div>
+
+                  <div id="dbMaintenanceFeedbackBanner" class="hidden px-3 py-2 rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-800 dark:text-sky-200 text-xs font-medium flex items-center gap-2">
+                    <i class="mdi mdi-check-circle-outline text-base text-sky-500"></i>
+                    <span id="dbMaintenanceFeedbackText"></span>
                   </div>
 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom-frekvenser (kommaseparerade)</label>
-                      <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M,868.3M" />
-                    </div>
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom Sample Rate (-s)</label>
-                      <input type="text" id="set_custom_sample_rate" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1024k" />
-                    </div>
-                  </div>
-
-                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Gain (-g)</label>
-                      <input type="text" id="set_gain" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="auto eller 40.2" />
-                    </div>
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">PPM-korrigering (-p)</label>
-                      <input type="number" id="set_ppm" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0" />
-                    </div>
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Debounce (sek)</label>
-                      <input type="number" step="0.1" min="0" max="60" id="set_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
-                    </div>
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Retention (dagar)</label>
-                      <input type="number" min="1" max="3650" id="set_retention_days" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Bluetooth Low Energy (BLE 2.4 GHz) Section -->
-                <div class="space-y-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
-                  <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                      <i class="mdi mdi-bluetooth-audio mr-1"></i>Bluetooth Low Energy (BLE 2.4 GHz)
-                    </span>
-                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                      <input type="checkbox" id="set_ble_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-indigo-500" />
-                      <span class="text-slate-700 dark:text-slate-300 font-medium">Aktivera BLE-skanning (2.4 GHz)</span>
-                    </label>
-                  </div>
-
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <div class="sm:col-span-2">
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">BLE Filterläge</label>
-                      <select id="set_ble_mode" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100">
-                        <option value="smart">Smart läge – Endast namngivna enheter, fordon &amp; sensorer (Filtrera bort anonyma MAC)</option>
-                        <option value="all">Alla BLE-enheter – Inklusive anonyma MAC-adresser</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">BLE Debounce (sek)</label>
-                      <input type="number" step="1" min="2" max="600" id="set_ble_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="15" />
-                    </div>
-                  </div>
-
-                  <!-- Tesla VIN Matcher -->
-                  <div class="p-3 rounded-lg bg-slate-50/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-slate-800 space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                      <label for="set_tesla_vin" class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                        <i class="mdi mdi-car-connected text-sm"></i>Tesla VIN-Matchare (Automatisk identifiering av egen Tesla)
-                      </label>
-                      <span class="text-[10px] font-mono text-slate-400">SHA-1 BLE Nyckel-ID</span>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
-                      <div>
-                        <input
-                          type="text"
-                          id="set_tesla_vin"
-                          maxlength="17"
-                          oninput="updateTeslaVinPreview(this.value)"
-                          class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono uppercase tracking-wider text-xs"
-                          placeholder="T.ex. LRW3E7FA... (17 tecken VIN)"
-                        />
+                    <button
+                      type="button"
+                      onclick="runDbMaintenance('prune_now')"
+                      class="flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 hover:bg-sky-500/10 dark:bg-slate-950 dark:hover:bg-sky-500/15 border border-slate-200 dark:border-slate-800 hover:border-sky-500/40 text-left transition group"
+                    >
+                      <div class="space-y-0.5">
+                        <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                          <i class="mdi mdi-broom text-sky-500 text-sm"></i>
+                          <span>Kör automatisk städning nu</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Rensar utgångna tillfälliga och inaktiva enheter enligt reglerna ovan</p>
                       </div>
-                      <div id="teslaVinHashPreview" class="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 text-[11px] font-mono text-slate-600 dark:text-slate-300 truncate">
-                        Ange ditt 17-ställiga VIN för att beräkna bilens BLE-ID
+                      <i class="mdi mdi-chevron-right text-slate-400 group-hover:text-sky-500 text-base"></i>
+                    </button>
+
+                    <button
+                      type="button"
+                      onclick="runDbMaintenance('clear_unaliased_tpms')"
+                      class="flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 hover:bg-purple-500/10 dark:bg-slate-950 dark:hover:bg-purple-500/15 border border-slate-200 dark:border-slate-800 hover:border-purple-500/40 text-left transition group"
+                    >
+                      <div class="space-y-0.5">
+                        <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                          <i class="mdi mdi-car-tire-alert text-purple-500 text-sm"></i>
+                          <span>Rensa okända TPMS-sensorer</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Tar bort okända däcktryckssensorer (äldre än 6h eller &lt;= 10 träffar)</p>
                       </div>
-                    </div>
-                    <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-                      Teslas BLE-fyr sänder <code class="font-mono text-slate-700 dark:text-slate-300">S + SHA1(VIN)[0:16] + Nod (C/D/P/R)</code>. När din bil matchar får den automatiskt alias <span class="font-semibold text-emerald-600 dark:text-emerald-400">Min Tesla (VIN-verifierad)</span>.
-                    </p>
+                      <i class="mdi mdi-chevron-right text-slate-400 group-hover:text-purple-500 text-base"></i>
+                    </button>
+
+                    <button
+                      type="button"
+                      onclick="runDbMaintenance('clear_unaliased_ble')"
+                      class="flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 hover:bg-indigo-500/10 dark:bg-slate-950 dark:hover:bg-indigo-500/15 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/40 text-left transition group"
+                    >
+                      <div class="space-y-0.5">
+                        <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                          <i class="mdi mdi-bluetooth-off text-indigo-500 text-sm"></i>
+                          <span>Rensa okända BLE-beacons</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Tar bort alla passiva BLE-enheter som saknar alias, grupp och HA</p>
+                      </div>
+                      <i class="mdi mdi-chevron-right text-slate-400 group-hover:text-indigo-500 text-base"></i>
+                    </button>
+
+                    <button
+                      type="button"
+                      onclick="runDbMaintenance('vacuum')"
+                      class="flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 hover:bg-amber-500/10 dark:bg-slate-950 dark:hover:bg-amber-500/15 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 text-left transition group"
+                    >
+                      <div class="space-y-0.5">
+                        <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                          <i class="mdi mdi-database-sync text-amber-500 text-sm"></i>
+                          <span>Komprimera databas (VACUUM)</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Kör <code class="font-mono">wal_checkpoint(TRUNCATE)</code> och <code class="font-mono">VACUUM</code> för att krympa filen</p>
+                      </div>
+                      <i class="mdi mdi-chevron-right text-slate-400 group-hover:text-amber-500 text-base"></i>
+                    </button>
                   </div>
                 </div>
 
-                <!-- MQTT Section -->
-                <div class="space-y-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
-                  <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                      <i class="mdi mdi-transit-connection-variant mr-1"></i>MQTT Broker (Rå JSON)
-                    </span>
-                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                      <input type="checkbox" id="set_mqtt_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500" />
-                      <span class="text-slate-700 dark:text-slate-300 font-medium">MQTT Aktiverad</span>
-                    </label>
+                <!-- Backup, Import & Factory Reset -->
+                <div class="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-3">
+                  <div class="border-b border-slate-200 dark:border-slate-800 pb-2.5">
+                    <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <i class="mdi mdi-database-export-outline text-sky-500 text-base"></i>
+                      <span>Backup, Import &amp; Nollställning</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Exportera/importera konfigurerade enheter (JSON) eller nollställ databasen</p>
                   </div>
 
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <div class="sm:col-span-2">
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">MQTT Host / IP</label>
-                      <input type="text" id="set_mqtt_host" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="192.168.1.121" />
-                    </div>
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Port</label>
-                      <input type="number" id="set_mqtt_port" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1883" />
-                    </div>
-                  </div>
-
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Användarnamn</label>
-                      <input type="text" id="set_mqtt_user" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100" />
-                    </div>
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Lösenord</label>
-                      <input type="password" id="set_mqtt_pass" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100" />
-                    </div>
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Topic Prefix</label>
-                      <input type="text" id="set_mqtt_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="sensor_scanner" />
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Home Assistant Auto-Discovery Section (Optional, OFF by default) -->
-                <div class="space-y-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="text-[11px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">
-                      <i class="mdi mdi-home-assistant mr-1"></i>Home Assistant MQTT Auto-Discovery (Valfritt)
-                    </span>
-                    <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                      <input type="checkbox" id="set_ha_discovery_enabled" class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500" />
-                      <span class="text-slate-700 dark:text-slate-300 font-medium">Aktivera Home Assistant MQTT Auto-Discovery</span>
-                    </label>
-                  </div>
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
-                    <div>
-                      <label class="block text-slate-500 dark:text-slate-400 mb-1">Discovery Prefix</label>
-                      <input type="text" id="set_ha_discovery_prefix" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="homeassistant" />
-                    </div>
-                    <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug pt-3">
-                      Avstängt som standard. När det är avstängt döljs alla HA Discovery-knappar i gränssnittet och ev. aktiva discovery-topics rensas.
-                    </p>
-                  </div>
-                </div>
-
-                <div class="pt-2 flex items-center justify-end gap-2.5">
-                  <span id="settingsSaveFeedback" class="text-xs text-emerald-600 dark:text-emerald-400 hidden">Inställningar sparade!</span>
-                  <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition">
-                    <i class="mdi mdi-content-save-outline text-sm"></i>
-                    <span>Spara &amp; Tillämpa</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            <!-- Right Column: Database & Maintenance (Backup/Export/Import & Optimize DB) -->
-            <div class="lg:col-span-4 space-y-4">
-              <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 shadow-sm space-y-3.5 text-xs">
-                <div class="border-b border-slate-200 dark:border-slate-800 pb-2.5">
-                  <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <i class="mdi mdi-database-cog-outline text-sky-500 text-base"></i>
-                    <span>Databas &amp; Underhåll</span>
-                  </h3>
-                  <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Backup, export och import av enhetsregister (Alias, Grupper, Kategorier &amp; Ignorerade) samt SQLite-optimering</p>
-                </div>
-
-                <div class="space-y-2.5">
-                  <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
-                    <div class="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <i class="mdi mdi-download-outline text-sky-500 text-sm"></i>
-                      <span>Exportera Enhetsregister (JSON)</span>
-                    </div>
-                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Ladda ner en komplett JSON-backup med alla dina konfigurerade enheter, alias, grupper och systeminställningar.</p>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onclick="exportDatabaseBackup()"
-                      class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold transition"
+                      class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold transition"
                     >
                       <i class="mdi mdi-file-export-outline"></i>
                       <span>Exportera Backup (.json)</span>
                     </button>
-                  </div>
 
-                  <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
-                    <div class="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <i class="mdi mdi-upload-outline text-emerald-500 text-sm"></i>
-                      <span>Importera Enhetsregister (JSON)</span>
-                    </div>
-                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Återställ eller slå ihop enheter, alias och gruppnamn från en tidigare sparad JSON-backupfil.</p>
                     <input type="file" id="backupImportFileInput" accept=".json,application/json" onchange="importDatabaseBackup(event)" class="hidden" />
                     <button
                       type="button"
                       onclick="document.getElementById('backupImportFileInput').click()"
-                      class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-semibold transition"
+                      class="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-semibold transition"
                     >
                       <i class="mdi mdi-file-import-outline"></i>
-                      <span>Välj JSON-fil att importera...</span>
-                    </button>
-                  </div>
-
-                  <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
-                    <div class="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <i class="mdi mdi-database-check-outline text-amber-500 text-sm"></i>
-                      <span>Optimera SQLite-databas (WAL)</span>
-                    </div>
-                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Kör retention-rensning av gamla signaler, tömmer WAL-journalen och kör <code class="font-mono">PRAGMA optimize</code>.</p>
-                    <button
-                      type="button"
-                      onclick="optimizeDatabaseNow()"
-                      class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-semibold transition"
-                    >
-                      <i class="mdi mdi-broom"></i>
-                      <span>Rensa &amp; Optimera DB nu</span>
+                      <span>Importera JSON-backup...</span>
                     </button>
                   </div>
 
@@ -1228,7 +1505,7 @@
                       <i class="mdi mdi-delete-sweep-outline text-rose-500 text-sm"></i>
                       <span>Nollställ Insamlad Data (Factory Reset)</span>
                     </div>
-                    <p class="text-[11px] text-rose-700/80 dark:text-rose-300/80">Radera alla mottagna signaler och enheter för att börja om helt från noll, eller rensa endast historik och okända enheter.</p>
+                    <p class="text-[11px] text-rose-700/80 dark:text-rose-300/80">Radera alla mottagna signaler och enheter för att börja om från noll, eller behåll dina namngivna enheter.</p>
                     <button
                       type="button"
                       onclick="openResetDbModal()"
@@ -1242,7 +1519,12 @@
               </div>
             </div>
 
-          </div>
+            <div class="flex items-center justify-end">
+              <span id="settingsSaveFeedback" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hidden">
+                <i class="mdi mdi-check-circle-outline mr-1"></i>Inställningar sparade och tillämpade!
+              </span>
+            </div>
+          </form>
         </section>
 
         <!-- =================================================================== -->
@@ -3472,6 +3754,17 @@
             renderCategoryFilterDropdowns();
             renderSignalsView();
             if (activeTab === 'devices') renderDevicesList();
+            if (activeTab === 'settings') loadDbStats();
+          } else if (msg.type === 'devices_pruned' && Array.isArray(msg.device_keys)) {
+            const prunedSet = new Set(msg.device_keys);
+            rawSignalsList = rawSignalsList.filter((s) => !prunedSet.has(s.device_key));
+            devicesList = devicesList.filter((d) => !prunedSet.has(d.device_key));
+            msg.device_keys.forEach((k) => selectedDeviceKeys.delete(k));
+            syncMultiSelectBar();
+            renderCategoryFilterDropdowns();
+            renderSignalsView();
+            if (activeTab === 'devices') renderDevicesList();
+            if (activeTab === 'settings') loadDbStats();
           } else if (msg.type === 'db_reset') {
             handleDatabaseResetEvent(msg);
           }
@@ -3986,6 +4279,7 @@
     async function switchFrequencyMode(mode) {
       if (mode === 'custom' && activeTab !== 'settings') {
         switchTab('settings');
+        switchSettingsSubTab('sdr');
         document.getElementById('set_mode').value = 'custom';
         document.getElementById('set_custom_freqs').focus();
       }
@@ -4093,8 +4387,41 @@
       if (tab === 'signals') loadSignals();
       if (tab === 'devices') loadDevices();
       if (tab === 'stats') loadStats();
-      if (tab === 'settings') loadSettingsForm();
+      if (tab === 'settings') {
+        switchSettingsSubTab(activeSettingsSubTab, true);
+        loadSettingsForm();
+        loadDbStats();
+      }
       if (tab === 'logs') loadStatus();
+    }
+
+    let activeSettingsSubTab = localStorage.getItem('ss_settings_subtab') || 'sdr';
+
+    function switchSettingsSubTab(subTab, skipReloadStats = false) {
+      const valid = ['sdr', 'ble', 'mqtt', 'database'];
+      if (!valid.includes(subTab)) subTab = 'sdr';
+      activeSettingsSubTab = subTab;
+      localStorage.setItem('ss_settings_subtab', subTab);
+
+      valid.forEach((st) => {
+        const panel = document.getElementById(`settings-subtab-${st}`);
+        const btn = document.getElementById(`settingsSubTabBtn_${st}`);
+        if (panel) {
+          if (st === subTab) panel.classList.remove('hidden');
+          else panel.classList.add('hidden');
+        }
+        if (btn) {
+          if (st === subTab) {
+            btn.className = 'flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition bg-sky-600 text-white shadow-xs';
+          } else {
+            btn.className = 'flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800';
+          }
+        }
+      });
+
+      if (subTab === 'database' && !skipReloadStats) {
+        loadDbStats();
+      }
     }
 
     // -----------------------------------------------------------------------
@@ -6650,8 +6977,109 @@
         document.getElementById('set_ha_discovery_prefix').value = s.ha_discovery_prefix ?? 'homeassistant';
         haDiscoveryEnabled = haEnabled;
         syncHaDiscoveryUiVisibility();
+
+        const ephEl = document.getElementById('set_prune_ephemeral_hours');
+        if (ephEl) ephEl.value = String(s.prune_ephemeral_hours ?? '24');
+        const staleEl = document.getElementById('set_prune_stale_days');
+        if (staleEl) staleEl.value = String(s.prune_stale_days ?? '7');
+        const maxSigEl = document.getElementById('set_max_signals_per_device');
+        if (maxSigEl) maxSigEl.value = String(s.max_signals_per_device ?? '100');
       } catch (e) {
         console.error(e);
+      }
+    }
+
+    async function loadDbStats() {
+      try {
+        const res = await fetch('/api/db/stats');
+        if (!res.ok) return;
+        const st = await res.json();
+
+        const sizeEl = document.getElementById('dbStatSizeMb');
+        if (sizeEl) sizeEl.textContent = `${Number(st.db_size_mb ?? 0).toFixed(2)} MB`;
+
+        const sigEl = document.getElementById('dbStatTotalSignals');
+        if (sigEl) sigEl.textContent = `${formatNumberSpaces(st.total_signals ?? 0)} rader`;
+
+        const totDevEl = document.getElementById('dbStatTotalDevices');
+        if (totDevEl) totDevEl.textContent = `${st.total_devices ?? 0}`;
+
+        const protEl = document.getElementById('dbStatProtectedDevices');
+        if (protEl) protEl.textContent = `${st.protected_devices ?? 0} st`;
+
+        const transCount = st.transient_devices !== undefined
+          ? Number(st.transient_devices)
+          : Math.max(0, Number(st.total_devices ?? 0) - Number(st.protected_devices ?? 0));
+        const transEl = document.getElementById('dbStatTransientDevices');
+        if (transEl) transEl.textContent = `${transCount} st`;
+
+        const readyCount = Number(st.ephemeral_devices ?? 0) + Number(st.stale_devices ?? 0);
+        const readyEl = document.getElementById('dbStatPrunableReady');
+        if (readyEl) {
+          readyEl.textContent = readyCount > 0 ? `(${readyCount} redo att rensas)` : '(0 utgångna just nu)';
+        }
+
+        const lastBadge = document.getElementById('dbLastPruneBadge');
+        if (lastBadge) {
+          if (st.last_prune_time) {
+            const cnt = Number(st.last_pruned_count ?? 0);
+            lastBadge.textContent = `Senaste städning: ${formatRelativeTime(st.last_prune_time)} (${cnt} rensade)`;
+            lastBadge.title = formatTimestamp(st.last_prune_time);
+          } else {
+            lastBadge.textContent = 'Senaste städning: Körs automatiskt';
+          }
+        }
+
+        const chipsWrap = document.getElementById('dbCategoryBreakdownChips');
+        if (chipsWrap && st.categories_breakdown) {
+          const entries = Object.entries(st.categories_breakdown).filter(([, c]) => Number(c) > 0);
+          chipsWrap.innerHTML = entries.map(([cat, cnt]) => {
+            const meta = getCategoryMeta(cat);
+            return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-medium ${meta.badgeClass}"><i class="mdi ${meta.icon}"></i><span>${escapeHtml(meta.label)}: <strong>${cnt}</strong></span></span>`;
+          }).join('');
+        }
+      } catch (e) {
+        console.error('Failed to load DB stats:', e);
+      }
+    }
+
+    async function runDbMaintenance(action) {
+      const fbBanner = document.getElementById('dbMaintenanceFeedbackBanner');
+      const fbText = document.getElementById('dbMaintenanceFeedbackText');
+      try {
+        const res = await fetch('/api/db/maintenance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showToast(data.detail || data.error || 'Underhållsåtgärden misslyckades', true);
+          return;
+        }
+
+        let summaryMsg = 'Underhållsåtgärd slutförd!';
+        if (action === 'prune_now') {
+          summaryMsg = `Automatisk städning klar: Rensade ${data.devices_deleted ?? 0} tillfälliga/inaktiva enheter och ${data.signals_deleted ?? 0} historikrader (${Number(data.db_size_mb ?? 0).toFixed(2)} MB).`;
+        } else if (action === 'clear_unaliased_tpms') {
+          summaryMsg = `TPMS-städning klar: Rensade ${data.devices_deleted ?? 0} okända TPMS-däcksensorer och ${data.signals_deleted ?? 0} signalrader.`;
+        } else if (action === 'clear_unaliased_ble') {
+          summaryMsg = `BLE-städning klar: Rensade ${data.devices_deleted ?? 0} okända passiva BLE-beacons och ${data.signals_deleted ?? 0} signalrader.`;
+        } else if (action === 'vacuum') {
+          summaryMsg = `SQLite VACUUM slutförd: Databasen komprimerades från ${Number(data.size_before_mb ?? 0).toFixed(2)} MB till ${Number(data.db_size_mb ?? 0).toFixed(2)} MB.`;
+        }
+
+        if (fbBanner && fbText) {
+          fbText.textContent = summaryMsg;
+          fbBanner.classList.remove('hidden');
+        }
+        showToast(summaryMsg);
+        await loadDbStats();
+        await loadDevices();
+        await loadSignals();
+        await loadStatus();
+      } catch (e) {
+        showToast('Kommunikationsfel vid databasunderhåll', true);
       }
     }
 
@@ -6668,6 +7096,9 @@
         ppm: String(document.getElementById('set_ppm').value || '0'),
         debounce_seconds: String(document.getElementById('set_debounce_seconds').value || '2.0'),
         retention_days: String(document.getElementById('set_retention_days').value || '30'),
+        prune_ephemeral_hours: String(document.getElementById('set_prune_ephemeral_hours')?.value || '24'),
+        prune_stale_days: String(document.getElementById('set_prune_stale_days')?.value || '7'),
+        max_signals_per_device: String(document.getElementById('set_max_signals_per_device')?.value || '100'),
         ble_enabled: document.getElementById('set_ble_enabled')?.checked ? '1' : '0',
         ble_mode: document.getElementById('set_ble_mode')?.value || 'smart',
         ble_debounce_seconds: String(document.getElementById('set_ble_debounce_seconds')?.value || '15'),
@@ -6695,6 +7126,7 @@
           syncHaDiscoveryUiVisibility();
           loadSignals();
           loadDevices();
+          loadDbStats();
           showToast('Systeminställningar sparade och tillämpade');
           const fb = document.getElementById('settingsSaveFeedback');
           fb.classList.remove('hidden');

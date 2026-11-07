@@ -75,6 +75,9 @@ def get_default_settings() -> Dict[str, str]:
         "mqtt_prefix": os.environ.get("MQTT_PREFIX", "sensor_scanner"),
         "ha_discovery_enabled": _parse_bool_env(os.environ.get("HA_DISCOVERY_ENABLED", "false"), "0"),
         "ha_discovery_prefix": os.environ.get("HA_DISCOVERY_PREFIX", "homeassistant") or "homeassistant",
+        "prune_ephemeral_hours": os.environ.get("PRUNE_EPHEMERAL_HOURS", "24") or "24",
+        "prune_stale_days": os.environ.get("PRUNE_STALE_DAYS", "7") or "7",
+        "max_signals_per_device": os.environ.get("MAX_SIGNALS_PER_DEVICE", "100") or "100",
     }
 
 
@@ -339,6 +342,9 @@ class Database:
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
         self._lock = threading.RLock()
+        self._last_prune_time: Optional[str] = None
+        self._last_pruned_count: int = 0
+        self._last_pruned_signals: int = 0
         self._init_db()
         self.expire_new_devices()
 
@@ -1604,6 +1610,359 @@ class Database:
                 return deleted
             finally:
                 conn.close()
+
+    def _get_disk_size_bytes(self) -> int:
+        total = 0
+        for suffix in ("", "-wal", "-shm"):
+            p = f"{self.db_path}{suffix}"
+            try:
+                if os.path.exists(p):
+                    total += os.path.getsize(p)
+            except Exception:
+                pass
+        return total
+
+    def get_db_stats(self) -> Dict[str, Any]:
+        settings = self.get_settings()
+        try:
+            ephemeral_hours = max(1, int(settings.get("prune_ephemeral_hours", "24") or 24))
+        except (ValueError, TypeError):
+            ephemeral_hours = 24
+        try:
+            stale_days = max(1, int(settings.get("prune_stale_days", "7") or 7))
+        except (ValueError, TypeError):
+            stale_days = 7
+        try:
+            max_signals = max(10, int(settings.get("max_signals_per_device", "100") or 100))
+        except (ValueError, TypeError):
+            max_signals = 100
+
+        now_dt = datetime.now(timezone.utc).astimezone()
+        cutoff_ephemeral_iso = (now_dt - timedelta(hours=ephemeral_hours)).isoformat(timespec="seconds")
+        cutoff_stale_iso = (now_dt - timedelta(days=stale_days)).isoformat(timespec="seconds")
+
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                total_devices = int(conn.execute("SELECT COUNT(*) AS c FROM devices;").fetchone()["c"] or 0)
+                protected_devices = int(
+                    conn.execute(
+                        """
+                        SELECT COUNT(*) AS c FROM devices
+                        WHERE (alias IS NOT NULL AND TRIM(alias) != '')
+                           OR (group_name IS NOT NULL AND TRIM(group_name) != '')
+                           OR COALESCE(ha_discovery, 0) = 1
+                           OR COALESCE(ignored, 0) = 1;
+                        """
+                    ).fetchone()["c"]
+                    or 0
+                )
+                unprotected_devices = max(0, total_devices - protected_devices)
+                ephemeral_devices = int(
+                    conn.execute(
+                        """
+                        SELECT COUNT(*) AS c FROM devices
+                        WHERE (alias IS NULL OR TRIM(alias) = '')
+                          AND (group_name IS NULL OR TRIM(group_name) = '')
+                          AND COALESCE(ha_discovery, 0) = 0
+                          AND COALESCE(ignored, 0) = 0
+                          AND COALESCE(hit_count, 1) <= 10
+                          AND last_seen < ?;
+                        """,
+                        (cutoff_ephemeral_iso,),
+                    ).fetchone()["c"]
+                    or 0
+                )
+                stale_devices = int(
+                    conn.execute(
+                        """
+                        SELECT COUNT(*) AS c FROM devices
+                        WHERE (alias IS NULL OR TRIM(alias) = '')
+                          AND (group_name IS NULL OR TRIM(group_name) = '')
+                          AND COALESCE(ha_discovery, 0) = 0
+                          AND COALESCE(ignored, 0) = 0
+                          AND last_seen < ?;
+                        """,
+                        (cutoff_stale_iso,),
+                    ).fetchone()["c"]
+                    or 0
+                )
+                total_signals = int(conn.execute("SELECT COUNT(*) AS c FROM signals;").fetchone()["c"] or 0)
+
+                cat_rows = conn.execute(
+                    "SELECT category, COUNT(*) AS cnt FROM devices GROUP BY category;"
+                ).fetchall()
+                categories_breakdown: Dict[str, int] = {cat: 0 for cat in STANDARD_CATEGORIES}
+                for r in cat_rows:
+                    norm_c = normalize_category(r["category"])
+                    categories_breakdown[norm_c] = categories_breakdown.get(norm_c, 0) + int(r["cnt"] or 0)
+            finally:
+                conn.close()
+
+        db_size_bytes = self._get_disk_size_bytes()
+        db_size_mb = round(db_size_bytes / (1024 * 1024), 2)
+
+        return {
+            "db_size_bytes": db_size_bytes,
+            "db_size_mb": db_size_mb,
+            "total_devices": total_devices,
+            "protected_devices": protected_devices,
+            "unprotected_devices": unprotected_devices,
+            "transient_devices": unprotected_devices,
+            "ephemeral_devices": ephemeral_devices,
+            "stale_devices": stale_devices,
+            "total_signals": total_signals,
+            "categories_breakdown": categories_breakdown,
+            "prune_ephemeral_hours": ephemeral_hours,
+            "prune_stale_days": stale_days,
+            "max_signals_per_device": max_signals,
+            "last_prune_time": self._last_prune_time,
+            "last_pruned_count": self._last_pruned_count,
+            "last_pruned_signals": self._last_pruned_signals,
+        }
+
+    def auto_prune_database(self) -> Dict[str, Any]:
+        """
+        Automatically cleans up temporary/ephemeral unaliased devices (<= 10 hits older than
+        prune_ephemeral_hours) and stale unaliased devices (older than prune_stale_days),
+        removes orphan signal rows, and trims signal history per device to max_signals_per_device.
+        Protected devices (alias, group_name, ha_discovery=1, or ignored=1) are NEVER deleted.
+        """
+        settings = self.get_settings()
+        try:
+            ephemeral_hours = max(1, int(settings.get("prune_ephemeral_hours", "24") or 24))
+        except (ValueError, TypeError):
+            ephemeral_hours = 24
+        try:
+            stale_days = max(1, int(settings.get("prune_stale_days", "7") or 7))
+        except (ValueError, TypeError):
+            stale_days = 7
+        try:
+            max_signals = max(10, int(settings.get("max_signals_per_device", "100") or 100))
+        except (ValueError, TypeError):
+            max_signals = 100
+
+        now_dt = datetime.now(timezone.utc).astimezone()
+        now_iso_str = now_dt.isoformat(timespec="seconds")
+        cutoff_ephemeral_iso = (now_dt - timedelta(hours=ephemeral_hours)).isoformat(timespec="seconds")
+        cutoff_stale_iso = (now_dt - timedelta(days=stale_days)).isoformat(timespec="seconds")
+
+        pruned_items: List[Tuple[str, str, str]] = []
+        pruned_signals = 0
+
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    rows = conn.execute(
+                        """
+                        SELECT device_key, model, device_id FROM devices
+                        WHERE (alias IS NULL OR TRIM(alias) = '')
+                          AND (group_name IS NULL OR TRIM(group_name) = '')
+                          AND COALESCE(ha_discovery, 0) = 0
+                          AND COALESCE(ignored, 0) = 0
+                          AND (
+                              (COALESCE(hit_count, 1) <= 10 AND last_seen < ?)
+                              OR (last_seen < ?)
+                          );
+                        """,
+                        (cutoff_ephemeral_iso, cutoff_stale_iso),
+                    ).fetchall()
+
+                    for r in rows:
+                        dk = str(r["device_key"])
+                        mod = str(r["model"])
+                        did = str(r["device_id"])
+                        pruned_items.append((dk, mod, did))
+                        cur_s = conn.execute(
+                            "DELETE FROM signals WHERE model = ? AND device_id = ?;",
+                            (mod, did),
+                        )
+                        if cur_s.rowcount and cur_s.rowcount > 0:
+                            pruned_signals += cur_s.rowcount
+                        conn.execute("DELETE FROM devices WHERE device_key = ?;", (dk,))
+
+                    # Delete orphan rows in signals whose device no longer exists in devices
+                    cur_orph = conn.execute(
+                        """
+                        DELETE FROM signals
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM devices d
+                            WHERE d.model = signals.model AND d.device_id = signals.device_id
+                        );
+                        """
+                    )
+                    if cur_orph.rowcount and cur_orph.rowcount > 0:
+                        pruned_signals += cur_orph.rowcount
+
+                    # Cap signal history per device to max_signals_per_device
+                    cur_trim = conn.execute(
+                        """
+                        DELETE FROM signals
+                        WHERE id NOT IN (
+                            SELECT id FROM (
+                                SELECT id, ROW_NUMBER() OVER (PARTITION BY model, device_id ORDER BY id DESC) AS rn
+                                FROM signals
+                            )
+                            WHERE rn <= ?
+                        );
+                        """,
+                        (max_signals,),
+                    )
+                    if cur_trim.rowcount and cur_trim.rowcount > 0:
+                        pruned_signals += cur_trim.rowcount
+            finally:
+                conn.close()
+
+        self._last_prune_time = now_iso_str
+        self._last_pruned_count = len(pruned_items)
+        self._last_pruned_signals = pruned_signals
+        stats = self.get_db_stats()
+
+        return {
+            "ok": True,
+            "action": "prune_now",
+            "deleted_devices": len(pruned_items),
+            "devices_deleted": len(pruned_items),
+            "deleted_signals": pruned_signals,
+            "signals_deleted": pruned_signals,
+            "db_size_bytes": stats["db_size_bytes"],
+            "db_size_mb": stats["db_size_mb"],
+            "pruned_keys": [x[0] for x in pruned_items],
+            "pruned_items": pruned_items,
+            "stats": stats,
+        }
+
+    def run_db_maintenance(self, action: str) -> Dict[str, Any]:
+        act = str(action or "").strip().lower()
+        if act == "prune_now":
+            return self.auto_prune_database()
+
+        size_before_bytes = self._get_disk_size_bytes()
+        size_before_mb = round(size_before_bytes / (1024 * 1024), 2)
+        now_dt = datetime.now(timezone.utc).astimezone()
+        cutoff_6h_iso = (now_dt - timedelta(hours=6)).isoformat(timespec="seconds")
+        pruned_items: List[Tuple[str, str, str]] = []
+        deleted_signals = 0
+
+        if act == "clear_unaliased_tpms":
+            with self._lock:
+                conn = self._get_conn()
+                try:
+                    with conn:
+                        rows = conn.execute(
+                            """
+                            SELECT device_key, model, device_id FROM devices
+                            WHERE (alias IS NULL OR TRIM(alias) = '')
+                              AND (group_name IS NULL OR TRIM(group_name) = '')
+                              AND COALESCE(ha_discovery, 0) = 0
+                              AND COALESCE(ignored, 0) = 0
+                              AND category = 'TPMS'
+                              AND (last_seen < ? OR COALESCE(hit_count, 1) <= 10);
+                            """,
+                            (cutoff_6h_iso,),
+                        ).fetchall()
+                        for r in rows:
+                            dk, mod, did = str(r["device_key"]), str(r["model"]), str(r["device_id"])
+                            pruned_items.append((dk, mod, did))
+                            cur_s = conn.execute(
+                                "DELETE FROM signals WHERE model = ? AND device_id = ?;",
+                                (mod, did),
+                            )
+                            if cur_s.rowcount and cur_s.rowcount > 0:
+                                deleted_signals += cur_s.rowcount
+                            conn.execute("DELETE FROM devices WHERE device_key = ?;", (dk,))
+                finally:
+                    conn.close()
+            stats = self.get_db_stats()
+            return {
+                "ok": True,
+                "action": act,
+                "deleted_devices": len(pruned_items),
+                "devices_deleted": len(pruned_items),
+                "deleted_signals": deleted_signals,
+                "signals_deleted": deleted_signals,
+                "db_size_bytes": stats["db_size_bytes"],
+                "db_size_mb": stats["db_size_mb"],
+                "pruned_keys": [x[0] for x in pruned_items],
+                "pruned_items": pruned_items,
+                "stats": stats,
+            }
+
+        if act == "clear_unaliased_ble":
+            with self._lock:
+                conn = self._get_conn()
+                try:
+                    with conn:
+                        rows = conn.execute(
+                            """
+                            SELECT device_key, model, device_id FROM devices
+                            WHERE (alias IS NULL OR TRIM(alias) = '')
+                              AND (group_name IS NULL OR TRIM(group_name) = '')
+                              AND COALESCE(ha_discovery, 0) = 0
+                              AND COALESCE(ignored, 0) = 0
+                              AND (
+                                  last_payload LIKE '%"is_beacon_only": true%'
+                                  OR last_payload LIKE '%"is_beacon_only":true%'
+                                  OR model IN ('iBeacon-BLE', 'BLE-Device', 'Apple-AirTag', 'Apple-AirPods', 'Apple-AirPlay', 'Apple-AirDrop')
+                                  OR model LIKE 'BLE-%'
+                              );
+                            """
+                        ).fetchall()
+                        for r in rows:
+                            dk, mod, did = str(r["device_key"]), str(r["model"]), str(r["device_id"])
+                            pruned_items.append((dk, mod, did))
+                            cur_s = conn.execute(
+                                "DELETE FROM signals WHERE model = ? AND device_id = ?;",
+                                (mod, did),
+                            )
+                            if cur_s.rowcount and cur_s.rowcount > 0:
+                                deleted_signals += cur_s.rowcount
+                            conn.execute("DELETE FROM devices WHERE device_key = ?;", (dk,))
+                finally:
+                    conn.close()
+            stats = self.get_db_stats()
+            return {
+                "ok": True,
+                "action": act,
+                "deleted_devices": len(pruned_items),
+                "devices_deleted": len(pruned_items),
+                "deleted_signals": deleted_signals,
+                "signals_deleted": deleted_signals,
+                "db_size_bytes": stats["db_size_bytes"],
+                "db_size_mb": stats["db_size_mb"],
+                "pruned_keys": [x[0] for x in pruned_items],
+                "pruned_items": pruned_items,
+                "stats": stats,
+            }
+
+        if act == "vacuum":
+            with self._lock:
+                conn = self._get_conn()
+                try:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                    conn.execute("VACUUM;")
+                    conn.execute("PRAGMA optimize;")
+                finally:
+                    conn.close()
+            stats = self.get_db_stats()
+            return {
+                "ok": True,
+                "action": act,
+                "deleted_devices": 0,
+                "devices_deleted": 0,
+                "deleted_signals": 0,
+                "signals_deleted": 0,
+                "pruned_keys": [],
+                "pruned_items": [],
+                "size_before_bytes": size_before_bytes,
+                "size_before_mb": size_before_mb,
+                "db_size_bytes": stats["db_size_bytes"],
+                "db_size_mb": stats["db_size_mb"],
+                "stats": stats,
+            }
+
+        return {"ok": False, "error": f"Okänd underhållsåtgärd: {action}"}
 
     def optimize_database(self) -> Dict[str, Any]:
         deleted = self.run_retention_cleanup()

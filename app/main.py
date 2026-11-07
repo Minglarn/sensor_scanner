@@ -468,6 +468,36 @@ async def retention_worker() -> None:
         await asyncio.sleep(86400)
 
 
+async def auto_prune_worker() -> None:
+    """
+    Runs automatic database pruning on startup and every hour (3600s) for:
+    - Passing/ephemeral unknown devices (hit_count <= 10, older than prune_ephemeral_hours)
+    - Stale/inactive unknown devices (older than prune_stale_days)
+    - Orphaned signal rows and excess history rows (> max_signals_per_device)
+    Protected devices (with alias, group_name, ha_discovery=1, or ignored=1) are NEVER touched.
+    """
+    await asyncio.sleep(5)
+    while True:
+        try:
+            res = await asyncio.to_thread(db.auto_prune_database)
+            pruned_items = res.get("pruned_items") or []
+            for _dk, mod, did in pruned_items:
+                ble_manager.evict_device(str(mod), str(did))
+                rtl_manager.evict_device(str(mod), str(did))
+            pruned_keys = res.get("pruned_keys") or []
+            if pruned_keys or int(res.get("signals_deleted") or 0) > 0:
+                if pruned_keys:
+                    print(
+                        f"[AUTO-PRUNE] Rensade {len(pruned_keys)} tillfälliga/inaktiva enheter och {res.get('signals_deleted', 0)} historikrader",
+                        flush=True,
+                    )
+                    await ws_manager.broadcast({"type": "devices_pruned", "device_keys": pruned_keys})
+                await broadcast_full_status()
+        except Exception as exc:
+            logger.error("Error in auto_prune_worker: %s", exc)
+        await asyncio.sleep(3600)
+
+
 async def new_device_expiry_worker() -> None:
     while True:
         try:
@@ -554,6 +584,7 @@ async def lifespan(app: FastAPI):
     await rtl_manager.start()
     await ble_manager.start()
     retention_task = asyncio.create_task(retention_worker(), name="retention_worker")
+    auto_prune_task = asyncio.create_task(auto_prune_worker(), name="auto_prune_worker")
     expiry_task = asyncio.create_task(new_device_expiry_worker(), name="new_device_expiry_worker")
     presence_task = asyncio.create_task(ble_presence_timeout_worker(), name="ble_presence_timeout_worker")
     update_task = asyncio.create_task(github_update_worker(), name="github_update_worker")
@@ -566,8 +597,9 @@ async def lifespan(app: FastAPI):
         update_task.cancel()
         presence_task.cancel()
         expiry_task.cancel()
+        auto_prune_task.cancel()
         retention_task.cancel()
-        for t in (oui_task, update_task, presence_task, expiry_task, retention_task):
+        for t in (oui_task, update_task, presence_task, expiry_task, auto_prune_task, retention_task):
             try:
                 await t
             except asyncio.CancelledError:
@@ -626,6 +658,10 @@ class DatabaseResetRequest(BaseModel):
     keep_aliases: bool = False
 
 
+class DbMaintenanceRequest(BaseModel):
+    action: str
+
+
 class SettingsUpdateRequest(BaseModel):
     device_index: Optional[str] = None
     mode: Optional[str] = None
@@ -640,6 +676,9 @@ class SettingsUpdateRequest(BaseModel):
     ble_debounce_seconds: Optional[str] = None
     tesla_vin: Optional[str] = None
     retention_days: Optional[str] = None
+    prune_ephemeral_hours: Optional[str] = None
+    prune_stale_days: Optional[str] = None
+    max_signals_per_device: Optional[str] = None
     mqtt_enabled: Optional[str] = None
     mqtt_host: Optional[str] = None
     mqtt_port: Optional[str] = None
@@ -1005,8 +1044,45 @@ async def api_update_settings(req: SettingsUpdateRequest):
         except (ValueError, TypeError):
             pass
 
+    prune_keys = ("prune_ephemeral_hours", "prune_stale_days", "max_signals_per_device")
+    if any(old_settings.get(k) != new_settings.get(k) for k in prune_keys):
+        try:
+            prune_res = await asyncio.to_thread(db.auto_prune_database)
+            for _dk, mod, did in prune_res.get("pruned_items") or []:
+                ble_manager.evict_device(str(mod), str(did))
+                rtl_manager.evict_device(str(mod), str(did))
+            pruned_keys = prune_res.get("pruned_keys") or []
+            if pruned_keys:
+                await ws_manager.broadcast({"type": "devices_pruned", "device_keys": pruned_keys})
+        except Exception as exc:
+            logger.debug("Error running immediate auto_prune_database on settings change: %s", exc)
+
     await broadcast_full_status()
     return {"ok": True, "settings": new_settings}
+
+
+@app.get("/api/db/stats")
+async def api_get_db_stats():
+    return await asyncio.to_thread(db.get_db_stats)
+
+
+@app.post("/api/db/maintenance")
+async def api_db_maintenance(req: DbMaintenanceRequest):
+    result = await asyncio.to_thread(db.run_db_maintenance, req.action)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Ogiltigt underhållskommando."))
+
+    pruned_items = result.pop("pruned_items", None) or []
+    for _dk, mod, did in pruned_items:
+        ble_manager.evict_device(str(mod), str(did))
+        rtl_manager.evict_device(str(mod), str(did))
+
+    pruned_keys = result.get("pruned_keys") or []
+    if pruned_keys:
+        await ws_manager.broadcast({"type": "devices_pruned", "device_keys": pruned_keys})
+
+    await broadcast_full_status()
+    return result
 
 
 @app.get("/api/stats")
