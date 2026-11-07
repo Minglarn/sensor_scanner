@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="sv" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SensorScanner | RTL-SDR V4 RF Monitor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace']
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    @keyframes pulseSubtle {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+    .animate-pulse-subtle {
+      animation: pulseSubtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    .signal-enter {
+      animation: highlightRow 1.2s ease-out;
+    }
+    @keyframes highlightRow {
+      0% { background-color: rgba(14, 165, 233, 0.22); }
+      100% { background-color: transparent; }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
+
+  <!-- TOPBAR / HEADER -->
+  <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800 shadow-lg">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5">
+        
+        <!-- Brand + Live Status Badges -->
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-lg bg-sky-500/15 border border-sky-500/40 flex items-center justify-center text-sky-400 shrink-0">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+              </svg>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">SensorScanner</h1>
+                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">v2026.11.07.1</span>
+              </div>
+              <p class="text-[11px] text-slate-400 hidden sm:block">RTL-SDR Blog V4 &amp; rtl_433 RF-signalanalysator</p>
+            </div>
+          </div>
+
+          <!-- Status Indicators (SDR & MQTT) + Pause Button (Mobile right) -->
+          <div class="flex items-center gap-2">
+            <div id="sdrStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 border border-slate-700 text-slate-300" title="Status för rtl_433-processen">
+              <span id="sdrStatusDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+              <span id="sdrStatusText">SDR: Initierar</span>
+            </div>
+
+            <div id="mqttStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 border border-slate-700 text-slate-400" title="Status för MQTT-anslutning">
+              <span id="mqttStatusDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+              <span id="mqttStatusText" class="hidden sm:inline">MQTT: Frånkopplad</span>
+              <span class="sm:hidden">MQTT</span>
+            </div>
+
+            <button id="pauseBtn" onclick="togglePause()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700">
+              <svg id="pauseIcon" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6" />
+              </svg>
+              <span id="pauseBtnText">Pausa</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Frequency Switcher (Thumb-friendly on mobile) -->
+        <div class="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800 overflow-x-auto">
+          <button onclick="switchFrequencyMode('433')" id="modeBtn_433" class="flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-300 hover:text-white hover:bg-slate-800">
+            433.92 MHz
+          </button>
+          <button onclick="switchFrequencyMode('868')" id="modeBtn_868" class="flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-300 hover:text-white hover:bg-slate-800">
+            868.3 MHz
+          </button>
+          <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" class="flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-300 hover:text-white hover:bg-slate-800">
+            Dual Hop 433/868
+          </button>
+          <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-300 hover:text-white hover:bg-slate-800">
+            Custom
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Error Banner (shown only if SDR reports an error) -->
+      <div id="sdrErrorBanner" class="hidden mt-2 px-3 py-2 rounded-lg bg-rose-950/80 border border-rose-700/70 text-rose-200 text-xs flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span id="sdrErrorText" class="truncate font-mono"></span>
+        </div>
+        <button onclick="switchTab('system')" class="shrink-0 underline hover:text-white font-semibold">Visa logg</button>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="flex items-center justify-between border-t border-slate-800/80 mt-2.5 pt-2 -mb-1">
+        <div class="flex space-x-1 sm:space-x-2 w-full sm:w-auto">
+          <button onclick="switchTab('signals')" id="tabBtn_signals" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition bg-sky-500/15 text-sky-400 border border-sky-500/30">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <span>Signaler</span>
+            <span id="navCountSignals" class="ml-1 px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[11px] font-mono">0</span>
+          </button>
+
+          <button onclick="switchTab('devices')" id="tabBtn_devices" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+            </svg>
+            <span>Enheter</span>
+            <span id="navCountDevices" class="ml-1 px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[11px] font-mono">0</span>
+          </button>
+
+          <button onclick="switchTab('system')" id="tabBtn_system" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span>System &amp; Logg</span>
+          </button>
+        </div>
+
+        <div class="hidden md:flex items-center gap-3 text-xs text-slate-400 font-mono">
+          <span id="headerCmdPreview" class="truncate max-w-md text-slate-500"></span>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4">
+
+    <!-- =================================================================== -->
+    <!-- TAB 1: LIVE & HISTORIK (SIGNALER)                                   -->
+    <!-- =================================================================== -->
+    <section id="tabPanel_signals" class="space-y-4">
+      <!-- Filter Bar -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 shadow">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center">
+          
+          <!-- Free-text Search -->
+          <div class="lg:col-span-5 relative">
+            <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              id="signalSearchInput"
+              oninput="debouncedLoadSignals()"
+              placeholder="Sök modell, ID, alias eller JSON-nyckel..."
+              class="w-full pl-9 pr-8 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            />
+            <button onclick="clearSignalFilters()" title="Rensa filter" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">
+              Rensa
+            </button>
+          </div>
+
+          <!-- Model Dropdown -->
+          <div class="lg:col-span-3">
+            <select
+              id="signalModelSelect"
+              onchange="loadSignals()"
+              class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-sky-500"
+            >
+              <option value="">Alla protokoll / modeller</option>
+            </select>
+          </div>
+
+          <!-- Frequency Band Dropdown -->
+          <div class="lg:col-span-2">
+            <select
+              id="signalFreqSelect"
+              onchange="loadSignals()"
+              class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-sky-500"
+            >
+              <option value="">Alla band</option>
+              <option value="433">433 MHz-bandet</option>
+              <option value="868">868 MHz-bandet</option>
+            </select>
+          </div>
+
+          <!-- Only Aliased Checkbox -->
+          <div class="lg:col-span-2 flex items-center justify-between sm:justify-end gap-2">
+            <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-300">
+              <input
+                type="checkbox"
+                id="signalOnlyAliased"
+                onchange="loadSignals()"
+                class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-sky-500 focus:ring-0"
+              />
+              <span>Endast namngivna (Alias)</span>
+            </label>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Paused Notice Banner -->
+      <div id="pausedBanner" class="hidden bg-amber-950/70 border border-amber-700/60 text-amber-200 px-3.5 py-2 rounded-lg text-xs flex items-center justify-between">
+        <span>Live-flödet är pausat i gränssnittet. Inkommande signaler sparas fortfarande i databasen.</span>
+        <button onclick="togglePause()" class="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-semibold">Återuppta nu</button>
+      </div>
+
+      <!-- Signals List (Cards on Mobile & Dense Card-Grid on Desktop) -->
+      <div id="signalsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <!-- Rendered by JS -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="signalsEmptyState" class="hidden bg-slate-900/60 border border-slate-800 rounded-xl p-10 text-center">
+        <div class="w-12 h-12 rounded-full bg-slate-800 mx-auto flex items-center justify-center text-slate-400 mb-3">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+          </svg>
+        </div>
+        <h3 class="text-sm font-semibold text-slate-200">Inga signaler matchar filtret ännu</h3>
+        <p class="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+          Väntar på RF-paket från rtl_433 på valt frekvensband, eller prova att rensa sökfiltret ovan.
+        </p>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 2: ENHETSREGISTER (ENHETER)                                     -->
+    <!-- =================================================================== -->
+    <section id="tabPanel_devices" class="hidden space-y-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 shadow flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="relative flex-1">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            id="deviceSearchInput"
+            oninput="debouncedLoadDevices()"
+            placeholder="Sök enhet på modell, ID, alias eller kategori..."
+            class="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+          />
+        </div>
+        <div class="flex items-center justify-between sm:justify-end gap-3">
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-300">
+            <input
+              type="checkbox"
+              id="deviceShowIgnored"
+              checked
+              onchange="loadDevices()"
+              class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-sky-500 focus:ring-0"
+            />
+            <span>Visa ignorerade/svartlistade</span>
+          </label>
+          <button onclick="loadDevices()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700">
+            Uppdatera
+          </button>
+        </div>
+      </div>
+
+      <div id="devicesContainer" class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <!-- Rendered by JS -->
+      </div>
+
+      <div id="devicesEmptyState" class="hidden bg-slate-900/60 border border-slate-800 rounded-xl p-10 text-center text-xs text-slate-400">
+        Inga enheter har registrerats ännu.
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 3: STATISTIK & INSTÄLLNINGAR (SYSTEM & LOGG)                    -->
+    <!-- =================================================================== -->
+    <section id="tabPanel_system" class="hidden space-y-6">
+      
+      <!-- Overview KPI Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="text-xs text-slate-400">Signaler idag / Totalt</div>
+          <div class="mt-1 flex items-baseline gap-2">
+            <span id="statSignalsToday" class="text-2xl font-bold text-white font-mono">0</span>
+            <span class="text-xs text-slate-500 font-mono">/ <span id="statSignalsTotal">0</span></span>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-400">Debouncade dubbletter: <span id="statDebounced" class="font-mono text-slate-300">0</span></div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="text-xs text-slate-400">Aktiva enheter</div>
+          <div class="mt-1 flex items-baseline gap-2">
+            <span id="statActiveDevices" class="text-2xl font-bold text-emerald-400 font-mono">0</span>
+            <span class="text-xs text-slate-500 font-mono">(<span id="statIgnoredDevices">0</span> ignorerade)</span>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-400">Unika sändare i registret</div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="text-xs text-slate-400">Bandfördelning (433 vs 868 MHz)</div>
+          <div class="mt-1 flex items-center justify-between text-xs font-mono">
+            <span class="text-sky-400">433: <strong id="statBand433">0</strong></span>
+            <span class="text-indigo-400">868: <strong id="statBand868">0</strong></span>
+          </div>
+          <div class="mt-2 w-full h-2.5 bg-slate-800 rounded-full overflow-hidden flex">
+            <div id="statBandBar433" class="bg-sky-500 h-full transition-all" style="width: 50%"></div>
+            <div id="statBandBar868" class="bg-indigo-500 h-full transition-all" style="width: 50%"></div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="text-xs text-slate-400">SDR Uptime &amp; MQTT</div>
+          <div class="mt-1 flex items-baseline justify-between">
+            <span id="statUptime" class="text-lg font-bold text-white font-mono">0s</span>
+            <span class="text-xs text-slate-400 font-mono">MQTT tx: <strong id="statMqttPublished" class="text-slate-200">0</strong></span>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-400">Omstarter (watchdog): <span id="statRestarts" class="font-mono text-slate-300">0</span></div>
+        </div>
+      </div>
+
+      <!-- Charts Row: 24h Hourly Activity + Top 10 Devices -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-white">Signaler per timme (senaste 24h)</h3>
+            <button onclick="loadStats()" class="text-xs text-sky-400 hover:underline">Uppdatera</button>
+          </div>
+          <div id="hourlyChartContainer" class="h-40 flex items-end gap-1 pt-4 border-b border-slate-800">
+            <!-- Bars rendered by JS -->
+          </div>
+          <div id="hourlyChartLabels" class="flex justify-between text-[10px] font-mono text-slate-500 mt-1.5">
+            <!-- Labels rendered by JS -->
+          </div>
+        </div>
+
+        <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <h3 class="text-sm font-semibold text-white mb-3">Topp 10 mest aktiva enheter</h3>
+          <div id="topDevicesList" class="space-y-2 max-h-44 overflow-y-auto pr-1">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings Form & Live Terminal Row -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        
+        <!-- System & SDR & MQTT Configuration Form -->
+        <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div>
+              <h3 class="text-sm font-semibold text-white">System-, SDR- &amp; MQTT-inställningar</h3>
+              <p class="text-xs text-slate-400">Sparas permanent i SQLite och tillämpas direkt</p>
+            </div>
+            <button onclick="restartSdrProcess()" class="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold transition">
+              Starta om SDR
+            </button>
+          </div>
+
+          <form id="settingsForm" onsubmit="saveSettings(event)" class="space-y-4 text-xs">
+            <!-- SDR Section -->
+            <div class="space-y-2.5">
+              <div class="text-[11px] font-bold uppercase tracking-wider text-sky-400">RTL-SDR Blog V4 &amp; Frekvensstyrning</div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label class="block text-slate-400 mb-1">Enhetsindex / Serienummer (-d)</label>
+                  <input type="text" id="set_device_index" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="0 eller 00000001" />
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1">Aktivt frekvensläge</label>
+                  <select id="set_mode" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100">
+                    <option value="433">433.92 MHz (Fast)</option>
+                    <option value="868">868.3 MHz (Fast)</option>
+                    <option value="hop">Dual Hop (433.92 + 868.3 MHz)</option>
+                    <option value="custom">Custom (Egna frekvenser)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1">Hopp-intervall (-H sek)</label>
+                  <input type="number" id="set_hop_interval" min="5" max="3600" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label class="block text-slate-400 mb-1">Custom-frekvenser (kommaseparerade)</label>
+                  <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="433.92M,868.3M" />
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1">Custom Sample Rate (-s)</label>
+                  <input type="text" id="set_custom_sample_rate" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="1024k" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div>
+                  <label class="block text-slate-400 mb-1">Gain (-g)</label>
+                  <input type="text" id="set_gain" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="auto eller 40.2" />
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1">PPM-korrigering (-p)</label>
+                  <input type="number" id="set_ppm" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="0" />
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1">Debounce (sek)</label>
+                  <input type="number" step="0.1" min="0" max="60" id="set_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" />
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1">Retention (dagar)</label>
+                  <input type="number" min="1" max="3650" id="set_retention_days" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" />
+                </div>
+              </div>
+            </div>
+
+            <!-- MQTT Section -->
+            <div class="space-y-2.5 pt-2 border-t border-slate-800">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">MQTT Broker &amp; Home Assistant</span>
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" id="set_mqtt_enabled" class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-emerald-500" />
+                  <span class="text-slate-300 font-medium">MQTT Aktiverad</span>
+                </label>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div class="sm:col-span-2">
+                  <label class="block text-slate-400 mb-1">MQTT Host / IP</label>
+                  <input type="text" id="set_mqtt_host" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="192.168.1.121" />
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1">Port</label>
+                  <input type="number" id="set_mqtt_port" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="1883" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label class="block text-slate-400 mb-1">Användarnamn (valfritt)</label>
+                  <input type="text" id="set_mqtt_user" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100" />
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1">Lösenord (valfritt)</label>
+                  <input type="password" id="set_mqtt_pass" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100" />
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1">Topic Prefix</label>
+                  <input type="text" id="set_mqtt_prefix" class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="sensor_scanner" />
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-2 flex items-center justify-end gap-3">
+              <span id="settingsSaveFeedback" class="text-xs text-emerald-400 hidden">Inställningar sparade!</span>
+              <button type="submit" class="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition">
+                Spara &amp; Tillämpa inställningar
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Live Diagnostic Terminal (rtl_433 command + stderr) -->
+        <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3">
+            <div>
+              <h3 class="text-sm font-semibold text-white">SDR Diagnostik &amp; rtl_433 Logg (stderr)</h3>
+              <p class="text-xs text-slate-400">Live-utskrift från RTL-SDR Blog V4 (R828D) och rtl_433</p>
+            </div>
+            <button onclick="clearTerminalLog()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs">
+              Töm vy
+            </button>
+          </div>
+
+          <div class="mb-2.5">
+            <div class="text-[11px] text-slate-400 mb-1">Aktiv kommandorad:</div>
+            <div id="terminalCommandBox" class="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-sky-400 break-all">
+              rtl_433 ...
+            </div>
+          </div>
+
+          <div id="terminalStderrBox" class="flex-1 min-h-[260px] max-h-[380px] overflow-y-auto p-3 rounded-lg bg-slate-950 border border-slate-800 font-mono text-[11px] leading-relaxed text-slate-300 space-y-1">
+            <!-- Stderr lines appended here -->
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- DETAIL MODAL (INSPECT SIGNAL, RAW JSON, SET ALIAS, LAST 20 READINGS)  -->
+  <!-- ===================================================================== -->
+  <div id="detailModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+      
+      <!-- Modal Header -->
+      <div class="px-4 py-3 bg-slate-800/70 border-b border-slate-700 flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <h2 id="modalTitle" class="text-base font-bold text-white truncate">Enhetsdetaljer</h2>
+            <span id="modalCategoryBadge" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">Sensor</span>
+          </div>
+          <p id="modalSubtitle" class="text-xs text-slate-400 font-mono truncate"></p>
+        </div>
+        <button onclick="closeDetailModal()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-4 overflow-y-auto space-y-4 text-xs">
+        
+        <!-- Quick Device Configuration Bar -->
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-3">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Snabbkonfigurera Enhet</div>
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+            <div class="sm:col-span-5">
+              <label class="block text-slate-400 mb-1">Alias (Eget namn)</label>
+              <input type="text" id="modalAliasInput" placeholder="t.ex. Växthus Termometer" class="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-100" />
+            </div>
+            <div class="sm:col-span-3">
+              <label class="block text-slate-400 mb-1">Kategori</label>
+              <select id="modalCategorySelect" class="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-100">
+                <option value="Weather">Weather</option>
+                <option value="TPMS">TPMS</option>
+                <option value="Switch">Switch</option>
+                <option value="Meter">Meter</option>
+                <option value="Security">Security</option>
+                <option value="Sensor">Sensor</option>
+              </select>
+            </div>
+            <div class="sm:col-span-4 flex items-center gap-2">
+              <button onclick="saveModalDevice()" class="flex-1 py-1.5 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold transition">
+                Spara Alias
+              </button>
+              <button onclick="triggerHaDiscoveryFromModal()" class="py-1.5 px-2.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 font-semibold transition" title="Skicka Home Assistant MQTT Auto-Discovery">
+                HA Discovery
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+            <div class="flex items-center gap-4">
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="modalMqttToggle" onchange="saveModalDevice()" class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-emerald-500" />
+                <span class="text-slate-300">Publicera till MQTT</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="modalIgnoredToggle" onchange="saveModalDevice()" class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-rose-500" />
+                <span class="text-slate-300">Ignorera / Svartlista enhet</span>
+              </label>
+            </div>
+            <span id="modalActionStatus" class="text-emerald-400 font-medium"></span>
+          </div>
+        </div>
+
+        <!-- Raw JSON Payload -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Rå JSON-payload (Senast valda paket)</span>
+            <button onclick="copyModalJson()" class="text-sky-400 hover:underline text-[11px]">Kopiera JSON</button>
+          </div>
+          <pre id="modalRawJson" class="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-emerald-300 overflow-x-auto"></pre>
+        </div>
+
+        <!-- Last 20 Measurements for this Device -->
+        <div>
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">De 20 senaste mätvärdena för denna enhet</div>
+          <div class="overflow-x-auto border border-slate-800 rounded-xl">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-950 text-slate-400 border-b border-slate-800 text-[11px]">
+                  <th class="py-2 px-3">Tidpunkt</th>
+                  <th class="py-2 px-3">Frekvens</th>
+                  <th class="py-2 px-3">RSSI / SNR</th>
+                  <th class="py-2 px-3">Mätvärden</th>
+                </tr>
+              </thead>
+              <tbody id="modalHistoryBody" class="divide-y divide-slate-800/70 font-mono text-[11px]">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toastBox" class="fixed bottom-4 right-4 z-50 hidden px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-slate-100 text-xs font-medium shadow-xl"></div>
+
+  <!-- ===================================================================== -->
+  <!-- APPLICATION JAVASCRIPT                                                -->
+  <!-- ===================================================================== -->
+  <script>
+    let activeTab = 'signals';
+    let isPaused = false;
+    let signalsList = [];
+    let devicesList = [];
+    let knownModels = new Set();
+    let currentModalDeviceKey = null;
+    let currentModalPayload = null;
+    let searchDebounceTimer = null;
+    let deviceDebounceTimer = null;
+    let wsConnection = null;
+
+    // -----------------------------------------------------------------------
+    // Initialization
+    // -----------------------------------------------------------------------
+    window.addEventListener('DOMContentLoaded', () => {
+      loadStatus();
+      loadModels();
+      loadSignals();
+      loadSettingsForm();
+      connectWebSocket();
+    });
+
+    function showToast(message, isError = false) {
+      const box = document.getElementById('toastBox');
+      box.textContent = message;
+      box.className = `fixed bottom-4 right-4 z-50 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xl border transition ${
+        isError
+          ? 'bg-rose-950 border-rose-700 text-rose-200'
+          : 'bg-slate-800 border-sky-500/50 text-slate-100'
+      }`;
+      box.classList.remove('hidden');
+      clearTimeout(box._timer);
+      box._timer = setTimeout(() => box.classList.add('hidden'), 3500);
+    }
+
+    // -----------------------------------------------------------------------
+    // WebSocket Live Stream
+    // -----------------------------------------------------------------------
+    function connectWebSocket() {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = `${proto}//${window.location.host}/ws`;
+      wsConnection = new WebSocket(url);
+
+      wsConnection.onopen = () => {
+        // Keepalive ping every 25s
+        if (wsConnection._pingInterval) clearInterval(wsConnection._pingInterval);
+        wsConnection._pingInterval = setInterval(() => {
+          if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+            wsConnection.send('ping');
+          }
+        }, 25000);
+      };
+
+      wsConnection.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'status' && msg.data) {
+            applyStatusUpdate(msg.data);
+          } else if (msg.type === 'signal' && msg.data) {
+            handleIncomingSignal(msg.data);
+          } else if (msg.type === 'stderr' && msg.line) {
+            appendStderrLine(msg.line, msg.last_error);
+          } else if (msg.type === 'device_updated' && msg.device) {
+            handleDeviceUpdated(msg.device);
+          } else if (msg.type === 'device_deleted' && msg.device_key) {
+            if (activeTab === 'devices') loadDevices();
+          }
+        } catch (err) {
+          console.error('WS parse error:', err);
+        }
+      };
+
+      wsConnection.onclose = () => {
+        setTimeout(connectWebSocket, 3000);
+      };
+    }
+
+    // -----------------------------------------------------------------------
+    // Status & Header Updates
+    // -----------------------------------------------------------------------
+    async function loadStatus() {
+      try {
+        const res = await fetch('/api/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        applyStatusUpdate(data);
+      } catch (e) {
+        console.error('Failed to fetch status:', e);
+      }
+    }
+
+    function applyStatusUpdate(status) {
+      if (status.version) {
+        document.getElementById('appVersionBadge').textContent = `v${status.version}`;
+      }
+
+      const rtl = status.rtl || {};
+      const mqtt = status.mqtt || {};
+      const counts = status.counts || {};
+
+      // Nav badges
+      document.getElementById('navCountSignals').textContent = counts.signals_today ?? 0;
+      document.getElementById('navCountDevices').textContent = counts.active_devices ?? 0;
+
+      // SDR status badge
+      const sdrDot = document.getElementById('sdrStatusDot');
+      const sdrText = document.getElementById('sdrStatusText');
+      const sdrBadge = document.getElementById('sdrStatusBadge');
+
+      if (rtl.running) {
+        sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse-subtle';
+        sdrText.textContent = `SDR: Aktiv (${(rtl.mode || 'hop').toUpperCase()})`;
+        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-950/60 border border-emerald-700/60 text-emerald-300';
+      } else {
+        sdrDot.className = 'w-2 h-2 rounded-full bg-rose-500';
+        sdrText.textContent = `SDR: ${rtl.state === 'starting' ? 'Startar...' : 'Fel / Stoppad'}`;
+        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-950/70 border border-rose-700/60 text-rose-300';
+      }
+
+      // Error banner
+      const errBanner = document.getElementById('sdrErrorBanner');
+      const errText = document.getElementById('sdrErrorText');
+      if (rtl.last_error) {
+        errText.textContent = rtl.last_error;
+        errBanner.classList.remove('hidden');
+      } else {
+        errBanner.classList.add('hidden');
+      }
+
+      // MQTT status badge
+      const mqttDot = document.getElementById('mqttStatusDot');
+      const mqttText = document.getElementById('mqttStatusText');
+      const mqttBadge = document.getElementById('mqttStatusBadge');
+
+      if (mqtt.connected) {
+        mqttDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        mqttText.textContent = `MQTT: Ansluten (${mqtt.host})`;
+        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-950/60 border border-emerald-700/60 text-emerald-300';
+      } else {
+        mqttDot.className = 'w-2 h-2 rounded-full bg-slate-500';
+        mqttText.textContent = mqtt.enabled ? 'MQTT: Frånkopplad' : 'MQTT: Avstängd';
+        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 border border-slate-700 text-slate-400';
+      }
+
+      // Highlight active frequency mode button in header
+      ['433', '868', 'hop', 'custom'].forEach((m) => {
+        const btn = document.getElementById(`modeBtn_${m}`);
+        if (!btn) return;
+        if (rtl.mode === m) {
+          btn.className = 'flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-sky-600 text-white shadow';
+        } else {
+          btn.className = 'flex-1 sm:flex-initial whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold transition text-slate-300 hover:text-white hover:bg-slate-800';
+        }
+      });
+
+      // Command preview & stderr tail
+      if (rtl.command) {
+        document.getElementById('headerCmdPreview').textContent = rtl.command;
+        document.getElementById('terminalCommandBox').textContent = rtl.command;
+      }
+
+      const stderrBox = document.getElementById('terminalStderrBox');
+      if (Array.isArray(rtl.stderr_tail) && stderrBox.children.length === 0) {
+        stderrBox.innerHTML = '';
+        rtl.stderr_tail.forEach((line) => {
+          const div = document.createElement('div');
+          div.textContent = line;
+          stderrBox.appendChild(div);
+        });
+        stderrBox.scrollTop = stderrBox.scrollHeight;
+      }
+
+      // System tab quick stats
+      document.getElementById('statSignalsToday').textContent = counts.signals_today ?? 0;
+      document.getElementById('statSignalsTotal').textContent = counts.total_signals ?? 0;
+      document.getElementById('statActiveDevices').textContent = counts.active_devices ?? 0;
+      document.getElementById('statIgnoredDevices').textContent = counts.ignored_devices ?? 0;
+      document.getElementById('statDebounced').textContent = rtl.debounced_count ?? 0;
+      document.getElementById('statUptime').textContent = formatDuration(rtl.uptime_seconds || 0);
+      document.getElementById('statMqttPublished').textContent = mqtt.published_count ?? 0;
+      document.getElementById('statRestarts').textContent = rtl.restart_count ?? 0;
+    }
+
+    function appendStderrLine(line, lastError) {
+      const stderrBox = document.getElementById('terminalStderrBox');
+      const div = document.createElement('div');
+      if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) {
+        div.className = 'text-rose-400';
+      }
+      div.textContent = line;
+      stderrBox.appendChild(div);
+      while (stderrBox.children.length > 200) {
+        stderrBox.removeChild(stderrBox.firstChild);
+      }
+      stderrBox.scrollTop = stderrBox.scrollHeight;
+
+      if (lastError) {
+        document.getElementById('sdrErrorText').textContent = lastError;
+        document.getElementById('sdrErrorBanner').classList.remove('hidden');
+      }
+    }
+
+    function clearTerminalLog() {
+      document.getElementById('terminalStderrBox').innerHTML = '';
+    }
+
+    // -----------------------------------------------------------------------
+    // Quick Frequency Switching & Pause
+    // -----------------------------------------------------------------------
+    async function switchFrequencyMode(mode) {
+      if (mode === 'custom' && activeTab !== 'system') {
+        switchTab('system');
+        document.getElementById('set_mode').value = 'custom';
+        document.getElementById('set_custom_freqs').focus();
+      }
+      try {
+        const res = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          applyStatusUpdate(data.status);
+          document.getElementById('set_mode').value = mode;
+          showToast(`Frekvensläge ändrat till ${mode.toUpperCase()}`);
+        }
+      } catch (e) {
+        showToast('Kunde inte byta frekvensläge', true);
+      }
+    }
+
+    async function restartSdrProcess() {
+      try {
+        const res = await fetch('/api/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'restart' })
+        });
+        if (res.ok) {
+          showToast('Omstart av rtl_433 begärd');
+        }
+      } catch (e) {
+        showToast('Kunde inte starta om SDR', true);
+      }
+    }
+
+    function togglePause() {
+      isPaused = !isPaused;
+      const btn = document.getElementById('pauseBtn');
+      const txt = document.getElementById('pauseBtnText');
+      const banner = document.getElementById('pausedBanner');
+
+      if (isPaused) {
+        txt.textContent = 'Återuppta';
+        btn.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-amber-500/20 text-amber-300 border-amber-500/40';
+        banner.classList.remove('hidden');
+      } else {
+        txt.textContent = 'Pausa';
+        btn.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700';
+        banner.classList.add('hidden');
+        loadSignals();
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Tab Navigation
+    // -----------------------------------------------------------------------
+    function switchTab(tab) {
+      activeTab = tab;
+      ['signals', 'devices', 'system'].forEach((t) => {
+        const panel = document.getElementById(`tabPanel_${t}`);
+        const btn = document.getElementById(`tabBtn_${t}`);
+        if (t === tab) {
+          panel.classList.remove('hidden');
+          btn.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition bg-sky-500/15 text-sky-400 border border-sky-500/30';
+        } else {
+          panel.classList.add('hidden');
+          btn.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent';
+        }
+      });
+
+      if (tab === 'signals') loadSignals();
+      if (tab === 'devices') loadDevices();
+      if (tab === 'system') {
+        loadStats();
+        loadSettingsForm();
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Signals Tab & Real-time Signal Handling
+    // -----------------------------------------------------------------------
+    async function loadModels() {
+      try {
+        const res = await fetch('/api/models');
+        if (!res.ok) return;
+        const data = await res.json();
+        const select = document.getElementById('signalModelSelect');
+        const current = select.value;
+        knownModels = new Set(data.models || []);
+        renderModelOptions(current);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function renderModelOptions(selectedValue) {
+      const select = document.getElementById('signalModelSelect');
+      const sorted = Array.from(knownModels).sort((a, b) => a.localeCompare(b));
+      select.innerHTML = '<option value="">Alla protokoll / modeller</option>';
+      sorted.forEach((m) => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        if (m === selectedValue) opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
+
+    function debouncedLoadSignals() {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(loadSignals, 220);
+    }
+
+    function clearSignalFilters() {
+      document.getElementById('signalSearchInput').value = '';
+      document.getElementById('signalModelSelect').value = '';
+      document.getElementById('signalFreqSelect').value = '';
+      document.getElementById('signalOnlyAliased').checked = false;
+      loadSignals();
+    }
+
+    async function loadSignals() {
+      const search = document.getElementById('signalSearchInput').value.trim();
+      const model = document.getElementById('signalModelSelect').value;
+      const freqBand = document.getElementById('signalFreqSelect').value;
+      const onlyAliased = document.getElementById('signalOnlyAliased').checked;
+
+      const params = new URLSearchParams({ limit: '100', offset: '0' });
+      if (search) params.set('search', search);
+      if (model) params.set('model', model);
+      if (freqBand) params.set('freq_band', freqBand);
+      if (onlyAliased) params.set('only_aliased', 'true');
+
+      try {
+        const res = await fetch(`/api/signals?${params.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        signalsList = data.items || [];
+        renderSignalsList();
+      } catch (e) {
+        console.error('Error loading signals:', e);
+      }
+    }
+
+    function signalMatchesActiveFilters(sig) {
+      const search = document.getElementById('signalSearchInput').value.trim().toLowerCase();
+      const model = document.getElementById('signalModelSelect').value;
+      const freqBand = document.getElementById('signalFreqSelect').value;
+      const onlyAliased = document.getElementById('signalOnlyAliased').checked;
+
+      if (model && sig.model !== model) return false;
+      if (onlyAliased && (!sig.alias || !sig.alias.trim())) return false;
+      if (freqBand === '433' && !(sig.freq >= 430 && sig.freq <= 440)) return false;
+      if (freqBand === '868' && !(sig.freq >= 860 && sig.freq <= 875)) return false;
+
+      if (search) {
+        const hay = `${sig.model} ${sig.device_id} ${sig.alias || ''} ${sig.category || ''} ${JSON.stringify(sig.payload || {})}`.toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    }
+
+    function handleIncomingSignal(sig) {
+      if (sig.model && !knownModels.has(sig.model)) {
+        knownModels.add(sig.model);
+        renderModelOptions(document.getElementById('signalModelSelect').value);
+      }
+
+      const navSig = document.getElementById('navCountSignals');
+      navSig.textContent = (parseInt(navSig.textContent || '0', 10) + 1).toString();
+
+      if (isPaused) return;
+
+      if (signalMatchesActiveFilters(sig)) {
+        sig._isNew = true;
+        signalsList.unshift(sig);
+        if (signalsList.length > 100) signalsList.pop();
+        if (activeTab === 'signals') {
+          renderSignalsList();
+        }
+      }
+    }
+
+    function renderSignalsList() {
+      const container = document.getElementById('signalsContainer');
+      const empty = document.getElementById('signalsEmptyState');
+
+      if (!signalsList.length) {
+        container.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      empty.classList.add('hidden');
+      container.innerHTML = signalsList.map((sig, idx) => buildSignalCardHtml(sig, idx)).join('');
+      signalsList.forEach((s) => delete s._isNew);
+    }
+
+    function buildSignalCardHtml(sig, idx) {
+      const p = sig.payload || {};
+      const title = sig.alias && sig.alias.trim() ? escapeHtml(sig.alias) : escapeHtml(sig.model);
+      const subtitle = sig.alias && sig.alias.trim()
+        ? `${escapeHtml(sig.model)} | ID: ${escapeHtml(sig.device_id)}`
+        : `ID: ${escapeHtml(sig.device_id)}${sig.channel ? ' | Kanal ' + escapeHtml(sig.channel) : ''}`;
+
+      const badges = buildTelemetryBadges(sig, p);
+      const rssiBadge = buildSignalQualityBadge(sig.rssi, sig.snr);
+      const freqBadge = sig.freq
+        ? `<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-800 text-slate-300 border border-slate-700">${Number(sig.freq).toFixed(2)} MHz</span>`
+        : '';
+
+      const animClass = sig._isNew ? 'signal-enter' : '';
+
+      return `
+        <div onclick="openSignalModal(${idx})" class="${animClass} cursor-pointer group bg-slate-900 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/40 rounded-xl p-3.5 transition shadow flex flex-col justify-between gap-2.5">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-sm font-bold text-white group-hover:text-sky-400 transition truncate">${title}</span>
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-800 text-slate-300 border border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
+              </div>
+              <div class="text-xs font-mono text-slate-400 mt-0.5 truncate">${subtitle}</div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-xs font-mono text-slate-300">${formatTimestamp(sig.timestamp)}</div>
+              <div class="mt-1 flex items-center justify-end gap-1">${freqBadge}</div>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+            <div class="flex flex-wrap items-center gap-1.5">
+              ${badges}
+            </div>
+            <div class="flex items-center gap-1.5 ml-auto">
+              ${rssiBadge}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function buildTelemetryBadges(sig, p) {
+      const items = [];
+
+      // Temperature
+      const tempC = sig.temperature_c !== null && sig.temperature_c !== undefined ? sig.temperature_c : p.temperature_C;
+      if (tempC !== null && tempC !== undefined) {
+        items.push(`
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            ${Number(tempC).toFixed(1)} °C
+          </span>
+        `);
+      }
+
+      // Humidity
+      const hum = sig.humidity !== null && sig.humidity !== undefined ? sig.humidity : p.humidity;
+      if (hum !== null && hum !== undefined) {
+        items.push(`
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/30">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3.25c-4.5 5.25-6.75 8.25-6.75 11.25a6.75 6.75 0 0013.5 0c0-3-2.25-6-6.75-11.25z" />
+            </svg>
+            ${Number(hum).toFixed(0)} %
+          </span>
+        `);
+      }
+
+      // Tire Pressure / Barometric Pressure
+      if (p.pressure_kPa !== undefined) {
+        items.push(`
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+            Tryck: ${Number(p.pressure_kPa).toFixed(0)} kPa
+          </span>
+        `);
+      } else if (p.pressure_bar !== undefined) {
+        items.push(`
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+            Tryck: ${Number(p.pressure_bar).toFixed(2)} bar
+          </span>
+        `);
+      } else if (p.pressure_hPa !== undefined) {
+        items.push(`
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+            ${Number(p.pressure_hPa).toFixed(1)} hPa
+          </span>
+        `);
+      }
+
+      // Power / Energy
+      if (p.power_W !== undefined) {
+        items.push(`
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            Effekt: ${Number(p.power_W).toFixed(0)} W
+          </span>
+        `);
+      }
+      if (p.energy_kWh !== undefined) {
+        items.push(`
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            Energi: ${Number(p.energy_kWh).toFixed(2)} kWh
+          </span>
+        `);
+      }
+
+      // Switch / State / Command
+      const switchState = p.state ?? p.cmd ?? p.button;
+      if (switchState !== undefined && switchState !== null) {
+        items.push(`
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+            Status: ${escapeHtml(String(switchState))}
+          </span>
+        `);
+      }
+
+      // Battery
+      const bat = sig.battery_ok !== null && sig.battery_ok !== undefined ? sig.battery_ok : p.battery_ok;
+      if (bat !== null && bat !== undefined) {
+        const isOk = Number(bat) === 1;
+        items.push(`
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold ${
+            isOk
+              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+              : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+          }">
+            Batteri: ${isOk ? 'OK' : 'LÅGT'}
+          </span>
+        `);
+      }
+
+      // Fallback if no standard metric matched: show up to 2 interesting keys
+      if (items.length === 0) {
+        const ignore = new Set(['time', 'model', 'id', 'device', 'channel', 'freq', 'freq1', 'freq2', 'rssi', 'snr', 'noise', 'mod', 'mic', 'protocol']);
+        const extraKeys = Object.keys(p).filter((k) => !ignore.has(k)).slice(0, 3);
+        extraKeys.forEach((k) => {
+          items.push(`
+            <span class="px-2 py-0.5 rounded-md text-[11px] font-mono bg-slate-800 text-slate-300 border border-slate-700">
+              ${escapeHtml(k)}: ${escapeHtml(String(p[k]))}
+            </span>
+          `);
+        });
+      }
+
+      return items.join('');
+    }
+
+    function buildSignalQualityBadge(rssi, snr) {
+      if (rssi === null || rssi === undefined) return '';
+      const val = Number(rssi);
+      let color = 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+      if (val < -25) {
+        color = 'bg-rose-500/15 text-rose-300 border-rose-500/30';
+      } else if (val < -12) {
+        color = 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+      }
+      const snrPart = snr !== null && snr !== undefined ? ` / SNR ${Number(snr).toFixed(1)}` : '';
+      return `<span class="px-2 py-0.5 rounded text-[11px] font-mono border ${color}">RSSI ${val.toFixed(1)} dB${snrPart}</span>`;
+    }
+
+    // -----------------------------------------------------------------------
+    // Detail Modal
+    // -----------------------------------------------------------------------
+    async function openSignalModal(index) {
+      const sig = signalsList[index];
+      if (!sig) return;
+      await openDeviceModalByKey(sig.device_key, sig.payload);
+    }
+
+    async function openDeviceModalByKey(deviceKey, overridePayload = null) {
+      currentModalDeviceKey = deviceKey;
+      document.getElementById('modalActionStatus').textContent = '';
+
+      try {
+        const res = await fetch(`/api/devices/${encodeURIComponent(deviceKey)}`);
+        if (!res.ok) {
+          showToast('Kunde inte hämta enhetsdetaljer', true);
+          return;
+        }
+        const data = await res.json();
+        const dev = data.device;
+        const history = data.history || [];
+
+        currentModalPayload = overridePayload || dev.last_payload || {};
+
+        document.getElementById('modalTitle').textContent = dev.alias ? `${dev.alias} (${dev.model})` : dev.model;
+        document.getElementById('modalSubtitle').textContent = `Key: ${dev.device_key} | ID: ${dev.device_id} | Träffar: ${dev.hit_count}`;
+        document.getElementById('modalCategoryBadge').textContent = dev.category || 'Sensor';
+
+        document.getElementById('modalAliasInput').value = dev.alias || '';
+        document.getElementById('modalCategorySelect').value = dev.category || 'Sensor';
+        document.getElementById('modalMqttToggle').checked = Boolean(dev.mqtt_enabled);
+        document.getElementById('modalIgnoredToggle').checked = Boolean(dev.ignored);
+
+        document.getElementById('modalRawJson').textContent = JSON.stringify(currentModalPayload, null, 2);
+
+        const tbody = document.getElementById('modalHistoryBody');
+        tbody.innerHTML = history.map((h) => {
+          const hp = h.payload || {};
+          const summaryParts = [];
+          if (h.temperature_c !== null && h.temperature_c !== undefined) summaryParts.push(`${h.temperature_c} °C`);
+          if (h.humidity !== null && h.humidity !== undefined) summaryParts.push(`${h.humidity} %`);
+          if (hp.pressure_kPa !== undefined) summaryParts.push(`${hp.pressure_kPa} kPa`);
+          if (hp.state !== undefined) summaryParts.push(`state=${hp.state}`);
+          if (h.battery_ok !== null && h.battery_ok !== undefined) summaryParts.push(`bat=${h.battery_ok ? 'OK' : 'LOW'}`);
+          if (summaryParts.length === 0) summaryParts.push(JSON.stringify(hp).slice(0, 70));
+
+          return `
+            <tr class="hover:bg-slate-800/50">
+              <td class="py-1.5 px-3 text-slate-300 whitespace-nowrap">${formatTimestamp(h.timestamp)}</td>
+              <td class="py-1.5 px-3 text-slate-400 whitespace-nowrap">${h.freq ? Number(h.freq).toFixed(2) + ' MHz' : '-'}</td>
+              <td class="py-1.5 px-3 text-slate-400 whitespace-nowrap">${h.rssi !== null ? h.rssi + ' dB' : '-'}</td>
+              <td class="py-1.5 px-3 text-sky-300 truncate max-w-xs">${escapeHtml(summaryParts.join(' | '))}</td>
+            </tr>
+          `;
+        }).join('');
+
+        document.getElementById('detailModal').classList.remove('hidden');
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function closeDetailModal() {
+      document.getElementById('detailModal').classList.add('hidden');
+      currentModalDeviceKey = null;
+    }
+
+    async function saveModalDevice() {
+      if (!currentModalDeviceKey) return;
+      const alias = document.getElementById('modalAliasInput').value.trim();
+      const category = document.getElementById('modalCategorySelect').value;
+      const mqtt_enabled = document.getElementById('modalMqttToggle').checked ? 1 : 0;
+      const ignored = document.getElementById('modalIgnoredToggle').checked ? 1 : 0;
+
+      try {
+        const res = await fetch(`/api/devices/${encodeURIComponent(currentModalDeviceKey)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alias, category, mqtt_enabled, ignored })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('modalActionStatus').textContent = 'Sparat!';
+          setTimeout(() => {
+            const el = document.getElementById('modalActionStatus');
+            if (el) el.textContent = '';
+          }, 2000);
+          handleDeviceUpdated(data.device);
+        }
+      } catch (e) {
+        showToast('Kunde inte spara enhet', true);
+      }
+    }
+
+    async function triggerHaDiscoveryFromModal() {
+      if (!currentModalDeviceKey) return;
+      await triggerHaDiscovery(currentModalDeviceKey);
+    }
+
+    function copyModalJson() {
+      if (!currentModalPayload) return;
+      navigator.clipboard.writeText(JSON.stringify(currentModalPayload, null, 2));
+      showToast('JSON kopierad till urklipp');
+    }
+
+    // -----------------------------------------------------------------------
+    // Devices Tab (Enhetsregister)
+    // -----------------------------------------------------------------------
+    function debouncedLoadDevices() {
+      clearTimeout(deviceDebounceTimer);
+      deviceDebounceTimer = setTimeout(loadDevices, 220);
+    }
+
+    async function loadDevices() {
+      const search = document.getElementById('deviceSearchInput').value.trim();
+      const includeIgnored = document.getElementById('deviceShowIgnored').checked;
+      const params = new URLSearchParams({ include_ignored: includeIgnored ? 'true' : 'false' });
+      if (search) params.set('search', search);
+
+      try {
+        const res = await fetch(`/api/devices?${params.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        devicesList = data.devices || [];
+        renderDevicesList();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function handleDeviceUpdated(dev) {
+      signalsList.forEach((s) => {
+        if (s.device_key === dev.device_key) {
+          s.alias = dev.alias;
+          s.category = dev.category;
+          s.mqtt_enabled = dev.mqtt_enabled;
+          s.ignored = dev.ignored;
+        }
+      });
+      if (activeTab === 'signals') renderSignalsList();
+      if (activeTab === 'devices') loadDevices();
+    }
+
+    function renderDevicesList() {
+      const container = document.getElementById('devicesContainer');
+      const empty = document.getElementById('devicesEmptyState');
+
+      if (!devicesList.length) {
+        container.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      empty.classList.add('hidden');
+      container.innerHTML = devicesList.map((dev) => {
+        const isIgnored = Number(dev.ignored) === 1;
+        const isMqtt = Number(dev.mqtt_enabled) === 1;
+        const borderClass = isIgnored ? 'border-rose-900/60 opacity-75' : 'border-slate-800';
+
+        return `
+          <div class="bg-slate-900 border ${borderClass} rounded-xl p-4 shadow flex flex-col justify-between gap-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-bold text-white truncate">${escapeHtml(dev.alias || dev.model)}</span>
+                  <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-sky-300 border border-slate-700">${escapeHtml(dev.category || 'Sensor')}</span>
+                  ${isIgnored ? '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-950 text-rose-300 border border-rose-700">Ignorerad</span>' : ''}
+                </div>
+                <div class="text-xs font-mono text-slate-400 mt-0.5">
+                  Modell: ${escapeHtml(dev.model)} | ID: ${escapeHtml(dev.device_id)}
+                </div>
+              </div>
+              <div class="text-right font-mono text-xs shrink-0">
+                <div class="text-slate-200 font-semibold">${dev.hit_count} träffar</div>
+                <div class="text-slate-500 text-[11px]">Senast: ${formatTimestamp(dev.last_seen)}</div>
+              </div>
+            </div>
+
+            <!-- Inline Edit Alias & Category -->
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center pt-2 border-t border-slate-800/80 text-xs">
+              <div class="sm:col-span-6">
+                <input
+                  type="text"
+                  id="devAlias_${escapeHtml(dev.device_key)}"
+                  value="${escapeHtml(dev.alias || '')}"
+                  placeholder="Ange eget alias..."
+                  class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:border-sky-500 focus:outline-none"
+                />
+              </div>
+              <div class="sm:col-span-3">
+                <select
+                  id="devCat_${escapeHtml(dev.device_key)}"
+                  class="w-full px-2 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200"
+                >
+                  ${['Weather', 'TPMS', 'Switch', 'Meter', 'Security', 'Sensor'].map(
+                    (c) => `<option value="${c}" ${dev.category === c ? 'selected' : ''}>${c}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              <div class="sm:col-span-3">
+                <button
+                  onclick="saveDeviceInline('${escapeHtml(dev.device_key)}')"
+                  class="w-full py-1.5 px-3 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border border-sky-500/30 font-semibold transition"
+                >
+                  Spara
+                </button>
+              </div>
+            </div>
+
+            <!-- Action Switches & Buttons -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/60 text-xs">
+              <div class="flex items-center gap-4">
+                <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    ${isMqtt ? 'checked' : ''}
+                    onchange="toggleDeviceFlag('${escapeHtml(dev.device_key)}', 'mqtt_enabled', this.checked ? 1 : 0)"
+                    class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-emerald-500"
+                  />
+                  <span class="text-slate-300">MQTT</span>
+                </label>
+
+                <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    ${isIgnored ? 'checked' : ''}
+                    onchange="toggleDeviceFlag('${escapeHtml(dev.device_key)}', 'ignored', this.checked ? 1 : 0)"
+                    class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-rose-500"
+                  />
+                  <span class="text-slate-300">Ignorera</span>
+                </label>
+              </div>
+
+              <div class="flex items-center gap-1.5">
+                <button
+                  onclick="openDeviceModalByKey('${escapeHtml(dev.device_key)}')"
+                  class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                >
+                  Detaljer
+                </button>
+                <button
+                  onclick="triggerHaDiscovery('${escapeHtml(dev.device_key)}')"
+                  class="px-2.5 py-1 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 border border-emerald-500/30 font-semibold"
+                >
+                  HA Discovery
+                </button>
+                <button
+                  onclick="deleteDevice('${escapeHtml(dev.device_key)}')"
+                  class="px-2.5 py-1 rounded-lg bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 border border-rose-500/30"
+                >
+                  Radera
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function saveDeviceInline(deviceKey) {
+      const alias = document.getElementById(`devAlias_${deviceKey}`).value.trim();
+      const category = document.getElementById(`devCat_${deviceKey}`).value;
+      try {
+        const res = await fetch(`/api/devices/${encodeURIComponent(deviceKey)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alias, category })
+        });
+        if (res.ok) {
+          showToast('Enhet uppdaterad');
+          loadDevices();
+        }
+      } catch (e) {
+        showToast('Fel vid uppdatering av enhet', true);
+      }
+    }
+
+    async function toggleDeviceFlag(deviceKey, field, val) {
+      try {
+        const res = await fetch(`/api/devices/${encodeURIComponent(deviceKey)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [field]: val })
+        });
+        if (res.ok) {
+          showToast('Inställning uppdaterad för enhet');
+          loadDevices();
+        }
+      } catch (e) {
+        showToast('Kunde inte ändra flagga', true);
+      }
+    }
+
+    async function triggerHaDiscovery(deviceKey) {
+      try {
+        const res = await fetch(`/api/devices/${encodeURIComponent(deviceKey)}/ha_discovery`, {
+          method: 'POST'
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          showToast(`Skickade ${data.published_count} HA Discovery-entiteter via MQTT`);
+        } else {
+          showToast(data.detail || 'Kunde inte skicka HA Discovery', true);
+        }
+      } catch (e) {
+        showToast('Kommunikationsfel vid HA Discovery', true);
+      }
+    }
+
+    async function deleteDevice(deviceKey) {
+      if (!confirm(`Vill du verkligen radera enheten "${deviceKey}" och all dess historik?`)) return;
+      try {
+        const res = await fetch(`/api/devices/${encodeURIComponent(deviceKey)}`, {
+          method: 'DELETE'
+        });
+        if (res.ok) {
+          showToast('Enhet och historik raderad');
+          loadDevices();
+          loadSignals();
+        }
+      } catch (e) {
+        showToast('Kunde inte radera enhet', true);
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // System, Stats & Settings Tab
+    // -----------------------------------------------------------------------
+    async function loadStats() {
+      try {
+        const res = await fetch('/api/stats');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const b433 = data.frequency_distribution?.['433_mhz'] || 0;
+        const b868 = data.frequency_distribution?.['868_mhz'] || 0;
+        const totalBands = Math.max(1, b433 + b868);
+        document.getElementById('statBand433').textContent = b433;
+        document.getElementById('statBand868').textContent = b868;
+        document.getElementById('statBandBar433').style.width = `${Math.round((b433 / totalBands) * 100)}%`;
+        document.getElementById('statBandBar868').style.width = `${Math.round((b868 / totalBands) * 100)}%`;
+
+        // 24h Hourly chart
+        const hourly = data.hourly_24h || [];
+        const maxHourly = Math.max(1, ...hourly.map((h) => h.count));
+        const chartContainer = document.getElementById('hourlyChartContainer');
+        const chartLabels = document.getElementById('hourlyChartLabels');
+
+        chartContainer.innerHTML = hourly.map((h) => {
+          const pct = Math.max(4, Math.round((h.count / maxHourly) * 100));
+          return `
+            <div class="flex-1 flex flex-col items-center justify-end h-full group relative">
+              <div class="opacity-0 group-hover:opacity-100 absolute -top-6 bg-slate-800 text-white text-[10px] font-mono px-1.5 py-0.5 rounded border border-slate-700 whitespace-nowrap z-10 pointer-events-none">
+                ${h.hour}: ${h.count} st
+              </div>
+              <div class="w-full rounded-t bg-sky-500/70 hover:bg-sky-400 transition-all" style="height: ${pct}%"></div>
+            </div>
+          `;
+        }).join('');
+
+        if (hourly.length >= 24) {
+          chartLabels.innerHTML = `
+            <span>${hourly[0].hour}</span>
+            <span>${hourly[6].hour}</span>
+            <span>${hourly[12].hour}</span>
+            <span>${hourly[18].hour}</span>
+            <span>${hourly[23].hour}</span>
+          `;
+        }
+
+        // Top 10 devices
+        const topList = document.getElementById('topDevicesList');
+        const topDevs = data.top_devices || [];
+        if (!topDevs.length) {
+          topList.innerHTML = '<div class="text-xs text-slate-500">Inga aktiva enheter ännu.</div>';
+        } else {
+          topList.innerHTML = topDevs.map((d, i) => `
+            <div onclick="openDeviceModalByKey('${escapeHtml(d.device_key)}')" class="cursor-pointer flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-slate-500 font-mono w-4">${i + 1}.</span>
+                <span class="font-semibold text-slate-200 truncate">${escapeHtml(d.alias || d.model)}</span>
+                <span class="text-slate-500 font-mono text-[11px]">(${escapeHtml(d.device_id)})</span>
+              </div>
+              <span class="font-mono text-sky-400 font-semibold shrink-0">${d.hit_count}</span>
+            </div>
+          `).join('');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function loadSettingsForm() {
+      try {
+        const res = await fetch('/api/settings');
+        if (!res.ok) return;
+        const data = await res.json();
+        const s = data.settings || {};
+
+        document.getElementById('set_device_index').value = s.device_index ?? '0';
+        document.getElementById('set_mode').value = s.mode ?? 'hop';
+        document.getElementById('set_hop_interval').value = s.hop_interval ?? '60';
+        document.getElementById('set_custom_freqs').value = s.custom_freqs ?? '433.92M,868.3M';
+        document.getElementById('set_custom_sample_rate').value = s.custom_sample_rate ?? '1024k';
+        document.getElementById('set_gain').value = s.gain ?? 'auto';
+        document.getElementById('set_ppm').value = s.ppm ?? '0';
+        document.getElementById('set_debounce_seconds').value = s.debounce_seconds ?? '2.0';
+        document.getElementById('set_retention_days').value = s.retention_days ?? '30';
+        document.getElementById('set_mqtt_enabled').checked = String(s.mqtt_enabled ?? '1') === '1';
+        document.getElementById('set_mqtt_host').value = s.mqtt_host ?? '';
+        document.getElementById('set_mqtt_port').value = s.mqtt_port ?? '1883';
+        document.getElementById('set_mqtt_user').value = s.mqtt_user ?? '';
+        document.getElementById('set_mqtt_pass').value = s.mqtt_pass ?? '';
+        document.getElementById('set_mqtt_prefix').value = s.mqtt_prefix ?? 'sensor_scanner';
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function saveSettings(event) {
+      event.preventDefault();
+      const payload = {
+        device_index: document.getElementById('set_device_index').value.trim(),
+        mode: document.getElementById('set_mode').value,
+        hop_interval: String(document.getElementById('set_hop_interval').value),
+        custom_freqs: document.getElementById('set_custom_freqs').value.trim(),
+        custom_sample_rate: document.getElementById('set_custom_sample_rate').value.trim(),
+        gain: document.getElementById('set_gain').value.trim() || 'auto',
+        ppm: String(document.getElementById('set_ppm').value || '0'),
+        debounce_seconds: String(document.getElementById('set_debounce_seconds').value || '2.0'),
+        retention_days: String(document.getElementById('set_retention_days').value || '30'),
+        mqtt_enabled: document.getElementById('set_mqtt_enabled').checked ? '1' : '0',
+        mqtt_host: document.getElementById('set_mqtt_host').value.trim(),
+        mqtt_port: String(document.getElementById('set_mqtt_port').value || '1883'),
+        mqtt_user: document.getElementById('set_mqtt_user').value.trim(),
+        mqtt_pass: document.getElementById('set_mqtt_pass').value,
+        mqtt_prefix: document.getElementById('set_mqtt_prefix').value.trim() || 'sensor_scanner'
+      };
+
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          showToast('Systeminställningar sparade och tillämpade');
+          const fb = document.getElementById('settingsSaveFeedback');
+          fb.classList.remove('hidden');
+          setTimeout(() => fb.classList.add('hidden'), 3000);
+          loadStatus();
+        } else {
+          showToast('Kunde inte spara inställningar', true);
+        }
+      } catch (e) {
+        showToast('Nätverksfel vid sparande av inställningar', true);
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Utility Helpers
+    // -----------------------------------------------------------------------
+    function formatTimestamp(ts) {
+      if (!ts) return '-';
+      const clean = String(ts).replace('T', ' ');
+      return clean.length > 19 ? clean.slice(0, 19) : clean;
+    }
+
+    function formatDuration(seconds) {
+      const s = Number(seconds) || 0;
+      const d = Math.floor(s / 86400);
+      const h = Math.floor((s % 86400) / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      if (d > 0) return `${d}d ${h}h ${m}m`;
+      if (h > 0) return `${h}h ${m}m ${sec}s`;
+      if (m > 0) return `${m}m ${sec}s`;
+      return `${sec}s`;
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>
+

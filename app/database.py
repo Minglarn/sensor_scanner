@@ -1,0 +1,701 @@
+import json
+import logging
+import os
+import sqlite3
+import threading
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger("sensor_scanner.database")
+
+DB_PATH = os.environ.get("DB_PATH", "/app/data/sensor_scanner.db")
+
+
+def get_default_settings() -> Dict[str, str]:
+    return {
+        "device_index": os.environ.get("DEVICE_INDEX", "0"),
+        "mode": os.environ.get("DEFAULT_MODE", "hop"),
+        "custom_freqs": os.environ.get("CUSTOM_FREQS", "433.92M,868.3M"),
+        "custom_sample_rate": os.environ.get("CUSTOM_SAMPLE_RATE", "1024k"),
+        "hop_interval": os.environ.get("HOP_INTERVAL", "60"),
+        "gain": os.environ.get("RTL_GAIN", "auto"),
+        "ppm": os.environ.get("RTL_PPM", "0"),
+        "debounce_seconds": os.environ.get("DEBOUNCE_SECONDS", "2.0"),
+        "retention_days": os.environ.get("RETENTION_DAYS", "30"),
+        "mqtt_enabled": os.environ.get("MQTT_ENABLED", "1"),
+        "mqtt_host": os.environ.get("MQTT_HOST", "192.168.1.121"),
+        "mqtt_port": os.environ.get("MQTT_PORT", "1883"),
+        "mqtt_user": os.environ.get("MQTT_USER", ""),
+        "mqtt_pass": os.environ.get("MQTT_PASS", ""),
+        "mqtt_prefix": os.environ.get("MQTT_PREFIX", "sensor_scanner"),
+    }
+
+
+def infer_category(model: str, payload: Dict[str, Any]) -> str:
+    model_lower = (model or "").lower()
+    keys = {k.lower() for k in payload.keys()}
+
+    if "tpms" in model_lower or "pressure_kpa" in keys or "pressure_bar" in keys or "pressure_psi" in keys:
+        return "TPMS"
+    if any(k in keys for k in ("energy_kwh", "power_w", "current_a", "voltage_v", "consumption", "volume_m3", "water")):
+        return "Meter"
+    if any(w in model_lower for w in ("meter", "energy", "water", "owl", "emon", "gas")):
+        return "Meter"
+    if any(k in keys for k in ("temperature_c", "temperature_f", "humidity", "wind_avg_km_h", "wind_avg_m_s", "rain_mm")):
+        return "Weather"
+    if any(w in model_lower for w in ("smoke", "pir", "motion", "alarm", "security", "door", "contact", "dsc", "honeywell")):
+        return "Security"
+    if any(k in keys for k in ("state", "cmd", "button", "switch", "unit", "group")) or any(
+        w in model_lower for w in ("switch", "remote", "nexa", "proove", "intertechno", "kaku", "chuango", "kerui")
+    ):
+        return "Switch"
+    return "Sensor"
+
+
+def extract_device_id(payload: Dict[str, Any]) -> str:
+    for key in ("id", "device", "sensor_id", "node_id", "address", "house_code", "code"):
+        val = payload.get(key)
+        if val is not None and str(val).strip() != "":
+            return str(val).strip()
+    channel = payload.get("channel")
+    if channel is not None:
+        return f"ch{channel}"
+    return "unknown"
+
+
+def extract_temperature_c(payload: Dict[str, Any]) -> Optional[float]:
+    if "temperature_C" in payload and payload["temperature_C"] is not None:
+        try:
+            return round(float(payload["temperature_C"]), 2)
+        except (ValueError, TypeError):
+            pass
+    if "temperature_F" in payload and payload["temperature_F"] is not None:
+        try:
+            f_val = float(payload["temperature_F"])
+            return round((f_val - 32.0) * 5.0 / 9.0, 2)
+        except (ValueError, TypeError):
+            pass
+    if "temp_C" in payload and payload["temp_C"] is not None:
+        try:
+            return round(float(payload["temp_C"]), 2)
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def extract_freq_mhz(payload: Dict[str, Any]) -> Optional[float]:
+    for key in ("freq", "freq1", "freq2"):
+        val = payload.get(key)
+        if val is not None:
+            try:
+                num = float(val)
+                if num > 1_000_000:
+                    return round(num / 1_000_000.0, 3)
+                return round(num, 3)
+            except (ValueError, TypeError):
+                pass
+    return None
+
+
+def sanitize_key(text: str) -> str:
+    cleaned = []
+    for ch in str(text):
+        if ch.isalnum() or ch in ("-", "_"):
+            cleaned.append(ch)
+        else:
+            cleaned.append("_")
+    res = "".join(cleaned).strip("_")
+    return res or "unknown"
+
+
+class Database:
+    def __init__(self, db_path: str = DB_PATH):
+        self.db_path = db_path
+        db_dir = os.path.dirname(os.path.abspath(self.db_path))
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+        self._lock = threading.RLock()
+        self._init_db()
+
+    def _get_conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA foreign_keys=ON;")
+        return conn
+
+    def _init_db(self) -> None:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS signals (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            timestamp TEXT NOT NULL,
+                            model TEXT NOT NULL,
+                            device_id TEXT NOT NULL,
+                            channel TEXT,
+                            freq REAL,
+                            rssi REAL,
+                            snr REAL,
+                            noise REAL,
+                            battery_ok INTEGER,
+                            temperature_c REAL,
+                            humidity REAL,
+                            payload TEXT NOT NULL
+                        );
+                        """
+                    )
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_signals_timestamp ON signals(timestamp DESC);")
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_signals_model ON signals(model);")
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_signals_device_id ON signals(device_id);")
+
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS devices (
+                            device_key TEXT PRIMARY KEY,
+                            model TEXT NOT NULL,
+                            device_id TEXT NOT NULL,
+                            alias TEXT DEFAULT '',
+                            category TEXT DEFAULT 'Sensor',
+                            mqtt_enabled INTEGER DEFAULT 1,
+                            ignored INTEGER DEFAULT 0,
+                            first_seen TEXT NOT NULL,
+                            last_seen TEXT NOT NULL,
+                            hit_count INTEGER DEFAULT 1,
+                            last_payload TEXT NOT NULL
+                        );
+                        """
+                    )
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_last_seen ON devices(last_seen DESC);")
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_model_id ON devices(model, device_id);")
+
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS settings (
+                            key TEXT PRIMARY KEY,
+                            value TEXT NOT NULL
+                        );
+                        """
+                    )
+
+                    defaults = get_default_settings()
+                    for k, v in defaults.items():
+                        conn.execute(
+                            "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);",
+                            (k, str(v)),
+                        )
+            finally:
+                conn.close()
+
+    def get_settings(self) -> Dict[str, str]:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                rows = conn.execute("SELECT key, value FROM settings;").fetchall()
+                result = get_default_settings()
+                for row in rows:
+                    result[row["key"]] = row["value"]
+                return result
+            finally:
+                conn.close()
+
+    def update_settings(self, updates: Dict[str, Any]) -> Dict[str, str]:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    for k, v in updates.items():
+                        if v is None:
+                            continue
+                        conn.execute(
+                            """
+                            INSERT INTO settings (key, value) VALUES (?, ?)
+                            ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                            """,
+                            (str(k), str(v)),
+                        )
+            finally:
+                conn.close()
+        return self.get_settings()
+
+    def record_signal(self, payload: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Records a signal and updates the device registry.
+        Returns (signal_record_or_None_if_ignored, device_record).
+        """
+        now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        timestamp = str(payload.get("time") or now_iso)
+        model = str(payload.get("model") or "Unknown").strip()
+        device_id = extract_device_id(payload)
+        device_key = f"{sanitize_key(model)}_{sanitize_key(device_id)}"
+
+        channel = str(payload.get("channel")) if payload.get("channel") is not None else None
+        freq = extract_freq_mhz(payload)
+
+        def _to_float(val: Any) -> Optional[float]:
+            if val is None:
+                return None
+            try:
+                return round(float(val), 2)
+            except (ValueError, TypeError):
+                return None
+
+        def _to_int(val: Any) -> Optional[int]:
+            if val is None:
+                return None
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return None
+
+        rssi = _to_float(payload.get("rssi"))
+        snr = _to_float(payload.get("snr"))
+        noise = _to_float(payload.get("noise"))
+        battery_ok = _to_int(payload.get("battery_ok"))
+        temperature_c = extract_temperature_c(payload)
+        humidity = _to_float(payload.get("humidity"))
+        raw_json = json.dumps(payload, ensure_ascii=False)
+        inferred_cat = infer_category(model, payload)
+
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    existing_dev = conn.execute(
+                        "SELECT * FROM devices WHERE device_key = ?;", (device_key,)
+                    ).fetchone()
+
+                    if existing_dev is None:
+                        conn.execute(
+                            """
+                            INSERT INTO devices (
+                                device_key, model, device_id, alias, category,
+                                mqtt_enabled, ignored, first_seen, last_seen, hit_count, last_payload
+                            ) VALUES (?, ?, ?, '', ?, 1, 0, ?, ?, 1, ?);
+                            """,
+                            (device_key, model, device_id, inferred_cat, timestamp, timestamp, raw_json),
+                        )
+                    else:
+                        conn.execute(
+                            """
+                            UPDATE devices
+                            SET last_seen = ?,
+                                hit_count = hit_count + 1,
+                                last_payload = ?
+                            WHERE device_key = ?;
+                            """,
+                            (timestamp, raw_json, device_key),
+                        )
+
+                    dev_row = conn.execute(
+                        "SELECT * FROM devices WHERE device_key = ?;", (device_key,)
+                    ).fetchone()
+                    device_dict = dict(dev_row)
+                    device_dict["last_payload"] = payload
+
+                    if int(device_dict.get("ignored", 0)) == 1:
+                        return None, device_dict
+
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO signals (
+                            timestamp, model, device_id, channel, freq,
+                            rssi, snr, noise, battery_ok, temperature_c, humidity, payload
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        """,
+                        (
+                            timestamp,
+                            model,
+                            device_id,
+                            channel,
+                            freq,
+                            rssi,
+                            snr,
+                            noise,
+                            battery_ok,
+                            temperature_c,
+                            humidity,
+                            raw_json,
+                        ),
+                    )
+                    signal_id = cursor.lastrowid
+
+                    signal_dict = {
+                        "id": signal_id,
+                        "timestamp": timestamp,
+                        "model": model,
+                        "device_id": device_id,
+                        "device_key": device_key,
+                        "alias": device_dict.get("alias", ""),
+                        "category": device_dict.get("category", inferred_cat),
+                        "mqtt_enabled": device_dict.get("mqtt_enabled", 1),
+                        "ignored": device_dict.get("ignored", 0),
+                        "channel": channel,
+                        "freq": freq,
+                        "rssi": rssi,
+                        "snr": snr,
+                        "noise": noise,
+                        "battery_ok": battery_ok,
+                        "temperature_c": temperature_c,
+                        "humidity": humidity,
+                        "payload": payload,
+                    }
+                    return signal_dict, device_dict
+            finally:
+                conn.close()
+
+    def get_signals(
+        self,
+        search: Optional[str] = None,
+        model: Optional[str] = None,
+        device_id: Optional[str] = None,
+        freq_band: Optional[str] = None,
+        only_aliased: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+
+        where_clauses = [" COALESCE(d.ignored, 0) = 0 "]
+        params: List[Any] = []
+
+        if model and model.strip() and model.strip().lower() != "all":
+            where_clauses.append("s.model = ?")
+            params.append(model.strip())
+
+        if device_id and device_id.strip():
+            where_clauses.append("s.device_id = ?")
+            params.append(device_id.strip())
+
+        if freq_band:
+            fb = freq_band.strip().lower()
+            if fb == "433":
+                where_clauses.append("(s.freq >= 430.0 AND s.freq <= 440.0)")
+            elif fb == "868":
+                where_clauses.append("(s.freq >= 860.0 AND s.freq <= 875.0)")
+
+        if only_aliased:
+            where_clauses.append("(d.alias IS NOT NULL AND TRIM(d.alias) != '')")
+
+        if search and search.strip():
+            q = f"%{search.strip()}%"
+            where_clauses.append(
+                "(s.model LIKE ? OR s.device_id LIKE ? OR COALESCE(d.alias, '') LIKE ? OR COALESCE(d.category, '') LIKE ? OR s.payload LIKE ?)"
+            )
+            params.extend([q, q, q, q, q])
+
+        where_sql = " AND ".join(where_clauses)
+
+        query = f"""
+            SELECT
+                s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
+                s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
+                d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.category, 'Sensor') AS category,
+                COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ignored, 0) AS ignored
+            FROM signals s
+            LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
+            WHERE {where_sql}
+            ORDER BY s.timestamp DESC, s.id DESC
+            LIMIT ? OFFSET ?;
+        """
+
+        count_query = f"""
+            SELECT COUNT(*) AS total
+            FROM signals s
+            LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
+            WHERE {where_sql};
+        """
+
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                total_row = conn.execute(count_query, params).fetchone()
+                total = int(total_row["total"]) if total_row else 0
+
+                rows = conn.execute(query, params + [limit, offset]).fetchall()
+                items = []
+                for row in rows:
+                    item = dict(row)
+                    if not item.get("device_key"):
+                        item["device_key"] = f"{sanitize_key(item['model'])}_{sanitize_key(item['device_id'])}"
+                    try:
+                        item["payload"] = json.loads(item["payload"])
+                    except Exception:
+                        item["payload"] = {"raw": item["payload"]}
+                    items.append(item)
+
+                return {
+                    "items": items,
+                    "total": total,
+                    "limit": limit,
+                    "offset": offset,
+                }
+            finally:
+                conn.close()
+
+    def get_models(self) -> List[str]:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT DISTINCT model FROM (
+                        SELECT model FROM devices
+                        UNION
+                        SELECT model FROM signals
+                    )
+                    WHERE model IS NOT NULL AND TRIM(model) != ''
+                    ORDER BY model COLLATE NOCASE ASC;
+                    """
+                ).fetchall()
+                return [r["model"] for r in rows]
+            finally:
+                conn.close()
+
+    def get_devices(
+        self,
+        search: Optional[str] = None,
+        include_ignored: bool = True,
+    ) -> List[Dict[str, Any]]:
+        where_clauses = ["1=1"]
+        params: List[Any] = []
+
+        if not include_ignored:
+            where_clauses.append("ignored = 0")
+
+        if search and search.strip():
+            q = f"%{search.strip()}%"
+            where_clauses.append(
+                "(model LIKE ? OR device_id LIKE ? OR alias LIKE ? OR category LIKE ? OR last_payload LIKE ?)"
+            )
+            params.extend([q, q, q, q, q])
+
+        where_sql = " AND ".join(where_clauses)
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                rows = conn.execute(
+                    f"""
+                    SELECT * FROM devices
+                    WHERE {where_sql}
+                    ORDER BY last_seen DESC;
+                    """,
+                    params,
+                ).fetchall()
+                result = []
+                for r in rows:
+                    d = dict(r)
+                    try:
+                        d["last_payload"] = json.loads(d["last_payload"])
+                    except Exception:
+                        d["last_payload"] = {}
+                    result.append(d)
+                return result
+            finally:
+                conn.close()
+
+    def get_device(self, device_key: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT * FROM devices WHERE device_key = ?;", (device_key,)
+                ).fetchone()
+                if not row:
+                    return None
+                d = dict(row)
+                try:
+                    d["last_payload"] = json.loads(d["last_payload"])
+                except Exception:
+                    d["last_payload"] = {}
+                return d
+            finally:
+                conn.close()
+
+    def update_device(
+        self,
+        device_key: str,
+        alias: Optional[str] = None,
+        category: Optional[str] = None,
+        mqtt_enabled: Optional[int] = None,
+        ignored: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT * FROM devices WHERE device_key = ?;", (device_key,)
+                ).fetchone()
+                if not row:
+                    return None
+
+                new_alias = alias.strip() if alias is not None else row["alias"]
+                new_cat = category.strip() if category is not None else row["category"]
+                new_mqtt = int(bool(mqtt_enabled)) if mqtt_enabled is not None else row["mqtt_enabled"]
+                new_ignored = int(bool(ignored)) if ignored is not None else row["ignored"]
+
+                with conn:
+                    conn.execute(
+                        """
+                        UPDATE devices
+                        SET alias = ?, category = ?, mqtt_enabled = ?, ignored = ?
+                        WHERE device_key = ?;
+                        """,
+                        (new_alias, new_cat, new_mqtt, new_ignored, device_key),
+                    )
+            finally:
+                conn.close()
+        return self.get_device(device_key)
+
+    def delete_device(self, device_key: str) -> bool:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT model, device_id FROM devices WHERE device_key = ?;",
+                    (device_key,),
+                ).fetchone()
+                if not row:
+                    return False
+                with conn:
+                    conn.execute(
+                        "DELETE FROM signals WHERE model = ? AND device_id = ?;",
+                        (row["model"], row["device_id"]),
+                    )
+                    conn.execute("DELETE FROM devices WHERE device_key = ?;", (device_key,))
+                return True
+            finally:
+                conn.close()
+
+    def get_summary_counts(self) -> Dict[str, int]:
+        today_prefix = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                total_signals = conn.execute("SELECT COUNT(*) AS c FROM signals;").fetchone()["c"]
+                signals_today = conn.execute(
+                    "SELECT COUNT(*) AS c FROM signals WHERE timestamp LIKE ?;",
+                    (f"{today_prefix}%",),
+                ).fetchone()["c"]
+                total_devices = conn.execute("SELECT COUNT(*) AS c FROM devices;").fetchone()["c"]
+                active_devices = conn.execute(
+                    "SELECT COUNT(*) AS c FROM devices WHERE ignored = 0;"
+                ).fetchone()["c"]
+                ignored_devices = conn.execute(
+                    "SELECT COUNT(*) AS c FROM devices WHERE ignored = 1;"
+                ).fetchone()["c"]
+                return {
+                    "total_signals": int(total_signals),
+                    "signals_today": int(signals_today),
+                    "total_devices": int(total_devices),
+                    "active_devices": int(active_devices),
+                    "ignored_devices": int(ignored_devices),
+                }
+            finally:
+                conn.close()
+
+    def get_stats(self) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc).astimezone()
+        since_24h = (now - timedelta(hours=23)).replace(minute=0, second=0, microsecond=0)
+        since_iso = since_24h.isoformat(timespec="seconds")
+
+        hours_map: Dict[str, int] = {}
+        for i in range(24):
+            h_dt = since_24h + timedelta(hours=i)
+            h_key = h_dt.strftime("%Y-%m-%d %H:00")
+            hours_map[h_key] = 0
+
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                rows_24h = conn.execute(
+                    """
+                    SELECT SUBSTR(REPLACE(timestamp, 'T', ' '), 1, 13) || ':00' AS hour_bucket,
+                           COUNT(*) AS cnt
+                    FROM signals
+                    WHERE timestamp >= ?
+                    GROUP BY hour_bucket
+                    ORDER BY hour_bucket ASC;
+                    """,
+                    (since_iso[:13],),
+                ).fetchall()
+
+                for r in rows_24h:
+                    hb = r["hour_bucket"]
+                    if hb in hours_map:
+                        hours_map[hb] = int(r["cnt"])
+
+                hourly_series = [
+                    {"hour": k[-5:], "full_hour": k, "count": v}
+                    for k, v in hours_map.items()
+                ]
+
+                freq_rows = conn.execute(
+                    """
+                    SELECT
+                        SUM(CASE WHEN freq >= 430.0 AND freq <= 440.0 THEN 1 ELSE 0 END) AS band_433,
+                        SUM(CASE WHEN freq >= 860.0 AND freq <= 875.0 THEN 1 ELSE 0 END) AS band_868,
+                        SUM(CASE WHEN freq IS NULL OR NOT ((freq >= 430.0 AND freq <= 440.0) OR (freq >= 860.0 AND freq <= 875.0)) THEN 1 ELSE 0 END) AS band_other
+                    FROM signals;
+                    """
+                ).fetchone()
+
+                band_433 = int(freq_rows["band_433"] or 0)
+                band_868 = int(freq_rows["band_868"] or 0)
+                band_other = int(freq_rows["band_other"] or 0)
+
+                top_devices_rows = conn.execute(
+                    """
+                    SELECT device_key, model, device_id, alias, category, hit_count, last_seen, ignored
+                    FROM devices
+                    WHERE ignored = 0
+                    ORDER BY hit_count DESC, last_seen DESC
+                    LIMIT 10;
+                    """
+                ).fetchall()
+                top_devices = [dict(r) for r in top_devices_rows]
+
+                counts = self.get_summary_counts()
+                return {
+                    **counts,
+                    "hourly_24h": hourly_series,
+                    "frequency_distribution": {
+                        "433_mhz": band_433,
+                        "868_mhz": band_868,
+                        "other": band_other,
+                    },
+                    "top_devices": top_devices,
+                }
+            finally:
+                conn.close()
+
+    def run_retention_cleanup(self, retention_days: Optional[int] = None) -> int:
+        if retention_days is None:
+            settings = self.get_settings()
+            try:
+                retention_days = int(settings.get("retention_days", 30))
+            except (ValueError, TypeError):
+                retention_days = 30
+
+        retention_days = max(1, int(retention_days))
+        cutoff = (datetime.now(timezone.utc).astimezone() - timedelta(days=retention_days)).isoformat(
+            timespec="seconds"
+        )
+
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    cur = conn.execute("DELETE FROM signals WHERE timestamp < ?;", (cutoff,))
+                    deleted = cur.rowcount
+                    conn.execute("PRAGMA optimize;")
+                logger.info("Retention cleanup completed: removed %d signals older than %d days.", deleted, retention_days)
+                return deleted
+            finally:
+                conn.close()
+

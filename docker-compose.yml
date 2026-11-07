@@ -1,0 +1,25 @@
+services:
+  sensor_scanner:
+    image: ghcr.io/minglarn/sensor_scanner:latest
+    # build: .
+    container_name: sensor_scanner
+    restart: unless-stopped
+    ports:
+      - "8085:8080"
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Europe/Stockholm
+      - DEVICE_INDEX=0
+      - DEFAULT_MODE=hop
+      - RTL_GAIN=auto
+      - RTL_PPM=0
+      - MQTT_HOST=192.168.1.121
+      - MQTT_PORT=1883
+      - MQTT_USER=
+      - MQTT_PASS=
+      - MQTT_PREFIX=sensor_scanner
+      - RETENTION_DAYS=30
+
