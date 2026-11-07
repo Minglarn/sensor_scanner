@@ -160,8 +160,13 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
     ):
         return "Weather"
 
-    if any(k in keys for k in ("motion", "contact_open")) or any(
-        w in model_lower for w in ("smoke", "pir", "motion", "alarm", "security", "door", "contact", "dsc", "honeywell")
+    if (
+        any(k in keys for k in ("motion", "contact_open"))
+        or str(payload.get("subtype") or "").strip().lower() in ("motion", "contact", "alarm", "tamper", "smoke")
+        or any(k.startswith("switch") and len(k) > 6 and k[6:].lstrip("_").isdigit() for k in keys)
+        or any(
+            w in model_lower for w in ("smoke", "pir", "motion", "alarm", "security", "door", "contact", "dsc", "honeywell")
+        )
     ):
         return "Security"
 
@@ -216,17 +221,30 @@ def extract_temperature_c(payload: Dict[str, Any]) -> Optional[float]:
     return None
 
 
+def _to_freq_mhz(val: Any) -> Optional[float]:
+    if val is None:
+        return None
+    try:
+        num = float(val)
+        if num > 1_000_000:
+            return num / 1_000_000.0
+        return num
+    except (ValueError, TypeError):
+        return None
+
+
 def extract_freq_mhz(payload: Dict[str, Any]) -> Optional[float]:
-    for key in ("freq", "freq1", "freq2"):
-        val = payload.get(key)
-        if val is not None:
-            try:
-                num = float(val)
-                if num > 1_000_000:
-                    return round(num / 1_000_000.0, 3)
-                return round(num, 3)
-            except (ValueError, TypeError):
-                pass
+    f_main = _to_freq_mhz(payload.get("freq"))
+    if f_main is not None:
+        return round(f_main + 1e-9, 2)
+    f1 = _to_freq_mhz(payload.get("freq1"))
+    f2 = _to_freq_mhz(payload.get("freq2"))
+    if f1 is not None and f2 is not None:
+        return round((f1 + f2) / 2.0 + 1e-9, 2)
+    if f1 is not None:
+        return round(f1 + 1e-9, 2)
+    if f2 is not None:
+        return round(f2 + 1e-9, 2)
     return None
 
 
@@ -487,6 +505,19 @@ class Database:
                                 "UPDATE devices SET category = ?, last_payload = ? WHERE device_key = ?;",
                                 (new_cat if cur_cat in ("Sensor", "Unknown", "") else cur_cat, new_pl_json, r["device_key"]),
                             )
+
+                    # Backfill center frequency for FSK signals with freq1 and freq2
+                    fsk_rows = conn.execute(
+                        "SELECT id, freq, payload FROM signals WHERE payload LIKE '%\"freq1\"%' AND payload LIKE '%\"freq2\"%';"
+                    ).fetchall()
+                    for fr in fsk_rows:
+                        try:
+                            fpl = json.loads(fr["payload"] or "{}")
+                        except Exception:
+                            continue
+                        avg_f = extract_freq_mhz(fpl)
+                        if avg_f is not None and fr["freq"] != avg_f:
+                            conn.execute("UPDATE signals SET freq = ? WHERE id = ?;", (avg_f, fr["id"]))
             finally:
                 conn.close()
         self.apply_tesla_vin_matching()

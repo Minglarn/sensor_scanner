@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.21</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.22</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -3012,20 +3012,63 @@
         addMetric('mdi-water-pump', `${waterVal}${unit}`, 'blue', 'Förbrukning / Vatten', `${waterVal}${unit}`);
       }
 
-      // 10. Switch / Door / Motion
+      // 10. Switch / Door / Motion / Subtype / Raw Hex
+      if (p.subtype !== undefined && p.subtype !== null && String(p.subtype).trim() !== '') {
+        consumed.add('subtype');
+        const subRaw = String(p.subtype).trim();
+        const subLow = subRaw.toLowerCase();
+        if (subLow === 'motion') {
+          addMetric('mdi-motion-sensor', 'Rörelse (motion)', 'amber', 'TYP', 'Rörelse (motion)');
+        } else if (subLow === 'contact') {
+          addMetric('mdi-door-closed-lock', 'Kontakt (contact)', 'indigo', 'TYP', 'Kontakt (contact)');
+        } else if (subLow === 'smoke' || subLow === 'alarm' || subLow === 'tamper') {
+          addMetric('mdi-shield-alert-outline', `Larm (${subRaw})`, 'rose', 'TYP', `Larm (${subRaw})`);
+        } else {
+          addMetric('mdi-shield-outline', `Typ: ${subRaw}`, 'indigo', 'TYP', subRaw);
+        }
+      }
+
       if (p.motion !== undefined || p.contact_open !== undefined) {
         consumed.add('motion');
         consumed.add('contact_open');
         const label = p.motion !== undefined ? `Rörelse: ${p.motion}` : `Kontakt: ${p.contact_open ? 'ÖPPEN' : 'STÄNGD'}`;
         addMetric('mdi-motion-sensor', label, 'indigo', 'Säkerhet / Kontakt', label);
-      } else {
-        const swVal = p.state ?? p.cmd ?? p.button;
-        if (swVal !== undefined && swVal !== null) {
-          consumed.add('state');
-          consumed.add('cmd');
-          consumed.add('button');
-          addMetric('mdi-toggle-switch-outline', `${swVal}`, 'indigo', 'Switch / Status', String(swVal));
-        }
+      }
+
+      const switchKeys = Object.keys(p)
+        .filter((k) => /^switch_?\d+$/i.test(k))
+        .sort((a, b) => a.localeCompare(b, 'sv', { numeric: true }));
+
+      for (const swKey of switchKeys) {
+        const rawSw = p[swKey];
+        if (rawSw === undefined || rawSw === null || rawSw === '') continue;
+        consumed.add(swKey);
+        const numMatch = swKey.match(/(\d+)/);
+        const swNum = numMatch ? numMatch[1] : swKey;
+        const swVal = String(rawSw).trim().toUpperCase();
+        const isOpen = swVal === 'OPEN' || swVal === 'ON' || swVal === '1' || swVal === 'TRUE';
+        addMetric(
+          isOpen ? 'mdi-door-open' : 'mdi-door-closed',
+          `SW${swNum}: ${swVal}`,
+          isOpen ? 'amber' : 'emerald',
+          `SWITCH ${swNum}`,
+          swVal
+        );
+      }
+
+      const swVal = p.state ?? p.cmd ?? p.button;
+      if (swVal !== undefined && swVal !== null) {
+        consumed.add('state');
+        consumed.add('cmd');
+        consumed.add('button');
+        addMetric('mdi-toggle-switch-outline', `${swVal}`, 'indigo', 'Switch / Status', String(swVal));
+      }
+
+      if (p.raw_message !== undefined && p.raw_message !== null && String(p.raw_message).trim() !== '') {
+        consumed.add('raw_message');
+        const rawStr = String(p.raw_message).trim();
+        const rawHex = rawStr.startsWith('0x') || rawStr.startsWith('0X') ? rawStr : `0x${rawStr}`;
+        addMetric('mdi-hexadecimal', `RAW: ${rawHex}`, 'neutral', 'RAW', rawHex);
       }
 
       // 11. Battery (battery_pct, battery_ok, battery_low, battery_mV, battery_V)
@@ -3144,19 +3187,60 @@
 
     function extractRadioMetadata(sig, payload) {
       const p = payload && typeof payload === 'object' ? payload : {};
-      let freqMHz = sig && sig.freq ? Number(sig.freq) : null;
-      let freq1MHz = p.freq1 !== undefined ? Number(p.freq1) : null;
-      let freq2MHz = p.freq2 !== undefined ? Number(p.freq2) : null;
+      let freq1MHz = p.freq1 !== undefined && p.freq1 !== null ? Number(p.freq1) : null;
+      let freq2MHz = p.freq2 !== undefined && p.freq2 !== null ? Number(p.freq2) : null;
       if (freq1MHz && freq1MHz > 1000000) freq1MHz = freq1MHz / 1000000;
       if (freq2MHz && freq2MHz > 1000000) freq2MHz = freq2MHz / 1000000;
-      if (!freqMHz && p.freq !== undefined) freqMHz = Number(p.freq);
-      if (!freqMHz && freq1MHz) freqMHz = freq1MHz;
+
+      let freqMHz = null;
+      if (p.freq !== undefined && p.freq !== null) {
+        freqMHz = Number(p.freq);
+      } else if (freq1MHz !== null && freq2MHz !== null) {
+        freqMHz = Number(((freq1MHz + freq2MHz) / 2).toFixed(2));
+      } else if (sig && sig.freq !== undefined && sig.freq !== null) {
+        freqMHz = Number(sig.freq);
+      } else if (freq1MHz !== null) {
+        freqMHz = freq1MHz;
+      } else if (freq2MHz !== null) {
+        freqMHz = freq2MHz;
+      }
       if (freqMHz && freqMHz > 1000000) freqMHz = freqMHz / 1000000;
 
       const mod = p.mod ? String(p.mod).toUpperCase() : (freq1MHz && freq2MHz ? 'FSK' : '');
-      const isBle = mod === 'BLE' || (freqMHz !== null && freqMHz >= 2400);
-      const proto = p.protocol !== undefined ? `#${p.protocol}` : '';
+      const isBle = mod === 'BLE' || (freqMHz !== null && freqMHz >= 2400) || Boolean(p.mac);
+      const protoNum = p.protocol !== undefined && p.protocol !== null && String(p.protocol).trim() !== ''
+        ? String(p.protocol).trim()
+        : '';
+      const proto = protoNum ? `#${protoNum}` : '';
       const mic = p.mic ? String(p.mic) : '';
+
+      let bleProto = '';
+      if (isBle) {
+        const modelStr = String((sig && sig.model) || p.model || '');
+        if (modelStr === 'Tesla-Vehicle-BLE' || p.beacon_hash) {
+          bleProto = 'VCSEC';
+        } else if (modelStr.includes('Vehicle-BLE') || p.vehicle_status) {
+          bleProto = 'Digital Key';
+        } else if (modelStr === 'iBeacon-BLE' || p.ibeacon_uuid || p.apple_type === 'iBeacon') {
+          bleProto = 'iBeacon';
+        } else if (modelStr === 'ATC-Thermometer') {
+          bleProto = 'ATC/PVVX';
+        } else if (modelStr === 'BTHome-BLE' || (p.ble_service_name && String(p.ble_service_name).includes('BTHome'))) {
+          bleProto = 'BTHome';
+        } else if (modelStr === 'Xiaomi-MiBeacon') {
+          bleProto = 'MiBeacon';
+        } else if (modelStr === 'RuuviTag-BLE') {
+          bleProto = 'Ruuvi';
+        } else if (modelStr === 'Govee-BLE') {
+          bleProto = 'Govee';
+        } else if (modelStr === 'Plejd-Mesh' || p.local_name === 'P mesh') {
+          bleProto = 'BLE Mesh';
+        } else if (p.apple_type) {
+          bleProto = String(p.apple_type);
+        } else {
+          bleProto = 'BLE Adv';
+        }
+      }
 
       const freqLabel = isBle
         ? '2.4 GHz (BLE)'
@@ -3167,7 +3251,7 @@
           ? `${freq1MHz.toFixed(2)} / ${freq2MHz.toFixed(2)} MHz`
           : (freqMHz ? `${freqMHz.toFixed(2)} MHz` : '-'));
 
-      return { freqMHz, freq1MHz, freq2MHz, mod, isBle, proto, mic, freqLabel, dualFreqLabel };
+      return { freqMHz, freq1MHz, freq2MHz, mod, isBle, protoNum, proto, bleProto, mic, freqLabel, dualFreqLabel };
     }
 
     // -----------------------------------------------------------------------
@@ -4402,9 +4486,11 @@
         : (radio.freqMHz
           ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"><i class="mdi mdi-sine-wave text-xs"></i>${escapeHtml(radio.freqLabel)}</span>`
           : '');
-      const protoBadge = radio.proto
-        ? `<span class="px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/70" title="rtl_433 Protokoll">${escapeHtml(radio.proto)}</span>`
-        : '';
+      const protoBadge = radio.protoNum
+        ? `<span class="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono text-[10px] font-semibold" title="rtl_433 Protokoll #${escapeHtml(radio.protoNum)}">Proto #${escapeHtml(radio.protoNum)}</span>`
+        : (radio.isBle && radio.bleProto
+          ? `<span class="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono text-[10px] font-semibold" title="BLE Protokoll">Proto: ${escapeHtml(radio.bleProto)}</span>`
+          : '');
 
       const exactTime = formatTimestamp(sig.timestamp);
       const timeInnerHtml = renderSignalTimeInnerHtml(sig.timestamp, freshUntilMs);
@@ -4487,21 +4573,40 @@
     }
 
     function renderTableRadioCellHtml(radio) {
-      const freqMain = radio.isBle
-        ? '2.4 GHz (BLE)'
-        : (radio.freqMHz ? `${radio.freqMHz.toFixed(2)} MHz` : (radio.mod || '-'));
-      const subParts = [];
-      if (!radio.isBle && radio.mod) subParts.push(radio.mod);
-      if (radio.proto) subParts.push(radio.proto);
-      const subLine = subParts.join(' • ');
+      if (radio.isBle) {
+        return `
+          <div class="flex flex-col leading-tight">
+            <div class="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+              <i class="mdi mdi-bluetooth text-indigo-500"></i>
+              <span>2.4 GHz (BLE)</span>
+            </div>
+            <div class="text-[11px] text-slate-400 dark:text-slate-500 pl-4 mt-0.5 whitespace-nowrap">Proto: ${escapeHtml(radio.bleProto || 'BLE Adv')}</div>
+          </div>
+        `;
+      }
+
+      const freqMain = radio.freqMHz ? `${radio.freqMHz.toFixed(2)} MHz` : (radio.mod || '-');
+      const subHtmlParts = [];
+      if (radio.mod) {
+        subHtmlParts.push(`<span>${escapeHtml(radio.mod)}</span>`);
+      }
+      if (radio.protoNum) {
+        subHtmlParts.push(
+          `<span class="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono text-[10px] font-semibold">Proto #${escapeHtml(radio.protoNum)}</span>`
+        );
+      }
+      if (radio.mic) {
+        subHtmlParts.push(`<span>${escapeHtml(radio.mic)}</span>`);
+      }
+      const subLineHtml = subHtmlParts.join('<span class="opacity-60">•</span>');
 
       return `
         <div class="flex flex-col leading-tight">
           <div class="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
-            <i class="mdi ${radio.isBle ? 'mdi-bluetooth text-indigo-500' : 'mdi-sine-wave text-slate-400'}"></i>
+            <i class="mdi mdi-sine-wave text-slate-400"></i>
             <span>${escapeHtml(freqMain)}</span>
           </div>
-          ${subLine ? `<div class="text-[11px] text-slate-400 dark:text-slate-500 pl-4 mt-0.5 whitespace-nowrap">${escapeHtml(subLine)}</div>` : ''}
+          ${subLineHtml ? `<div class="inline-flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 pl-4 mt-0.5 whitespace-nowrap">${subLineHtml}</div>` : ''}
         </div>
       `;
     }
@@ -4815,28 +4920,51 @@
       const analyzed = extractAndFormatMetrics(payload, sig);
       const radio = extractRadioMetadata(sig, payload);
 
-      const renderChip = (icon, cls, label, primary, secondary = '') => `
-        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs whitespace-nowrap shadow-2xs ${cls}">
-          <i class="mdi ${icon} text-base opacity-80"></i>
-          <span class="font-medium opacity-75 uppercase tracking-wider text-[10px]">${escapeHtml(label)}:</span>
-          <span class="font-bold text-xs font-mono">${escapeHtml(primary)}</span>
-          ${secondary ? `<span class="text-[11px] opacity-65 font-mono border-l pl-2 border-current/20">${escapeHtml(secondary)}</span>` : ''}
-        </div>
-      `;
+      const renderChip = (icon, cls, label, primary, secondary = '') => {
+        const secSegments = Array.isArray(secondary)
+          ? secondary.filter(Boolean)
+          : (secondary ? String(secondary).split(' | ').filter(Boolean) : []);
+        const secHtml = secSegments
+          .map((seg) => `<span class="text-[11px] opacity-65 font-mono border-l pl-2 border-current/20">${escapeHtml(seg)}</span>`)
+          .join('');
+        return `
+          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs whitespace-nowrap shadow-2xs ${cls}">
+            <i class="mdi ${icon} text-base opacity-80"></i>
+            <span class="font-medium opacity-75 uppercase tracking-wider text-[10px]">${escapeHtml(label)}:</span>
+            <span class="font-bold text-xs font-mono">${escapeHtml(primary)}</span>
+            ${secHtml}
+          </div>
+        `;
+      };
 
       const kpiCardsHtml = analyzed.kpis.map((k) =>
         renderChip(k.icon, k.cls, k.label, k.primary, k.secondary)
       );
+
+      const indigoChipCls = 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30';
+      if (radio.protoNum) {
+        const protoPrimary = `#${radio.protoNum} (rtl_433)`;
+        const protoSec = radio.mic ? [`MIC: ${radio.mic}`] : [];
+        kpiCardsHtml.push(
+          renderChip('mdi-code-tags', indigoChipCls, 'PROTOKOLL', protoPrimary, protoSec)
+        );
+      } else if (radio.isBle) {
+        kpiCardsHtml.push(
+          renderChip('mdi-code-tags', indigoChipCls, 'PROTOKOLL', radio.bleProto || 'BLE Adv', ['BLE 2.4 GHz'])
+        );
+      }
 
       const radioPrimary = radio.isBle
         ? '2.4 GHz (2402 MHz)'
         : (radio.freq1MHz && radio.freq2MHz
           ? `${radio.freq1MHz.toFixed(2)} / ${radio.freq2MHz.toFixed(2)} MHz`
           : (radio.freqMHz ? `${radio.freqMHz.toFixed(2)} MHz` : '-'));
-      const radioSecondary = [radio.mod, radio.proto, radio.mic].filter(Boolean).join(' ') || 'RF';
+      const radioSecondary = radio.isBle
+        ? ['BLE']
+        : [`Mod: ${radio.mod || (radio.freq1MHz && radio.freq2MHz ? 'FSK' : 'ASK')}`];
       const skyChipCls = 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30';
       kpiCardsHtml.push(
-        renderChip('mdi-sine-wave', skyChipCls, 'RADIO', radioPrimary, radioSecondary)
+        renderChip('mdi-access-point', skyChipCls, 'RADIO', radioPrimary, radioSecondary)
       );
 
       if (payload.rssi !== undefined && payload.rssi !== null) {
@@ -4844,7 +4972,7 @@
         const rssiNum = Number(payload.rssi);
         const rssiVal = isBleSig ? `${rssiNum.toFixed(0)} dBm RSSI` : `${rssiNum.toFixed(1)} dB RSSI`;
         const snrVal = payload.snr !== undefined && payload.snr !== null ? `SNR: ${Number(payload.snr).toFixed(1)} dB` : '';
-        const noiseVal = payload.noise !== undefined && payload.noise !== null ? `Brus: ${Number(payload.noise).toFixed(1)} dB` : '';
+        const noiseVal = payload.noise !== undefined && payload.noise !== null ? `Noise: ${Number(payload.noise).toFixed(1)} dB` : '';
         const txPowerVal = payload.tx_power !== undefined && payload.tx_power !== null ? `TX: ${payload.tx_power} dBm` : '';
         const subParts = [snrVal, noiseVal, txPowerVal].filter(Boolean);
 
@@ -4879,7 +5007,7 @@
         }
 
         kpiCardsHtml.push(
-          renderChip(sigIcon, sigChipCls, 'SIGNAL', rssiVal, subParts.join(' • '))
+          renderChip(sigIcon, sigChipCls, 'SIGNAL', rssiVal, subParts)
         );
       }
 
