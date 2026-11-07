@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -9,6 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger("sensor_scanner.database")
 
 DB_PATH = os.environ.get("DB_PATH", "/app/data/sensor_scanner.db")
+TESLA_VERIFIED_ALIAS = "Min Tesla (VIN-verifierad)"
+
+
+def compute_tesla_ble_prefix(tesla_vin: Optional[str]) -> str:
+    vin_clean = (tesla_vin or "").strip().upper()
+    if len(vin_clean) < 5:
+        return ""
+    vin_hash = hashlib.sha1(vin_clean.encode("utf-8")).hexdigest()[:16].lower()
+    return f"S{vin_hash}"
 
 
 def _parse_bool_env(val: str, default: str = "0") -> str:
@@ -36,6 +46,7 @@ def get_default_settings() -> Dict[str, str]:
         "ble_enabled": _parse_bool_env(os.environ.get("BLE_ENABLED", "true"), "1"),
         "ble_mode": ble_mode_env,
         "ble_debounce_seconds": os.environ.get("BLE_DEBOUNCE_SECONDS", "15") or "15",
+        "tesla_vin": (os.environ.get("TESLA_VIN", "") or "").strip().upper(),
         "retention_days": os.environ.get("RETENTION_DAYS", "30"),
         "mqtt_enabled": _parse_bool_env(os.environ.get("MQTT_ENABLED", "1"), "1"),
         "mqtt_host": os.environ.get("MQTT_HOST", "192.168.1.121"),
@@ -81,7 +92,7 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
     if (
         "vehicle_status" in keys
         or "beacon_hash" in keys
-        or any(w in model_lower for w in ("tesla", "s3xy", "enhauto", "vehicle"))
+        or any(w in model_lower for w in ("tesla", "zeekr", "polestar", "volvo", "bmw", "s3xy", "enhauto", "vehicle"))
     ):
         return "Vehicle"
 
@@ -430,6 +441,14 @@ class Database:
                         "UPDATE signals SET model = 'ATC-Thermometer' WHERE model IN ('ATC-BLE', 'ATC-Thermo-BLE');"
                     )
 
+                    # Remove any noise/truncated BLE devices named "4" (or 1-char local_name) without user alias
+                    conn.execute(
+                        "DELETE FROM devices WHERE model = 'BLE-4' AND (alias IS NULL OR alias = '');"
+                    )
+                    conn.execute(
+                        "DELETE FROM signals WHERE model = 'BLE-4';"
+                    )
+
                     # Auto-categorize existing devices that still have generic 'Sensor' or 'Unknown' category
                     existing_Rows = conn.execute(
                         "SELECT device_key, model, category, last_payload FROM devices;"
@@ -448,6 +467,81 @@ class Database:
                                 "UPDATE devices SET category = ?, last_payload = ? WHERE device_key = ?;",
                                 (new_cat if cur_cat in ("Sensor", "Unknown", "") else cur_cat, new_pl_json, r["device_key"]),
                             )
+            finally:
+                conn.close()
+        self.apply_tesla_vin_matching()
+
+    def apply_tesla_vin_matching(self, tesla_vin: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Matches existing Tesla-Vehicle-BLE devices in SQLite against the configured Tesla VIN
+        (SHA-1 prefix 'S' + 16 hex chars). Automatically sets alias = 'Min Tesla (VIN-verifierad)'
+        if the device has no custom alias, and updates 'is_own_vehicle' in last_payload.
+        """
+        with self._lock:
+            if tesla_vin is None:
+                settings = self.get_settings()
+                tesla_vin = settings.get("tesla_vin", "")
+            expected_prefix = compute_tesla_ble_prefix(tesla_vin)
+            updated_list: List[Dict[str, Any]] = []
+
+            conn = self._get_conn()
+            try:
+                with conn:
+                    rows = conn.execute(
+                        "SELECT * FROM devices WHERE model = 'Tesla-Vehicle-BLE';"
+                    ).fetchall()
+                    for row in rows:
+                        dev_key = row["device_key"]
+                        dev_id = str(row["device_id"] or "")
+                        cur_alias = str(row["alias"] or "").strip()
+                        try:
+                            pl = json.loads(row["last_payload"] or "{}")
+                        except Exception:
+                            pl = {}
+
+                        b_hash = str(pl.get("beacon_hash") or pl.get("local_name") or dev_id)
+                        is_match = bool(
+                            expected_prefix
+                            and (
+                                dev_id.lower().startswith(expected_prefix.lower())
+                                or b_hash.lower().startswith(expected_prefix.lower())
+                            )
+                        )
+                        pl["is_own_vehicle"] = is_match
+                        pl["vehicle_status"] = "Verifierad Egen Tesla" if is_match else "Annan Tesla i närheten"
+
+                        new_alias = cur_alias
+                        new_is_new = int(row["is_new"] or 0)
+                        if is_match:
+                            if not cur_alias:
+                                new_alias = TESLA_VERIFIED_ALIAS
+                            new_is_new = 0
+                        else:
+                            if cur_alias == TESLA_VERIFIED_ALIAS:
+                                new_alias = ""
+
+                        new_pl_str = json.dumps(pl, ensure_ascii=False)
+                        if new_alias != cur_alias or new_pl_str != row["last_payload"] or new_is_new != int(row["is_new"] or 0):
+                            conn.execute(
+                                """
+                                UPDATE devices
+                                SET alias = ?, is_new = ?, category = 'Vehicle', last_payload = ?
+                                WHERE device_key = ?;
+                                """,
+                                (new_alias, new_is_new, new_pl_str, dev_key),
+                            )
+                            conn.execute(
+                                "UPDATE signals SET payload = ? WHERE model = 'Tesla-Vehicle-BLE' AND device_id = ?;",
+                                (new_pl_str, dev_id),
+                            )
+                            u_row = conn.execute(
+                                "SELECT * FROM devices WHERE device_key = ?;", (dev_key,)
+                            ).fetchone()
+                            if u_row:
+                                d_dict = dict(u_row)
+                                d_dict["last_payload"] = pl
+                                updated_list.append(d_dict)
+                return updated_list
             finally:
                 conn.close()
 
@@ -531,23 +625,30 @@ class Database:
                         "SELECT * FROM devices WHERE device_key = ?;", (device_key,)
                     ).fetchone()
 
+                    auto_alias = ""
+                    if model == "Tesla-Vehicle-BLE" and payload.get("is_own_vehicle") is True:
+                        auto_alias = TESLA_VERIFIED_ALIAS
+
                     is_brand_new = existing_dev is None
                     if is_brand_new:
+                        init_is_new = 0 if auto_alias else 1
                         conn.execute(
                             """
                             INSERT INTO devices (
                                 device_key, model, device_id, alias, group_name, category,
                                 mqtt_enabled, ha_discovery, ignored, is_new, first_seen, last_seen, hit_count, last_payload
-                            ) VALUES (?, ?, ?, '', '', ?, 1, 0, 0, 1, ?, ?, 1, ?);
+                            ) VALUES (?, ?, ?, ?, '', ?, 1, 0, 0, ?, ?, ?, 1, ?);
                             """,
-                            (device_key, model, device_id, inferred_cat, timestamp, timestamp, raw_json),
+                            (device_key, model, device_id, auto_alias, inferred_cat, init_is_new, timestamp, timestamp, raw_json),
                         )
                     else:
                         cur_cat = existing_dev["category"] or "Sensor"
                         updated_cat = inferred_cat if cur_cat in ("Sensor", "Unknown", "") and inferred_cat != "Sensor" else cur_cat
                         next_hits = int(existing_dev["hit_count"] or 0) + 1
                         cur_is_new = int(existing_dev["is_new"] or 0)
-                        has_alias = bool(existing_dev["alias"] and str(existing_dev["alias"]).strip())
+                        cur_alias = str(existing_dev["alias"] or "").strip()
+                        updated_alias = cur_alias or auto_alias
+                        has_alias = bool(updated_alias)
                         has_group = bool(existing_dev["group_name"] and str(existing_dev["group_name"]).strip())
                         if (
                             cur_is_new == 0
@@ -564,7 +665,8 @@ class Database:
                         conn.execute(
                             """
                             UPDATE devices
-                            SET category = ?,
+                            SET alias = ?,
+                                category = ?,
                                 last_seen = ?,
                                 hit_count = hit_count + 1,
                                 is_new = CASE
@@ -577,7 +679,7 @@ class Database:
                                 last_payload = ?
                             WHERE device_key = ?;
                             """,
-                            (updated_cat, timestamp, next_is_new, raw_json, device_key),
+                            (updated_alias, updated_cat, timestamp, next_is_new, raw_json, device_key),
                         )
 
                     dev_row = conn.execute(

@@ -235,8 +235,10 @@ def _log_signal_stdout(signal_rec: Dict[str, Any], device_rec: Dict[str, Any]) -
         metrics.append(f"Batt: {int(round(float(bat_pct)))}%")
     elif signal_rec.get("battery_ok") is not None:
         metrics.append(f"Batt: {'OK' if int(signal_rec['battery_ok']) == 1 else 'LOW'}")
-    if model == "Tesla-Vehicle-BLE" or payload.get("vehicle_status"):
-        metrics.append("Tesla Närvarande")
+    if model == "Tesla-Vehicle-BLE":
+        metrics.append("Verifierad Egen Tesla" if payload.get("is_own_vehicle") is True else "Annan Tesla i närheten")
+    elif payload.get("vehicle_status"):
+        metrics.append(str(payload.get("vehicle_status")))
     if not metrics and not is_ble:
         state_val = payload.get("state") or payload.get("cmd") or payload.get("button")
         if state_val is not None:
@@ -460,6 +462,7 @@ class ControlRequest(BaseModel):
     ble_enabled: Optional[str] = None
     ble_mode: Optional[str] = None
     ble_debounce_seconds: Optional[str] = None
+    tesla_vin: Optional[str] = None
 
 
 class DeviceUpdateRequest(BaseModel):
@@ -494,6 +497,7 @@ class SettingsUpdateRequest(BaseModel):
     ble_enabled: Optional[str] = None
     ble_mode: Optional[str] = None
     ble_debounce_seconds: Optional[str] = None
+    tesla_vin: Optional[str] = None
     retention_days: Optional[str] = None
     mqtt_enabled: Optional[str] = None
     mqtt_host: Optional[str] = None
@@ -769,7 +773,16 @@ async def api_get_settings():
 async def api_update_settings(req: SettingsUpdateRequest):
     old_settings = await asyncio.to_thread(db.get_settings)
     payload = {k: v for k, v in req.model_dump().items() if v is not None}
+    if "tesla_vin" in payload:
+        payload["tesla_vin"] = str(payload["tesla_vin"] or "").strip().upper()
     new_settings = await asyncio.to_thread(db.update_settings, payload)
+
+    if old_settings.get("tesla_vin") != new_settings.get("tesla_vin"):
+        updated_teslas = await asyncio.to_thread(
+            db.apply_tesla_vin_matching, new_settings.get("tesla_vin", "")
+        )
+        if updated_teslas:
+            await ws_manager.broadcast({"type": "devices_bulk_updated", "devices": updated_teslas})
 
     sdr_keys = ("device_index", "mode", "custom_freqs", "custom_sample_rate", "hop_interval", "gain", "ppm")
     ble_keys = ("ble_enabled", "ble_mode", "ble_debounce_seconds")

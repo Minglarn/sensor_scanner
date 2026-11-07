@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -7,7 +8,7 @@ import struct
 import time
 from collections import deque
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Deque, Dict, Optional, Set, Tuple
+from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("sensor_scanner.ble_manager")
 
@@ -58,6 +59,7 @@ BLE_COMPANY_IDS: Dict[int, str] = {
     0x058E: "Meta",
     0x0590: "Pur3 / Espruino",
     0x060F: "Signify / Philips Hue",
+    0x06FE: "Zeekr / Geely",
     0x0768: "Peloton",
     0x0822: "Shelly / Allterco",
     0x0953: "IKEA of Sweden",
@@ -65,8 +67,126 @@ BLE_COMPANY_IDS: Dict[int, str] = {
     0xEC88: "Govee",
 }
 
+# Common 16-bit Bluetooth SIG & Vendor Service UUIDs
+BLE_SERVICE_UUIDS: Dict[str, str] = {
+    "1800": "Generic Access",
+    "1801": "Generic Attribute",
+    "180A": "Device Information",
+    "180F": "Battery Service",
+    "1812": "HID (Human Interface Device)",
+    "181A": "Environmental Sensing",
+    "181C": "BTHome v1 / User Data",
+    "0211": "Tesla VCSEC Service",
+    "1122": "Tesla Vehicle BLE Key",
+    "FCD2": "BTHome v2",
+    "FD44": "Apple FindMy Network",
+    "FD5A": "Samsung SmartThings Find",
+    "FD6F": "Exposure Notification",
+    "FDFD": "Zeekr/Geely Digital Key",
+    "FE78": "Garmin BLE Service",
+    "FE95": "Xiaomi MiBeacon",
+    "FE9F": "Google Fast Pair",
+    "FEAA": "Google Eddystone",
+    "FEAF": "Nest",
+    "FEED": "Tile Tracker",
+    "FEF3": "Google Nearby Share",
+}
+
+TESLA_NODE_NAMES: Dict[str, str] = {
+    "C": "Fordon / VCSEC (C)",
+    "D": "Förardörr (D)",
+    "P": "Passagerardörr (P)",
+    "R": "Baklucka (R)",
+    "F": "Frunk (F)",
+    "B": "Kaross (B)",
+}
+
 TESLA_BEACON_RE = re.compile(r"^S[0-9a-fA-F]{15,17}[A-Za-z0-9]$")
 MAC_LIKE_NAME_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
+
+
+def compute_tesla_ble_prefix(tesla_vin: Optional[str]) -> str:
+    """
+    Computes the 17-character Tesla BLE Beacon prefix ('S' + first 16 hex chars of SHA-1(VIN)).
+    """
+    vin_clean = (tesla_vin or "").strip().upper()
+    if len(vin_clean) < 5:
+        return ""
+    vin_hash = hashlib.sha1(vin_clean.encode("utf-8")).hexdigest()[:16].lower()
+    return f"S{vin_hash}"
+
+
+def analyze_mac_type(mac: str) -> str:
+    """
+    Analyzes the first byte of a BLE MAC address to classify its Bluetooth address type.
+    """
+    try:
+        first_byte = int(mac.split(":")[0], 16)
+        top_two = first_byte & 0xC0
+        is_locally_administered = bool(first_byte & 0x02)
+        if top_two in (0x40, 0x00) and is_locally_administered:
+            return "Random Private (Roterande)"
+        if top_two == 0xC0 and is_locally_administered:
+            return "Random Static"
+        if not is_locally_administered:
+            return "IEEE Public (Fast)"
+        return "Random Private (Roterande)"
+    except Exception:
+        return "IEEE Public (Fast)"
+
+
+def decode_apple_continuity(data: bytes) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Decodes Apple Continuity (Company ID 0x004C) sub-type byte into (apple_type, suggested_model).
+    """
+    if not data:
+        return None, None
+    sub_type = data[:1].hex().upper()
+    if sub_type == "01":
+        return "iOS Background App (Overflow)", None
+    if sub_type == "02":
+        return "iBeacon", "iBeacon-BLE"
+    if sub_type == "05":
+        return "Apple AirDrop", "Apple-AirDrop"
+    if sub_type == "07":
+        return "AirPods / Beats", "Apple-AirPods"
+    if sub_type in ("09", "0A"):
+        return "AirPlay / Apple TV", "Apple-AirPlay"
+    if sub_type == "0C":
+        return "Apple Handoff", None
+    if sub_type == "10":
+        return "Apple Nearby (iPhone/iPad/Mac)", None
+    if sub_type == "12":
+        return "Apple FindMy / AirTag", "Apple-AirTag"
+    return f"Apple Continuity (0x{sub_type})", None
+
+
+def lookup_ble_service_names(srv_uuids: List[str], srv_data: Dict[str, bytes]) -> Optional[str]:
+    """
+    Maps 16-bit or 128-bit BLE Service UUIDs to human-readable service descriptions.
+    """
+    found: List[str] = []
+    all_uuids = list(srv_uuids or []) + list((srv_data or {}).keys())
+    for raw_u in all_uuids:
+        u = str(raw_u).strip().upper()
+        short_hex = ""
+        if len(u) == 4:
+            short_hex = u
+        elif u.startswith("0X") and len(u) == 6:
+            short_hex = u[2:]
+        elif "-" in u:
+            first_seg = u.split("-")[0]
+            if len(first_seg) == 8 and first_seg.startswith("0000"):
+                short_hex = first_seg[4:]
+        if short_hex and short_hex in BLE_SERVICE_UUIDS:
+            label = f"{BLE_SERVICE_UUIDS[short_hex]} (0x{short_hex})"
+            if label not in found:
+                found.append(label)
+        elif "00000211-B2D1-43F0-9B88-960CEBF8B91E" in u:
+            label = "Tesla VCSEC Service (0x0211)"
+            if label not in found:
+                found.append(label)
+    return ", ".join(found) if found else None
 
 
 def is_mac_like_name(name: Optional[str]) -> bool:
@@ -482,6 +602,9 @@ class BLEManager:
         except (ValueError, TypeError):
             debounce_sec = 15.0
 
+        tesla_vin = str(settings.get("tesla_vin", "") or "").strip().upper()
+        tesla_prefix = compute_tesla_ble_prefix(tesla_vin)
+
         return {
             "enabled": enabled,
             "running": self._ble_status == "scanning",
@@ -493,6 +616,7 @@ class BLEManager:
             "discovered_count": len(self._discovered_devices),
             "last_error": self._last_error,
             "theengs_available": THEENGS_AVAILABLE,
+            "tesla_expected_prefix": tesla_prefix,
             "log_tail": list(self._log_tail),
         }
 
@@ -625,16 +749,7 @@ class BLEManager:
         if not mac:
             return
 
-        raw_name = getattr(adv, "local_name", None) or getattr(device, "name", None) or ""
-        local_name = str(raw_name).strip() if raw_name else ""
-        if is_mac_like_name(local_name):
-            local_name = ""
-
-        cached_state = self._device_state_cache.setdefault(mac, {})
-        if local_name:
-            cached_state["local_name"] = local_name
-        elif cached_state.get("local_name"):
-            local_name = str(cached_state["local_name"])
+        mac_type = analyze_mac_type(mac)
 
         rssi = getattr(adv, "rssi", None)
         tx_power = getattr(adv, "tx_power", None)
@@ -642,12 +757,45 @@ class BLEManager:
         srv_data: Dict[str, bytes] = getattr(adv, "service_data", {}) or {}
         srv_uuids = list(getattr(adv, "service_uuids", []) or [])
 
+        apple_type: Optional[str] = None
+        apple_model: Optional[str] = None
+        if 0x004C in mfg_data:
+            apple_type, apple_model = decode_apple_continuity(bytes(mfg_data[0x004C]))
+
+        raw_name = getattr(adv, "local_name", None) or getattr(device, "name", None) or ""
+        local_name = str(raw_name).strip() if raw_name else ""
+        if is_mac_like_name(local_name):
+            local_name = ""
+
+        # Filter truncated/garbage 1-2 character names (e.g. "4") on rotating private MACs or Apple Overflow
+        if len(local_name) <= 2 and (
+            mac_type == "Random Private (Roterande)"
+            or apple_type == "iOS Background App (Overflow)"
+            or 0x004C in mfg_data
+        ):
+            local_name = ""
+
+        cached_state = self._device_state_cache.setdefault(mac, {})
+        if local_name:
+            cached_state["local_name"] = local_name
+        elif cached_state.get("local_name"):
+            cached_ln = str(cached_state["local_name"])
+            if len(cached_ln) <= 2 and (
+                mac_type == "Random Private (Roterande)"
+                or apple_type == "iOS Background App (Overflow)"
+                or 0x004C in mfg_data
+            ):
+                cached_state.pop("local_name", None)
+            else:
+                local_name = cached_ln
+
         now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
         payload: Dict[str, Any] = {
             "time": now_iso,
             "freq": 2402.0,
             "mod": "BLE",
             "mac": mac,
+            "mac_type": mac_type,
             "rssi": rssi,
         }
 
@@ -655,9 +803,15 @@ class BLEManager:
             payload["local_name"] = local_name
         if tx_power is not None:
             payload["tx_power"] = tx_power
+        if apple_type:
+            payload["apple_type"] = apple_type
 
         if srv_uuids:
             payload["service_uuids"] = srv_uuids
+
+        ble_service_name = lookup_ble_service_names(srv_uuids, srv_data)
+        if ble_service_name:
+            payload["ble_service_name"] = ble_service_name
 
         mfg_hex_map: Dict[str, str] = {}
         primary_company_id: Optional[int] = None
@@ -818,21 +972,66 @@ class BLEManager:
         device_id = mac.replace(":", "")
         name_upper = local_name.upper()
         uuids_lower = [u.lower() for u in srv_uuids]
+        srv_data_uuids_lower = [su.lower() for su in srv_data.keys()]
 
-        # A. Tesla Vehicles (^S[0-9a-fA-F]{16}[A-Z]$ or Tesla BLE Service UUID 0x1122 / b2d1-43f0)
+        # A. Tesla Vehicles (^S[0-9a-fA-F]{16}[CDPRFB]$ or Tesla BLE Service UUID 0x1122 / b2d1-43f0)
         is_tesla_name = bool(local_name and TESLA_BEACON_RE.match(local_name))
-        is_tesla_uuid = any("00000211-b2d1-43f0-9b88-960cebf8b91e" in u or "00001122-" in u for u in uuids_lower)
+        is_tesla_uuid = any(
+            "00000211-b2d1-43f0-9b88-960cebf8b91e" in u or "00001122-" in u or u in ("1122", "0211")
+            for u in uuids_lower
+        )
         if is_tesla_name or (is_tesla_uuid and local_name.startswith("S")):
             model = "Tesla-Vehicle-BLE"
             payload["category"] = "Vehicle"
-            payload["vehicle_status"] = "Närvarande (BLE Beacon)"
             payload["beacon_hash"] = local_name or device_id
             # Use beacon_hash as stable device_id so rotating BLE MACs map to the same Tesla vehicle
             if local_name:
                 device_id = local_name
+                if len(local_name) >= 18:
+                    node_char = local_name[-1].upper()
+                    payload["tesla_node"] = TESLA_NODE_NAMES.get(node_char, f"Nod ({node_char})")
+
+            expected_prefix = compute_tesla_ble_prefix(settings.get("tesla_vin", ""))
+            if expected_prefix and device_id.lower().startswith(expected_prefix.lower()):
+                payload["is_own_vehicle"] = True
+                payload["vehicle_status"] = "Verifierad Egen Tesla"
+            else:
+                payload["is_own_vehicle"] = False
+                payload["vehicle_status"] = "Annan Tesla i närheten"
+
             has_decoded_sensor = True
 
-        # B. Enhauto S3XY Devices (S3XY_STRIP_*, ENH_KNOB_*, S3XY_BUTTON_*, COMMANDER_*)
+        # B. Zeekr / Geely Vehicles (local_name starts with ZeekrVehicle, Mfg 0x06FE, or Service UUID 0xFDFD)
+        elif (
+            name_upper.startswith("ZEEKRVEHICLE")
+            or name_upper.startswith("ZEEKR")
+            or 0x06FE in mfg_data
+            or any("0000fdfd-" in u or u == "fdfd" for u in uuids_lower)
+            or any("fdfd" in u for u in srv_data_uuids_lower)
+        ):
+            model = "Zeekr-Vehicle-BLE"
+            payload["category"] = "Vehicle"
+            payload["vehicle_status"] = "Zeekr Närvarande (Digital Key)"
+            if local_name:
+                device_id = local_name
+            has_decoded_sensor = True
+
+        # C. Polestar / Volvo / BMW Vehicles
+        elif any(name_upper.startswith(p) for p in ("POLESTAR", "VOLVO", "VCC", "BMW")):
+            if name_upper.startswith("POLESTAR"):
+                brand = "Polestar"
+            elif name_upper.startswith("BMW"):
+                brand = "BMW"
+            else:
+                brand = "Volvo"
+            model = f"{brand}-Vehicle-BLE"
+            payload["category"] = "Vehicle"
+            payload["vehicle_status"] = f"{brand} Närvarande (BLE)"
+            if local_name:
+                device_id = local_name
+            has_decoded_sensor = True
+
+        # D. Enhauto S3XY Devices (S3XY_STRIP_*, ENH_KNOB_*, S3XY_BUTTON_*, COMMANDER_*)
         elif any(
             name_upper.startswith(p)
             for p in ("S3XY_STRIP", "ENH_KNOB", "S3XY_BUTTON", "S3XY_", "ENH_", "COMMANDER_")
@@ -841,7 +1040,7 @@ class BLEManager:
             payload["category"] = "Vehicle"
             has_decoded_sensor = True
 
-        # C. Xiaomi ATC / PVVX Thermometers (local_name starts with ATC_ or LYWSD, or MAC starts with A4:C1:38)
+        # E. Xiaomi ATC / PVVX Thermometers (local_name starts with ATC_ or LYWSD, or MAC starts with A4:C1:38)
         elif (
             name_upper.startswith("ATC_")
             or name_upper.startswith("LYWSD")
@@ -851,7 +1050,7 @@ class BLEManager:
             model = "ATC-Thermometer"
             payload["category"] = "Weather"
 
-        # D. Govee Devices (ihoment_*, Govee_*, GVH*, B5178*, H5074*, H5075* or Manufacturer 0xEC88)
+        # F. Govee Devices (ihoment_*, Govee_*, GVH*, B5178*, H5074*, H5075* or Manufacturer 0xEC88)
         elif (
             any(name_upper.startswith(p) for p in ("IHOMENT_", "GOVEE_", "GVH", "H507", "H510", "H517", "B517"))
             or 0xEC88 in mfg_data
@@ -862,12 +1061,12 @@ class BLEManager:
             else:
                 payload["category"] = "Switch"
 
-        # E. Plejd / Bluetooth Mesh (local_name == "P mesh" or Company ID 0x09A3)
+        # G. Plejd / Bluetooth Mesh (local_name == "P mesh" or Company ID 0x09A3)
         elif local_name.lower() == "p mesh" or 0x09A3 in mfg_data:
             model = "Plejd-Mesh"
             payload["category"] = "Switch"
 
-        # F. Xiaomi / Aqara / BTHome / Qingping / RuuviTag
+        # H. Xiaomi / Aqara / BTHome / Qingping / RuuviTag
         elif theengs_model:
             model = theengs_model
         elif any(
@@ -878,7 +1077,11 @@ class BLEManager:
             model = f"{clean_p}-BLE"
             payload["category"] = "Weather"
 
-        # F. Other Named BLE Devices (e.g. ZAG*, ZAP*, GPN*, zq*, Shelly*, Hue*, etc.)
+        # I. Apple Continuity Identified Devices (AirPods, AirPlay, AirTag, iBeacon)
+        elif apple_model:
+            model = apple_model
+
+        # J. Other Named BLE Devices (e.g. ZAG*, ZAP*, GPN*, zq*, Shelly*, Hue*, etc.)
         elif local_name:
             prefix_match = re.match(r"^([A-Za-z0-9]{2,14})", local_name)
             clean_prefix = prefix_match.group(1) if prefix_match else "Generic"
@@ -908,14 +1111,14 @@ class BLEManager:
         )
         has_real_telemetry = (
             any(payload.get(k) is not None for k in telemetry_keys)
-            or model == "Tesla-Vehicle-BLE"
+            or model in ("Tesla-Vehicle-BLE", "Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE")
             or bool(payload.get("vehicle_status"))
         )
         is_beacon_only = not has_real_telemetry
         payload["is_beacon_only"] = is_beacon_only
 
         # -------------------------------------------------------------------
-        # 3. Smart Mode Filtering (Drop anonymous random MAC spam in 'smart' mode)
+        # 3. Smart Mode Filtering (Drop anonymous random MAC spam & passing iPhones in 'smart' mode)
         # -------------------------------------------------------------------
         if ble_mode == "smart":
             is_known = False
@@ -923,6 +1126,14 @@ class BLEManager:
                 is_known = self._is_known_aliased(device_id)
             except Exception:
                 is_known = False
+
+            if (
+                apple_type in ("iOS Background App (Overflow)", "Apple Nearby (iPhone/iPad/Mac)", "Apple Handoff")
+                and mac_type == "Random Private (Roterande)"
+                and not has_decoded_sensor
+                and not is_known
+            ):
+                return
 
             if not local_name and not has_decoded_sensor and not is_known:
                 return

@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.18</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.19</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1060,6 +1060,34 @@
                       <input type="number" step="1" min="2" max="600" id="set_ble_debounce_seconds" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="15" />
                     </div>
                   </div>
+
+                  <!-- Tesla VIN Matcher -->
+                  <div class="p-3 rounded-lg bg-slate-50/90 dark:bg-slate-950/70 border border-slate-200/80 dark:border-slate-800 space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                      <label for="set_tesla_vin" class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                        <i class="mdi mdi-car-connected text-sm"></i>Tesla VIN-Matchare (Automatisk identifiering av egen Tesla)
+                      </label>
+                      <span class="text-[10px] font-mono text-slate-400">SHA-1 BLE Nyckel-ID</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
+                      <div>
+                        <input
+                          type="text"
+                          id="set_tesla_vin"
+                          maxlength="17"
+                          oninput="updateTeslaVinPreview(this.value)"
+                          class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono uppercase tracking-wider text-xs"
+                          placeholder="T.ex. LRW3E7FA... (17 tecken VIN)"
+                        />
+                      </div>
+                      <div id="teslaVinHashPreview" class="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 text-[11px] font-mono text-slate-600 dark:text-slate-300 truncate">
+                        Ange ditt 17-ställiga VIN för att beräkna bilens BLE-ID
+                      </div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                      Teslas BLE-fyr sänder <code class="font-mono text-slate-700 dark:text-slate-300">S + SHA1(VIN)[0:16] + Nod (C/D/P/R)</code>. När din bil matchar får den automatiskt alias <span class="font-semibold text-emerald-600 dark:text-emerald-400">Min Tesla (VIN-verifierad)</span>.
+                    </p>
+                  </div>
                 </div>
 
                 <!-- MQTT Section -->
@@ -1671,15 +1699,17 @@
       commit_date: '',
       update_available: false
     };
+    let teslaExpectedPrefix = '';
 
     // Keys that represent technical radio/envelope metadata rather than sensor measurements
     const TECHNICAL_METADATA_KEYS = new Set([
       'time', 'protocol', 'model', 'type', 'id', 'device', 'sensor_id', 'node_id',
       'address', 'house_code', 'code', 'channel', 'mic', 'mod', 'freq', 'freq1',
       'freq2', 'rssi', 'snr', 'noise', 'alias', 'group_name', 'device_key',
-      'mode', 'pulses_per_kwh', 'calculated_power_W', 'mac', 'local_name',
+      'mode', 'pulses_per_kwh', 'calculated_power_W', 'mac', 'mac_type', 'local_name',
       'manufacturer_data', 'manufacturer_id', 'manufacturer_name', 'service_data',
-      'service_uuids', 'tx_power', 'distance_m', 'beacon_hash', 'vehicle_status',
+      'service_uuids', 'ble_service_name', 'apple_type', 'tx_power', 'distance_m',
+      'beacon_hash', 'tesla_node', 'is_own_vehicle', 'vehicle_status',
       'ibeacon_uuid', 'uuid', 'major', 'minor', 'category', 'is_beacon_only'
     ]);
 
@@ -2500,19 +2530,29 @@
         'cumulative_kwh', 'cumulative_kWh', 'energy_kWh', 'total_kWh', 'energy_mWh',
         'effect', 'pulses', 'pulse_count', 'pulses_per_kwh', 'sequence', 'mode',
         'calculated_power_W', 'local_name', 'manufacturer_name', 'manufacturer_id',
-        'service_uuids', 'tx_power', 'distance_m', 'beacon_hash', 'ibeacon_uuid',
+        'service_uuids', 'ble_service_name', 'mac_type', 'apple_type', 'tesla_node',
+        'is_own_vehicle', 'tx_power', 'distance_m', 'beacon_hash', 'ibeacon_uuid',
         'uuid', 'major', 'minor', 'is_beacon_only'
       ].forEach((k) => consumed.add(k));
 
-      // Keep local_name & manufacturer_name visible inside the Detail Modal KPI grid only
+      // Keep local_name, manufacturer_name, ble_service_name, mac_type & apple_type visible inside the Detail Modal KPI grid only
       if (p.local_name) {
         addModalOnlyKpi('mdi-broadcast', 'indigo', 'BLE Advertised Name', String(p.local_name));
       }
       if (p.manufacturer_name) {
         addModalOnlyKpi('mdi-domain', 'sky', 'BLE Tillverkare', String(p.manufacturer_name), p.manufacturer_id ? `ID: ${p.manufacturer_id}` : '');
       }
+      if (p.ble_service_name) {
+        addModalOnlyKpi('mdi-bluetooth-connect', 'teal', 'BLE Tjänst (UUID)', String(p.ble_service_name));
+      }
+      if (p.mac_type) {
+        addModalOnlyKpi('mdi-identifier', 'neutral', 'MAC-adresstyp', String(p.mac_type), p.mac ? `MAC: ${p.mac}` : '');
+      }
+      if (p.apple_type) {
+        addModalOnlyKpi('mdi-apple', 'purple', 'Apple Continuity', String(p.apple_type));
+      }
 
-      // 0. BLE & Vehicle Telemetry (Tesla-Vehicle-BLE, iBeacon-BLE, Illuminance)
+      // 0. BLE & Vehicle Telemetry (Tesla-Vehicle-BLE, Zeekr, Polestar, Volvo, BMW, iBeacon-BLE, Illuminance)
       const modelStr = (sig && sig.model) ? String(sig.model) : (p.model ? String(p.model) : '');
       const isTeslaModel = modelStr === 'Tesla-Vehicle-BLE' || Boolean(p.beacon_hash);
       const isIbeaconModel = !isTeslaModel && (modelStr === 'iBeacon-BLE' || Boolean(p.ibeacon_uuid));
@@ -2524,21 +2564,39 @@
           const rawTeslaId = String(p.beacon_hash || p.local_name || (sig && sig.device_id) || '').trim();
           const lastChar = rawTeslaId.length >= 18 ? rawTeslaId.slice(-1).toUpperCase() : '';
           const nodeMap = {
-            C: 'Mittkonsol',
-            D: 'Förarsida',
-            P: 'Passagerarsida',
-            R: 'Bak'
+            C: 'Fordon / VCSEC (C)',
+            D: 'Förardörr (D)',
+            P: 'Passagerardörr (P)',
+            R: 'Baklucka (R)',
+            F: 'Frunk (F)',
+            B: 'Kaross (B)'
           };
-          const nodeName = nodeMap[lastChar] || '';
-          const badgeLabel = nodeName ? `Tesla Närvarande • ${nodeName} (${lastChar})` : 'Tesla Närvarande';
-          addMetric(
-            'mdi-car-connected',
-            badgeLabel,
-            'emerald',
-            'Fordonsstatus',
-            'Tesla Närvarande',
-            nodeName ? `Nod: ${nodeName} (${lastChar})` : (p.mac ? `MAC: ${p.mac}` : '')
+          const nodeName = p.tesla_node ? String(p.tesla_node) : (nodeMap[lastChar] || '');
+          const isOwnTesla = p.is_own_vehicle === true || Boolean(
+            teslaExpectedPrefix && rawTeslaId && rawTeslaId.toLowerCase().startsWith(teslaExpectedPrefix.toLowerCase())
           );
+
+          if (isOwnTesla) {
+            const ownLabel = nodeName ? `Verifierad Egen Tesla • ${nodeName}` : 'Verifierad Egen Tesla';
+            addMetric(
+              'mdi-shield-check',
+              ownLabel,
+              'emerald',
+              'Fordonsstatus',
+              'Verifierad Egen Tesla',
+              nodeName ? `Nod: ${nodeName}` : (p.mac ? `MAC: ${p.mac}` : '')
+            );
+          } else {
+            const otherLabel = nodeName ? `Annan Tesla i närheten • ${nodeName}` : 'Annan Tesla i närheten';
+            addMetric(
+              'mdi-car-wireless',
+              otherLabel,
+              'sky',
+              'Fordonsstatus',
+              'Annan Tesla i närheten',
+              nodeName ? `Nod: ${nodeName}` : (p.mac ? `MAC: ${p.mac}` : '')
+            );
+          }
           if (rawTeslaId) {
             addModalOnlyKpi('mdi-key-wireless', 'teal', 'Tesla BLE Beacon', rawTeslaId, p.ibeacon_uuid ? `UUID: ${p.ibeacon_uuid}` : '');
           }
@@ -3225,6 +3283,9 @@
       bleMode = ble.mode || 'smart';
       bleState = ble.state || (ble.enabled ? 'running' : 'disabled');
       bleDevicesCount = Number(counts.ble_devices ?? ble.unique_macs_seen ?? 0);
+      if (ble.tesla_expected_prefix !== undefined) {
+        teslaExpectedPrefix = String(ble.tesla_expected_prefix || '');
+      }
       renderTopbarBleStatusBadge(ble);
 
       if (status.app_uptime_seconds !== undefined) {
@@ -5912,6 +5973,74 @@
       if (activeTab === 'stats') loadStats();
     }
 
+    function sha1Hex(asciiStr) {
+      function rotl(n, s) {
+        return (n << s) | (n >>> (32 - s));
+      }
+      const utf8 = unescape(encodeURIComponent(String(asciiStr || '')));
+      const words = [];
+      for (let i = 0; i < utf8.length; i++) {
+        words[i >> 2] |= (utf8.charCodeAt(i) & 0xff) << (24 - (i % 4) * 8);
+      }
+      words[utf8.length >> 2] |= 0x80 << (24 - (utf8.length % 4) * 8);
+      words[(((utf8.length + 8) >> 6) << 4) + 15] = utf8.length * 8;
+
+      let h0 = 0x67452301;
+      let h1 = 0xefcdab89;
+      let h2 = 0x98badcfe;
+      let h3 = 0x10325476;
+      let h4 = 0xc3d2e1f0;
+      const w = new Array(80);
+
+      for (let i = 0; i < words.length; i += 16) {
+        for (let t = 0; t < 16; t++) w[t] = words[i + t] | 0;
+        for (let t = 16; t < 80; t++) w[t] = rotl(w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16], 1);
+
+        let a = h0, b = h1, c = h2, d = h3, e = h4;
+        for (let t = 0; t < 80; t++) {
+          const s = Math.floor(t / 20);
+          const f = s === 0 ? ((b & c) | (~b & d))
+            : s === 1 ? (b ^ c ^ d)
+            : s === 2 ? ((b & c) | (b & d) | (c & d))
+            : (b ^ c ^ d);
+          const k = s === 0 ? 0x5a827999
+            : s === 1 ? 0x6ed9eba1
+            : s === 2 ? 0x8f1bbcdc
+            : 0xca62c1d6;
+          const temp = (rotl(a, 5) + f + e + k + w[t]) | 0;
+          e = d;
+          d = c;
+          c = rotl(b, 30);
+          b = a;
+          a = temp;
+        }
+        h0 = (h0 + a) | 0;
+        h1 = (h1 + b) | 0;
+        h2 = (h2 + c) | 0;
+        h3 = (h3 + d) | 0;
+        h4 = (h4 + e) | 0;
+      }
+
+      return [h0, h1, h2, h3, h4]
+        .map((h) => (h >>> 0).toString(16).padStart(8, '0'))
+        .join('');
+    }
+
+    function updateTeslaVinPreview(rawVin) {
+      const previewEl = document.getElementById('teslaVinHashPreview');
+      if (!previewEl) return;
+      const cleanVin = String(rawVin || '').trim().toUpperCase();
+      if (cleanVin.length < 5) {
+        previewEl.className = 'px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate';
+        previewEl.textContent = 'Ange ditt 17-ställiga VIN för att beräkna bilens BLE-ID';
+        return;
+      }
+      const hash16 = sha1Hex(cleanVin).slice(0, 16).toLowerCase();
+      const prefix = `S${hash16}`;
+      previewEl.className = 'px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-mono text-emerald-700 dark:text-emerald-300 truncate';
+      previewEl.innerHTML = `<i class="mdi mdi-shield-check mr-1"></i>Din bils beräknade BLE-ID: <strong>${escapeHtml(prefix)}C</strong> (D/P/R)`;
+    }
+
     async function loadSettingsForm() {
       try {
         const res = await fetch('/api/settings');
@@ -5934,6 +6063,16 @@
         if (bleModeEl) bleModeEl.value = s.ble_mode ?? 'smart';
         const bleDebEl = document.getElementById('set_ble_debounce_seconds');
         if (bleDebEl) bleDebEl.value = s.ble_debounce_seconds ?? '15';
+        const teslaVinEl = document.getElementById('set_tesla_vin');
+        if (teslaVinEl) {
+          teslaVinEl.value = (s.tesla_vin ?? '').toUpperCase();
+          updateTeslaVinPreview(teslaVinEl.value);
+          if (teslaVinEl.value.trim().length >= 5) {
+            teslaExpectedPrefix = `S${sha1Hex(teslaVinEl.value.trim().toUpperCase()).slice(0, 16).toLowerCase()}`;
+          } else {
+            teslaExpectedPrefix = '';
+          }
+        }
         document.getElementById('set_mqtt_enabled').checked = String(s.mqtt_enabled ?? '1') === '1';
         document.getElementById('set_mqtt_host').value = s.mqtt_host ?? '';
         document.getElementById('set_mqtt_port').value = s.mqtt_port ?? '1883';
@@ -5953,6 +6092,7 @@
 
     async function saveSettings(event) {
       event.preventDefault();
+      const rawVin = (document.getElementById('set_tesla_vin')?.value || '').trim().toUpperCase();
       const payload = {
         device_index: document.getElementById('set_device_index').value.trim(),
         mode: document.getElementById('set_mode').value,
@@ -5966,6 +6106,7 @@
         ble_enabled: document.getElementById('set_ble_enabled')?.checked ? '1' : '0',
         ble_mode: document.getElementById('set_ble_mode')?.value || 'smart',
         ble_debounce_seconds: String(document.getElementById('set_ble_debounce_seconds')?.value || '15'),
+        tesla_vin: rawVin,
         mqtt_enabled: document.getElementById('set_mqtt_enabled').checked ? '1' : '0',
         mqtt_host: document.getElementById('set_mqtt_host').value.trim(),
         mqtt_port: String(document.getElementById('set_mqtt_port').value || '1883'),
@@ -5984,8 +6125,11 @@
         });
         if (res.ok) {
           haDiscoveryEnabled = payload.ha_discovery_enabled === '1';
+          teslaExpectedPrefix = rawVin.length >= 5 ? `S${sha1Hex(rawVin).slice(0, 16).toLowerCase()}` : '';
+          updateTeslaVinPreview(rawVin);
           syncHaDiscoveryUiVisibility();
-          renderSignalsView();
+          loadSignals();
+          loadDevices();
           showToast('Systeminställningar sparade och tillämpade');
           const fb = document.getElementById('settingsSaveFeedback');
           fb.classList.remove('hidden');
