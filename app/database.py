@@ -533,6 +533,7 @@ class Database:
                         "mqtt_enabled": device_dict.get("mqtt_enabled", 1),
                         "ha_discovery": device_dict.get("ha_discovery", 0),
                         "ignored": device_dict.get("ignored", 0),
+                        "is_new": int(device_dict.get("is_new", 1)),
                         "hit_count": int(device_dict.get("hit_count", 1)),
                         "channel": channel,
                         "freq": freq,
@@ -545,6 +546,43 @@ class Database:
                         "payload": payload,
                     }
                     return signal_dict, device_dict
+            finally:
+                conn.close()
+
+    def touch_beacon_device(self, payload: Dict[str, Any]) -> bool:
+        """
+        Silently updates last_seen, hit_count, and last_payload (including rssi) in the
+        devices table for a known passive BLE beacon (is_beacon_only=True) without inserting
+        a new row into the signals table or broadcasting a WebSocket signal event.
+        Returns True if the device already exists in devices, or False if it is brand new.
+        """
+        now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        timestamp = str(payload.get("time") or now_iso)
+        model = str(payload.get("model") or "Unknown").strip()
+        device_id = extract_device_id(payload)
+        device_key = f"{sanitize_key(model)}_{sanitize_key(device_id)}"
+        raw_json = json.dumps(payload, ensure_ascii=False)
+
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    existing_dev = conn.execute(
+                        "SELECT device_key FROM devices WHERE device_key = ?;", (device_key,)
+                    ).fetchone()
+                    if existing_dev is None:
+                        return False
+                    conn.execute(
+                        """
+                        UPDATE devices
+                        SET last_seen = ?,
+                            hit_count = hit_count + 1,
+                            last_payload = ?
+                        WHERE device_key = ?;
+                        """,
+                        (timestamp, raw_json, device_key),
+                    )
+                    return True
             finally:
                 conn.close()
 
@@ -602,7 +640,7 @@ class Database:
                     d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
                     COALESCE(d.category, 'Sensor') AS category,
                     COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
-                    COALESCE(d.ignored, 0) AS ignored, COALESCE(d.hit_count, 1) AS hit_count
+                    COALESCE(d.ignored, 0) AS ignored, COALESCE(d.is_new, 1) AS is_new, COALESCE(d.hit_count, 1) AS hit_count
                 FROM signals s
                 INNER JOIN (
                     SELECT MAX(s2.id) AS max_id
@@ -629,7 +667,7 @@ class Database:
                     d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
                     COALESCE(d.category, 'Sensor') AS category,
                     COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
-                    COALESCE(d.ignored, 0) AS ignored, COALESCE(d.hit_count, 1) AS hit_count
+                    COALESCE(d.ignored, 0) AS ignored, COALESCE(d.is_new, 1) AS is_new, COALESCE(d.hit_count, 1) AS hit_count
                 FROM signals s
                 LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
                 WHERE {where_sql}

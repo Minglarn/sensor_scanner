@@ -65,7 +65,7 @@ BLE_COMPANY_IDS: Dict[int, str] = {
     0xEC88: "Govee",
 }
 
-TESLA_BEACON_RE = re.compile(r"^S[0-9a-fA-F]{16}[A-Za-z]$")
+TESLA_BEACON_RE = re.compile(r"^S[0-9a-fA-F]{15,17}[A-Za-z0-9]$")
 MAC_LIKE_NAME_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
 
 
@@ -441,12 +441,14 @@ class BLEManager:
         on_signal_fn: Callable[[Dict[str, Any]], Awaitable[None]],
         on_status_change_fn: Callable[[Dict[str, Any]], Awaitable[None]],
         on_log_line_fn: Callable[[str], Awaitable[None]],
+        on_beacon_seen_fn: Optional[Callable[[Dict[str, Any]], bool]] = None,
     ):
         self._get_settings = get_settings_fn
         self._is_known_aliased = is_known_aliased_fn
         self._on_signal = on_signal_fn
         self._on_status_change = on_status_change_fn
         self._on_log_line = on_log_line_fn
+        self._on_beacon_seen = on_beacon_seen_fn
 
         self._task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
@@ -457,6 +459,7 @@ class BLEManager:
         self._debounced_count: int = 0
         self._discovered_devices: Set[str] = set()
         self._debounce_cache: Dict[str, Tuple[float, str]] = {}
+        self._beacon_touch_cache: Dict[str, float] = {}
         self._device_state_cache: Dict[str, Dict[str, Any]] = {}
         self._log_tail: Deque[str] = deque(maxlen=100)
 
@@ -465,6 +468,7 @@ class BLEManager:
         self._debounced_count = 0
         self._discovered_devices.clear()
         self._debounce_cache.clear()
+        self._beacon_touch_cache.clear()
         self._device_state_cache.clear()
 
     def get_status(self) -> Dict[str, Any]:
@@ -883,6 +887,33 @@ class BLEManager:
         payload["model"] = model
         payload["id"] = device_id
 
+        # Determine if this BLE packet carries real sensor telemetry or is a passive raw beacon
+        telemetry_keys = (
+            "temperature_C",
+            "humidity",
+            "pressure_hPa",
+            "battery_pct",
+            "voltage_V",
+            "battery_mV",
+            "power_W",
+            "energy_kWh",
+            "current_A",
+            "lux",
+            "illuminance",
+            "moisture",
+            "contact_open",
+            "motion",
+            "button",
+            "state",
+        )
+        has_real_telemetry = (
+            any(payload.get(k) is not None for k in telemetry_keys)
+            or model == "Tesla-Vehicle-BLE"
+            or bool(payload.get("vehicle_status"))
+        )
+        is_beacon_only = not has_real_telemetry
+        payload["is_beacon_only"] = is_beacon_only
+
         # -------------------------------------------------------------------
         # 3. Smart Mode Filtering (Drop anonymous random MAC spam in 'smart' mode)
         # -------------------------------------------------------------------
@@ -897,7 +928,11 @@ class BLEManager:
                 return
 
         # -------------------------------------------------------------------
-        # 4. BLE Debounce Filter (Default 15s unless sensor metrics changed)
+        # 4. BLE Debounce Filter
+        #    - Passive raw beacons (is_beacon_only=True): 5 minutes (300s) state-change
+        #      debounce for full signals; silently updates last_seen & rssi in devices table.
+        #    - Real telemetry sensors & Tesla-Vehicle-BLE (is_beacon_only=False):
+        #      15-30s debounce or immediate update when a measurement value changes.
         # -------------------------------------------------------------------
         now_mono = time.monotonic()
         dev_cache_key = f"{model}:{device_id}"
@@ -927,20 +962,42 @@ class BLEManager:
             elapsed = now_mono - prev_ts
             prev_was_name_only = "=" not in prev_sig
             cur_has_metrics = bool(metric_sig_parts)
-            if metric_sig == prev_sig and elapsed < debounce_window:
-                self._debounced_count += 1
-                return
-            # Allow immediate update if previous packet had no metrics and current packet decoded sensor metrics
-            if not (prev_was_name_only and cur_has_metrics) and metric_sig != prev_sig and elapsed < 1.5:
-                self._debounced_count += 1
-                return
+
+            if is_beacon_only:
+                beacon_debounce_window = max(300.0, debounce_window)
+                if elapsed < beacon_debounce_window:
+                    # Silently update last_seen and rssi in devices table without spamming signals/WebSocket
+                    last_touch = self._beacon_touch_cache.get(dev_cache_key, 0.0)
+                    if (now_mono - last_touch) >= debounce_window and self._on_beacon_seen is not None:
+                        self._beacon_touch_cache[dev_cache_key] = now_mono
+                        try:
+                            exists_in_db = self._on_beacon_seen(payload)
+                            if exists_in_db:
+                                self._debounced_count += 1
+                                return
+                        except Exception:
+                            self._debounced_count += 1
+                            return
+                    else:
+                        self._debounced_count += 1
+                        return
+            else:
+                if metric_sig == prev_sig and elapsed < debounce_window:
+                    self._debounced_count += 1
+                    return
+                # Allow immediate update if previous packet had no metrics and current packet decoded sensor metrics
+                if not (prev_was_name_only and cur_has_metrics) and metric_sig != prev_sig and elapsed < 1.5:
+                    self._debounced_count += 1
+                    return
 
         self._debounce_cache[dev_cache_key] = (now_mono, metric_sig)
+        self._beacon_touch_cache[dev_cache_key] = now_mono
         if len(self._debounce_cache) > 4000:
-            cutoff = now_mono - max(120.0, debounce_window * 2)
+            cutoff = now_mono - max(600.0, debounce_window * 2)
             stale = [k for k, (t, _) in self._debounce_cache.items() if t < cutoff]
             for k in stale:
                 self._debounce_cache.pop(k, None)
+                self._beacon_touch_cache.pop(k, None)
 
         self._received_count += 1
         self._discovered_devices.add(dev_cache_key)

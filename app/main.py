@@ -131,6 +131,7 @@ ble_manager = BLEManager(
     on_signal_fn=on_rtl_signal,
     on_status_change_fn=on_ble_status_change,
     on_log_line_fn=on_rtl_stderr_line,
+    on_beacon_seen_fn=db.touch_beacon_device,
 )
 
 

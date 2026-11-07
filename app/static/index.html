@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.15</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.16</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -321,7 +321,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
           
           <!-- Free-text Search -->
-          <div class="lg:col-span-2 xl:col-span-3 relative">
+          <div class="lg:col-span-2 relative">
             <i class="mdi mdi-magnify text-base text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
             <input
               type="text"
@@ -406,11 +406,11 @@
           </div>
 
           <!-- Frequency Band Dropdown -->
-          <div class="lg:col-span-2">
+          <div class="lg:col-span-2 xl:col-span-1">
             <select
               id="signalFreqSelect"
               onchange="loadSignals()"
-              class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+              class="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
             >
               <option value="">Alla frekvensband</option>
               <option value="433">433 MHz-bandet</option>
@@ -419,9 +419,21 @@
             </select>
           </div>
 
-          <!-- Synchronized Sort Dropdown + Group Duplicates + View Switcher + Visible Count -->
-          <div class="lg:col-span-4 xl:col-span-3 flex flex-wrap items-center justify-between sm:justify-end gap-1.5">
+          <!-- Synchronized Sort Dropdown + Hide Empty Beacons + Group Duplicates + View Switcher + Visible Count -->
+          <div class="lg:col-span-4 xl:col-span-5 flex flex-wrap items-center justify-between sm:justify-end gap-1.5">
             
+            <!-- Hide Empty Beacons Toggle (Active by default: hideEmptyBeacons = true) -->
+            <button
+              id="btn-toggle-beacons"
+              type="button"
+              onclick="toggleHideEmptyBeacons()"
+              class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0"
+              title="Dölj anonyma/tomma BLE-beacons utan mätvärden (Plejd, TV, skrivare m.fl.) i Signaler"
+            >
+              <i class="mdi mdi-radar text-sm leading-none"></i>
+              <span id="btnToggleBeaconsLabel">Dölj tomma Beacons (Aktiv)</span>
+            </button>
+
             <!-- Synchronized Signal Sort Dropdown -->
             <div class="relative flex items-center min-w-0 flex-1 sm:flex-initial">
               <i class="mdi mdi-sort-variant text-sky-500 text-sm absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
@@ -498,6 +510,8 @@
       <!-- Dedicated Vertical Scroll Container for Signals Cards & Table -->
       <div
         id="signals-scroll-container"
+        onmouseenter="onSignalsScrollMouseEnter()"
+        onmouseleave="onSignalsScrollMouseLeave()"
         class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-3 sm:px-6 pt-2.5 pb-6"
       >
         <!-- Signals Multi-Column Card Grid (3-5 Columns) -->
@@ -1289,10 +1303,10 @@
         <div class="min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <i id="modalCategoryIcon" class="mdi mdi-access-point text-lg text-sky-500"></i>
-            <h2 id="modalTitle" class="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">Enhetsdetaljer</h2>
+            <h2 id="modalTitle" class="text-sm sm:text-base font-bold text-slate-900 dark:text-white break-words [overflow-wrap:anywhere]">Enhetsdetaljer</h2>
             <span id="modalCategoryBadge" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">Sensor</span>
           </div>
-          <p id="modalSubtitle" class="text-xs text-slate-500 dark:text-slate-400 font-mono truncate mt-0.5"></p>
+          <p id="modalSubtitle" class="text-xs text-slate-500 dark:text-slate-400 font-mono break-words [overflow-wrap:anywhere] mt-0.5"></p>
         </div>
         <button onclick="closeDetailModal()" class="w-8 h-8 rounded-lg bg-slate-200/70 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
           <i class="mdi mdi-close text-lg"></i>
@@ -1477,6 +1491,9 @@
     let sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
     let viewMode = localStorage.getItem('ss_view_mode') || 'grid';
     let groupDevices = localStorage.getItem('ss_group_devices') !== 'false';
+    let hideEmptyBeacons = localStorage.getItem('ss_hide_empty_beacons') !== 'false';
+    let isHoveringList = false;
+    let pendingHoverReorder = false;
     let haDiscoveryEnabled = false;
 
     let appUptimeSeconds = 0;
@@ -1553,7 +1570,7 @@
       'mode', 'pulses_per_kwh', 'calculated_power_W', 'mac', 'local_name',
       'manufacturer_data', 'manufacturer_id', 'manufacturer_name', 'service_data',
       'service_uuids', 'tx_power', 'distance_m', 'beacon_hash', 'vehicle_status',
-      'ibeacon_uuid', 'uuid', 'major', 'minor', 'category'
+      'ibeacon_uuid', 'uuid', 'major', 'minor', 'category', 'is_beacon_only'
     ]);
 
     // -----------------------------------------------------------------------
@@ -1568,6 +1585,7 @@
       applySidebarCollapseState();
       syncViewModeButtons();
       syncGroupDevicesButton();
+      syncToggleBeaconsButton();
       syncSignalSortUi();
       syncDeviceToolbarControls();
       renderCategoryFilterDropdowns();
@@ -1778,10 +1796,106 @@
       const btn = document.getElementById('groupDevicesBtn');
       if (!btn) return;
       if (groupDevices) {
-        btn.className = 'inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40';
+        btn.className = 'inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40 shrink-0';
       } else {
-        btn.className = 'inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300';
+        btn.className = 'inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 shrink-0';
       }
+    }
+
+    function toggleHideEmptyBeacons() {
+      hideEmptyBeacons = !hideEmptyBeacons;
+      localStorage.setItem('ss_hide_empty_beacons', hideEmptyBeacons ? 'true' : 'false');
+      syncToggleBeaconsButton();
+      renderSignalsView();
+    }
+
+    function syncToggleBeaconsButton() {
+      const btn = document.getElementById('btn-toggle-beacons');
+      const lbl = document.getElementById('btnToggleBeaconsLabel');
+      if (!btn || !lbl) return;
+      if (hideEmptyBeacons) {
+        btn.className = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40';
+        lbl.textContent = 'Dölj tomma Beacons (Aktiv)';
+      } else {
+        btn.className = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300';
+        lbl.textContent = 'Visa råa Beacons';
+      }
+    }
+
+    function hasRealTelemetryMetrics(sig, payload) {
+      const p = payload && typeof payload === 'object' ? payload : ((sig && sig.payload) || {});
+      const radio = extractRadioMetadata(sig, p);
+
+      // Non-BLE (433/868 MHz SDR packets from rtl_433) always represent real RF sensor/remote transmissions
+      if (!radio.isBle) {
+        return true;
+      }
+
+      const modelStr = (sig && sig.model) ? String(sig.model) : (p.model ? String(p.model) : '');
+      if (modelStr === 'Tesla-Vehicle-BLE' || Boolean(p.beacon_hash) || Boolean(p.vehicle_status)) {
+        return true;
+      }
+
+      if (p.is_beacon_only === true) {
+        return false;
+      }
+      if (p.is_beacon_only === false) {
+        return true;
+      }
+
+      // Check for any numeric/sensor measurement keys in signal or payload
+      if (sig && (
+        (sig.temperature_c !== null && sig.temperature_c !== undefined) ||
+        (sig.humidity !== null && sig.humidity !== undefined) ||
+        (sig.battery_ok !== null && sig.battery_ok !== undefined)
+      )) {
+        return true;
+      }
+
+      const telemetryKeys = [
+        'temperature_C', 'temp_C', 'temperature_F', 'temp_F', 'temperature_1_C', 'temperature_2_C',
+        'humidity', 'humidity_1', 'humidity_2',
+        'pressure_hPa', 'pressure_kPa', 'pressure_bar', 'pressure_PSI',
+        'battery_pct', 'battery_ok', 'battery_low', 'battery_mV', 'voltage_V',
+        'power_W', 'power_kW', 'calculated_power_W', 'effect', 'cumulative_kwh', 'energy_kWh', 'total_kWh',
+        'lux', 'illuminance', 'moisture',
+        'wind_avg_km_h', 'wind_max_km_h', 'wind_avg_m_s', 'wind_max_m_s', 'wind_speed_m_s', 'wind_dir_deg',
+        'rain_mm', 'total_rain_mm', 'rain_rate_mm_h',
+        'contact_open', 'motion', 'button', 'state', 'cmd'
+      ];
+      return telemetryKeys.some((k) => p[k] !== undefined && p[k] !== null && p[k] !== '');
+    }
+
+    function onSignalsScrollMouseEnter() {
+      isHoveringList = true;
+    }
+
+    function onSignalsScrollMouseLeave() {
+      isHoveringList = false;
+      if (pendingHoverReorder && activeTab === 'signals') {
+        pendingHoverReorder = false;
+        reorderSignalsDomInPlace();
+      }
+    }
+
+    function reorderSignalsDomInPlace() {
+      const container = viewMode === 'table'
+        ? document.getElementById('signalsTableBody')
+        : document.getElementById('signalsGridContainer');
+      if (!container) return;
+      if (!groupDevices) {
+        renderSignalsView();
+        return;
+      }
+      const sortedItems = getFilteredSignals();
+      sortedItems.forEach((sig) => {
+        const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
+        const el = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
+        if (el) {
+          container.appendChild(el);
+        }
+      });
+      hasInPlaceUpdates = false;
     }
 
     // -----------------------------------------------------------------------
@@ -2246,7 +2360,7 @@
         'effect', 'pulses', 'pulse_count', 'pulses_per_kwh', 'sequence', 'mode',
         'calculated_power_W', 'local_name', 'manufacturer_name', 'manufacturer_id',
         'service_uuids', 'tx_power', 'distance_m', 'beacon_hash', 'ibeacon_uuid',
-        'uuid', 'major', 'minor'
+        'uuid', 'major', 'minor', 'is_beacon_only'
       ].forEach((k) => consumed.add(k));
 
       // Keep local_name & manufacturer_name visible inside the Detail Modal KPI grid only
@@ -3429,7 +3543,7 @@
       const onlyAliased = selectedSignalStatusFilters.has('aliased');
 
       const params = new URLSearchParams({
-        limit: '250',
+        limit: '500',
         offset: '0',
         unique_devices: groupDevices ? 'true' : 'false'
       });
@@ -3460,6 +3574,19 @@
       const search = document.getElementById('signalSearchInput').value.trim().toLowerCase();
       const freqBand = document.getElementById('signalFreqSelect').value;
       const p = sig.payload || {};
+
+      // 0. Hide Empty Beacons filter (Active by default: hideEmptyBeacons = true)
+      if (hideEmptyBeacons) {
+        const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
+        const devObj = devicesList.find((d) => d.device_key === devKey);
+        const hasAlias = Boolean(sig.alias && sig.alias.trim()) || Boolean(devObj && devObj.alias && devObj.alias.trim());
+        const isNewFlag = devObj ? Number(devObj.is_new ?? 1) === 1 : Number(sig.is_new ?? 0) === 1;
+        const hitCount = Number(sig.hit_count || (devObj && devObj.hit_count) || 1);
+        const isBrandNewDiscovery = isNewFlag && hitCount <= 1;
+        if (!hasRealTelemetryMetrics(sig, p) && !hasAlias && !isBrandNewDiscovery) {
+          return false;
+        }
+      }
 
       // 1. Multi-Select Models filter
       if (selectedSignalModels.size > 0 && !selectedSignalModels.has(sig.model)) {
@@ -3667,7 +3794,7 @@
           'border-l-4',
           'border-l-emerald-500'
         );
-      }, 2500);
+      }, 3000);
     }
 
     function handleIncomingSignal(sig, dev, counts, totalSignalsCount, totalDevicesCount) {
@@ -3681,6 +3808,7 @@
         sig.alias = dev.alias ?? sig.alias ?? '';
         sig.group_name = dev.group_name ?? sig.group_name ?? '';
         sig.category = dev.category ?? sig.category ?? 'Sensor';
+        if (dev.is_new !== undefined) sig.is_new = dev.is_new;
       }
 
       // 1. Update total counters in tab header and System KPIs
@@ -3726,7 +3854,7 @@
         if (rawSignalsList.length > 100) rawSignalsList.length = 100;
       }
 
-      // 4. Live DOM update in Signaler tab (respecting active signalSort AND isHoverLocked!)
+      // 4. Live DOM update in Signaler tab (Move updated sensors to position 1 when sorted by TID desc, with Hover-Pause!)
       if (activeTab === 'signals' && signalMatchesActiveFilters(sig)) {
         const container = viewMode === 'table'
           ? document.getElementById('signalsTableBody')
@@ -3744,18 +3872,10 @@
         if (groupDevices && container) {
           const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
           if (existingEl) {
-            // In-Place DOM Update ONLY: NEVER call prepend() or reorder existing rows/cards!
-            hasInPlaceUpdates = true;
             const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, sig.payload || {});
             const titleTarget = existingEl.querySelector('[data-sig-title]');
             if (titleTarget) {
-              if (viewMode === 'table') {
-                titleTarget.textContent = primaryName;
-              } else {
-                titleTarget.innerHTML = secondaryName
-                  ? `<span class="font-bold text-slate-900 dark:text-white break-words">${escapeHtml(primaryName)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 break-words">(${escapeHtml(secondaryName)})</span>`
-                  : `<span class="font-bold text-slate-900 dark:text-white break-words">${escapeHtml(primaryName)}</span>`;
-              }
+              titleTarget.textContent = primaryName;
             }
             const subtitleTarget = existingEl.querySelector('[data-sig-subtitle]');
             if (subtitleTarget) {
@@ -3799,14 +3919,30 @@
             }
 
             pulseElement(existingEl);
+
+            if (isHoveringList) {
+              // Hover-lock active: keep rows/cards in their current position while mouse is inside #signals-scroll-container
+              hasInPlaceUpdates = true;
+              pendingHoverReorder = true;
+            } else if (signalSort.field === 'time' && signalSort.dir === 'desc') {
+              // Immediately move the updated row/card to position 1 at the top!
+              container.prepend(existingEl);
+            } else {
+              reorderSignalsDomInPlace();
+            }
           } else {
-            // Brand new device not in DOM yet -> insert at top
+            // Brand new device not in DOM yet -> insert at top (or sorted position)
             const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
             temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig, Date.now() + 10000) : buildSignalCardHtml(sig, Date.now() + 10000)).trim();
             const newEl = temp.firstElementChild;
             if (newEl) {
               container.prepend(newEl);
               pulseElement(newEl);
+              if (!isHoveringList && !(signalSort.field === 'time' && signalSort.dir === 'desc')) {
+                reorderSignalsDomInPlace();
+              } else if (isHoveringList) {
+                pendingHoverReorder = true;
+              }
             }
           }
         } else if (!groupDevices && container) {
@@ -3905,12 +4041,8 @@
       const catIcon = getCategoryIcon(sig.category);
       const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, p);
 
-      const titleHtml = secondaryName
-        ? `<span class="font-bold text-slate-900 dark:text-white break-words">${escapeHtml(primaryName)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 break-words">(${escapeHtml(secondaryName)})</span>`
-        : `<span class="font-bold text-slate-900 dark:text-white break-words">${escapeHtml(primaryName)}</span>`;
-
       const groupBadgeHtml = hasGroup
-        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`
+        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25 break-words [overflow-wrap:anywhere]"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`
         : '';
 
       const channelPart = sig.channel !== null && sig.channel !== undefined && sig.channel !== ''
@@ -3948,34 +4080,39 @@
           onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})"
           class="cursor-pointer group bg-white dark:bg-slate-900 hover:bg-slate-50/90 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-sky-500/50 rounded-xl p-2.5 transition duration-200 shadow-sm flex flex-col justify-between gap-2"
         >
-          <!-- Row 1: Header -->
-          <div class="flex items-start justify-between gap-1.5">
-            <div class="flex items-start gap-1.5 min-w-0">
-              <i class="mdi ${catIcon} text-base shrink-0 mt-0.5"></i>
-              <div data-sig-title class="text-xs flex flex-wrap items-baseline gap-1 min-w-0">${titleHtml}</div>
+          <!-- Row 1: Header (Two-line stacked Name & Model without truncation) -->
+          <div class="flex flex-col gap-1">
+            <div class="flex items-start justify-between gap-1.5">
+              <div class="flex items-start gap-1.5 min-w-0 flex-1">
+                <i class="mdi ${catIcon} text-base shrink-0 mt-0.5"></i>
+                <div class="flex flex-col leading-snug min-w-0 flex-1">
+                  <span data-sig-title class="text-xs font-bold text-slate-900 dark:text-white break-words [overflow-wrap:anywhere]">${escapeHtml(primaryName)}</span>
+                  <span data-sig-subtitle class="${secondaryName ? 'text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 break-words [overflow-wrap:anywhere]' : 'hidden text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 break-words [overflow-wrap:anywhere]'}">${secondaryName ? escapeHtml(secondaryName) : ''}</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-0.5 shrink-0">
+                <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
+                <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias, Grupp & Kategori">
+                  <i class="mdi mdi-pencil-outline text-sm"></i>
+                </button>
+                ${haButtonHtml}
+                <button onclick="quickIgnoreDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-rose-500 flex items-center justify-center transition" title="Ignorera / Svartlista enhet">
+                  <i class="mdi mdi-eye-off-outline text-sm"></i>
+                </button>
+              </div>
             </div>
-            <div class="flex items-center gap-0.5 shrink-0">
-              ${groupBadgeHtml}
-              <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
-              <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias, Grupp & Kategori">
-                <i class="mdi mdi-pencil-outline text-sm"></i>
-              </button>
-              ${haButtonHtml}
-              <button onclick="quickIgnoreDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-rose-500 flex items-center justify-center transition" title="Ignorera / Svartlista enhet">
-                <i class="mdi mdi-eye-off-outline text-sm"></i>
-              </button>
-            </div>
+            ${groupBadgeHtml ? `<div class="pl-5">${groupBadgeHtml}</div>` : ''}
           </div>
 
-          <!-- Row 2: Metadata (ID, Channel, Frequency/Modulation, Protocol, Relative Time) -->
+          <!-- Row 2: Metadata (Full ID, Channel, Frequency/Modulation, Protocol, Relative Time) -->
           <div class="flex flex-wrap items-center justify-between gap-1 text-[11px] font-mono text-slate-500 dark:text-slate-400">
-            <div class="flex flex-wrap items-center gap-1.5">
-              <span>ID:<strong class="text-slate-700 dark:text-slate-200">${escapeHtml(sig.device_id)}</strong></span>
+            <div class="flex flex-wrap items-center gap-1.5 min-w-0">
+              <span class="break-words [overflow-wrap:anywhere]">ID:<strong class="text-slate-700 dark:text-slate-200 break-words [overflow-wrap:anywhere]">${escapeHtml(sig.device_id)}</strong></span>
               ${channelPart}
               ${freqBadge}
               ${protoBadge}
             </div>
-            <span data-sig-time class="inline-flex items-center gap-0.5 text-slate-400 dark:text-slate-500" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
+            <span data-sig-time class="inline-flex items-center gap-0.5 text-slate-400 dark:text-slate-500 shrink-0" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
               ${timeInnerHtml}
             </span>
           </div>
@@ -4115,18 +4252,18 @@
             <div class="flex flex-col leading-snug">
               <div class="flex flex-wrap items-center gap-1.5">
                 <i class="mdi ${catIcon} text-sm shrink-0"></i>
-                <span data-sig-title class="font-semibold text-slate-800 dark:text-slate-100 break-words">${escapeHtml(primaryName)}</span>
+                <span data-sig-title class="font-semibold text-slate-800 dark:text-slate-100 break-words [overflow-wrap:anywhere]">${escapeHtml(primaryName)}</span>
                 <span data-sig-hits class="inline-flex items-center px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500 border border-slate-200/70 dark:border-slate-700/70"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}</span>
                 ${isNewDevice ? '<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>' : ''}
-                ${hasGroup ? `<span class="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</span>` : ''}
+                ${hasGroup ? `<span class="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25 break-words [overflow-wrap:anywhere]"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</span>` : ''}
               </div>
-              <div data-sig-subtitle class="${secondaryName ? 'text-xs text-slate-400 dark:text-slate-500 pl-5 mt-0.5 break-words' : 'hidden text-xs text-slate-400 dark:text-slate-500 pl-5 mt-0.5 break-words'}">${secondaryName ? escapeHtml(secondaryName) : ''}</div>
+              <div data-sig-subtitle class="${secondaryName ? 'text-xs text-slate-400 dark:text-slate-500 pl-5 mt-0.5 break-words [overflow-wrap:anywhere]' : 'hidden text-xs text-slate-400 dark:text-slate-500 pl-5 mt-0.5 break-words [overflow-wrap:anywhere]'}">${secondaryName ? escapeHtml(secondaryName) : ''}</div>
             </div>
           </td>
           <td class="w-24 py-2 px-2.5 whitespace-nowrap align-top">
             <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
           </td>
-          <td class="w-32 py-2 px-2.5 font-mono text-[11px] break-all text-slate-600 dark:text-slate-300 align-top">
+          <td class="min-w-[140px] w-36 py-2 px-2.5 font-mono text-[11px] break-words [overflow-wrap:anywhere] text-slate-600 dark:text-slate-300 align-top">
             ${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ` <span class="text-slate-400 whitespace-nowrap">/ K${escapeHtml(sig.channel)}</span>` : ''}
           </td>
           <td class="min-w-[200px] py-2 px-2.5 align-top">
@@ -4327,12 +4464,12 @@
       const kpiCardsHtml = analyzed.kpis.map((k) => `
         <div class="p-2.5 rounded-xl border ${k.cls} flex flex-col justify-between">
           <div class="flex items-center justify-between text-[11px] opacity-85">
-            <span class="font-semibold uppercase tracking-wider truncate">${escapeHtml(k.label)}</span>
+            <span class="font-semibold uppercase tracking-wider break-words [overflow-wrap:anywhere]">${escapeHtml(k.label)}</span>
             <i class="mdi ${k.icon} text-base"></i>
           </div>
           <div class="mt-1">
-            <div class="text-sm sm:text-base font-bold font-mono leading-tight">${escapeHtml(k.primary)}</div>
-            ${k.secondary ? `<div class="text-[11px] font-mono opacity-80 mt-0.5">${escapeHtml(k.secondary)}</div>` : ''}
+            <div class="text-sm sm:text-base font-bold font-mono leading-tight break-words [overflow-wrap:anywhere]">${escapeHtml(k.primary)}</div>
+            ${k.secondary ? `<div class="text-[11px] font-mono opacity-80 mt-0.5 break-words [overflow-wrap:anywhere]">${escapeHtml(k.secondary)}</div>` : ''}
           </div>
         </div>
       `);
@@ -4776,10 +4913,10 @@
         return `
           <div class="bg-white/70 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/90 rounded-xl overflow-hidden shadow-sm">
             <div class="px-3.5 py-2 bg-slate-50/90 dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-2">
-              <div onclick="toggleCollapseGroup('${escapeHtml(gKey)}')" class="flex items-center gap-2 cursor-pointer select-none min-w-0 flex-1">
+              <div onclick="toggleCollapseGroup('${escapeHtml(gKey)}')" class="flex items-center gap-2 cursor-pointer select-none min-w-0 flex-1 flex-wrap">
                 <i class="mdi ${isCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'} text-base text-slate-400"></i>
                 <i class="mdi ${groupIcon} text-base"></i>
-                <h3 class="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(groupTitle)}</h3>
+                <h3 class="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 break-words [overflow-wrap:anywhere]">${escapeHtml(groupTitle)}</h3>
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
                   ${groupDevs.length} ${groupDevs.length === 1 ? 'enhet' : 'enheter'}
                 </span>
@@ -4852,9 +4989,9 @@
           data-device-card="${escapeHtml(devKey)}"
           class="bg-white dark:bg-slate-900 border ${borderClass} rounded-xl p-2.5 shadow-sm flex flex-col justify-between gap-2 transition duration-200"
         >
-          <!-- Header with Multi-Select Checkbox -->
+          <!-- Header with Multi-Select Checkbox (Two-line stacked Name, Model & Full ID without truncation) -->
           <div class="flex items-start justify-between gap-1.5">
-            <div class="flex items-start gap-2 min-w-0">
+            <div class="flex items-start gap-2 min-w-0 flex-1">
               <input
                 type="checkbox"
                 ${isSelected ? 'checked' : ''}
@@ -4862,14 +4999,17 @@
                 class="mt-0.5 w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 cursor-pointer shrink-0"
                 title="Markera enhet för gruppåtgärd"
               />
-              <div class="min-w-0">
+              <div class="min-w-0 flex-1 flex flex-col leading-snug">
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <i class="mdi ${catIcon} text-base shrink-0"></i>
-                  <span class="text-xs font-bold text-slate-900 dark:text-white truncate">${escapeHtml(resolveSignalDisplayNames(dev, lastPayload).primaryName)}</span>
+                  <span class="text-xs font-bold text-slate-900 dark:text-white break-words [overflow-wrap:anywhere]">${escapeHtml(resolveSignalDisplayNames(dev, lastPayload).primaryName)}</span>
                   <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-sky-700 dark:text-sky-300 border border-slate-200 dark:border-slate-700">${escapeHtml(dev.category || 'Sensor')}</span>
                 </div>
-                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                  ${escapeHtml(dev.model)} • ID: <strong class="text-slate-700 dark:text-slate-200">${escapeHtml(dev.device_id)}</strong>
+                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 break-words [overflow-wrap:anywhere]">
+                  ${escapeHtml(dev.model)}
+                </div>
+                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 break-words [overflow-wrap:anywhere]">
+                  ID: <strong class="text-slate-700 dark:text-slate-200 break-words [overflow-wrap:anywhere]">${escapeHtml(dev.device_id)}</strong>
                   <span data-dev-freq>${radio.freqMHz ? `• ${escapeHtml(radio.freqLabel)}` : ''}</span>
                 </div>
               </div>
@@ -5251,11 +5391,11 @@
           topList.innerHTML = '<div class="text-xs text-slate-500">Inga aktiva enheter ännu.</div>';
         } else {
           topList.innerHTML = topDevs.map((d, i) => `
-            <div onclick="openDeviceModalByKey('${escapeHtml(d.device_key)}')" class="cursor-pointer flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs">
-              <div class="flex items-center gap-2 min-w-0">
+            <div onclick="openDeviceModalByKey('${escapeHtml(d.device_key)}')" class="cursor-pointer flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-xs">
+              <div class="flex flex-wrap items-center gap-1.5 min-w-0">
                 <span class="text-slate-400 font-mono w-4">${i + 1}.</span>
-                <span class="font-semibold text-slate-800 dark:text-slate-200 truncate">${escapeHtml(d.alias || d.model)}</span>
-                <span class="text-slate-400 font-mono text-[11px]">(${escapeHtml(d.device_id)})</span>
+                <span class="font-semibold text-slate-800 dark:text-slate-200 break-words [overflow-wrap:anywhere]">${escapeHtml(d.alias || d.model)}</span>
+                <span class="text-slate-400 font-mono text-[11px] break-words [overflow-wrap:anywhere]">(${escapeHtml(d.device_id)})</span>
               </div>
               <span class="font-mono text-sky-600 dark:text-sky-400 font-semibold shrink-0"><i class="mdi mdi-counter mr-0.5"></i>${d.hit_count}</span>
             </div>
