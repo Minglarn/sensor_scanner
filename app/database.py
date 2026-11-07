@@ -1017,3 +1017,43 @@ class Database:
             finally:
                 conn.close()
         return {"imported_devices": imported_count}
+
+    def reset_database(self, keep_aliases: bool = False) -> Dict[str, Any]:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    deleted_signals = conn.execute("DELETE FROM signals;").rowcount
+                    try:
+                        conn.execute("DELETE FROM sqlite_sequence WHERE name = 'signals';")
+                    except Exception:
+                        pass
+
+                    if keep_aliases:
+                        deleted_devices = conn.execute(
+                            "DELETE FROM devices WHERE COALESCE(TRIM(alias), '') = '' AND COALESCE(TRIM(group_name), '') = '';"
+                        ).rowcount
+                        conn.execute("UPDATE devices SET hit_count = 0;")
+                    else:
+                        deleted_devices = conn.execute("DELETE FROM devices;").rowcount
+                        try:
+                            conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('signals', 'devices');")
+                        except Exception:
+                            pass
+
+                try:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                    conn.execute("VACUUM;")
+                except Exception as exc:
+                    logger.warning("VACUUM after reset warning: %s", exc)
+            finally:
+                conn.close()
+
+        size_bytes = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
+        return {
+            "ok": True,
+            "keep_aliases": bool(keep_aliases),
+            "deleted_signals": int(deleted_signals or 0),
+            "deleted_devices": int(deleted_devices or 0),
+            "size_bytes": size_bytes,
+        }

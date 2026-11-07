@@ -3,14 +3,17 @@ import collections
 import hashlib
 import json
 import logging
+import re
 import shutil
 import time
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Tuple
 
-from app.database import extract_device_id
+from app.database import extract_device_id, extract_freq_mhz
 
 logger = logging.getLogger("sensor_scanner.rtl")
+
+TUNED_TO_RE = re.compile(r"Tuned to\s+([0-9.]+)\s*MHz", re.IGNORECASE)
 
 VOLATILE_KEYS = {
     "time",
@@ -38,11 +41,13 @@ class RTLManager:
         on_signal_fn: Callable[[Dict[str, Any]], Awaitable[None]],
         on_status_change_fn: Callable[[Dict[str, Any]], Awaitable[None]],
         on_stderr_line_fn: Callable[[str], Awaitable[None]],
+        on_freq_change_fn: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
     ):
         self._get_settings = get_settings_fn
         self._on_signal = on_signal_fn
         self._on_status_change = on_status_change_fn
         self._on_stderr_line = on_stderr_line_fn
+        self._on_freq_change = on_freq_change_fn
 
         self._process: Optional[asyncio.subprocess.Process] = None
         self._watchdog_task: Optional[asyncio.Task] = None
@@ -59,6 +64,74 @@ class RTLManager:
         self._debounced_count: int = 0
         self._received_count: int = 0
         self._restart_count: int = 0
+
+        self._current_tuned_freq: str = "433.92 MHz"
+        self._last_hop_timestamp: float = time.time()
+        self._hop_interval: int = 60
+        self._active_freqs: List[str] = ["433.92 MHz", "868.30 MHz"]
+
+    def reset_stats_and_cache(self) -> None:
+        self._debounce_cache.clear()
+        self._debounced_count = 0
+        self._received_count = 0
+
+    def _resolve_active_freqs(self, settings: Dict[str, str]) -> List[str]:
+        mode = str(settings.get("mode", "hop")).strip().lower()
+        if mode == "433":
+            return ["433.92 MHz"]
+        if mode == "868":
+            return ["868.30 MHz"]
+        if mode == "custom":
+            raw_freqs = str(settings.get("custom_freqs", "433.92M,868.3M"))
+            items = [f.strip() for f in raw_freqs.replace(";", ",").split(",") if f.strip()]
+            normalized: List[str] = []
+            for f in items:
+                m = re.match(r"^([0-9.]+)\s*[mM]?(?:[hH][zZ])?$", f)
+                if m:
+                    try:
+                        val = float(m.group(1))
+                        if val > 1_000_000:
+                            val = val / 1_000_000.0
+                        normalized.append(f"{val:.2f} MHz")
+                        continue
+                    except ValueError:
+                        pass
+                normalized.append(f)
+            return normalized or ["433.92 MHz"]
+        return ["433.92 MHz", "868.30 MHz"]
+
+    def get_freq_state(self) -> Dict[str, Any]:
+        settings = self._get_settings()
+        return {
+            "mode": settings.get("mode", "hop"),
+            "current_tuned_freq": self._current_tuned_freq,
+            "last_hop_timestamp": self._last_hop_timestamp,
+            "hop_interval": self._hop_interval,
+            "active_freqs": self._active_freqs,
+        }
+
+    async def _emit_freq_change(self) -> None:
+        if self._on_freq_change is not None:
+            try:
+                await self._on_freq_change(self.get_freq_state())
+            except Exception as exc:
+                logger.debug("Error in on_freq_change callback: %s", exc)
+
+    async def _check_and_handle_tuned_line(self, line: str) -> bool:
+        m = TUNED_TO_RE.search(line)
+        if not m:
+            return False
+        try:
+            freq_val = float(m.group(1))
+            if freq_val > 1_000_000:
+                freq_val = freq_val / 1_000_000.0
+            new_freq = f"{freq_val:.2f} MHz"
+            self._current_tuned_freq = new_freq
+            self._last_hop_timestamp = time.time()
+            await self._emit_freq_change()
+            return True
+        except ValueError:
+            return False
 
     def build_command(self, settings: Dict[str, str]) -> List[str]:
         binary = shutil.which("rtl_433") or "/usr/local/bin/rtl_433"
@@ -129,7 +202,10 @@ class RTLManager:
             "device_index": settings.get("device_index", "0"),
             "gain": settings.get("gain", "auto"),
             "ppm": settings.get("ppm", "0"),
-            "hop_interval": settings.get("hop_interval", "60"),
+            "hop_interval": self._hop_interval,
+            "current_tuned_freq": self._current_tuned_freq,
+            "last_hop_timestamp": self._last_hop_timestamp,
+            "active_freqs": self._active_freqs,
             "custom_freqs": settings.get("custom_freqs", "433.92M,868.3M"),
             "custom_sample_rate": settings.get("custom_sample_rate", "1024k"),
             "debounce_seconds": float(settings.get("debounce_seconds", "2.0") or 2.0),
@@ -221,7 +297,10 @@ class RTLManager:
             if not line_bytes:
                 break
             line = line_bytes.decode("utf-8", errors="replace").strip()
-            if not line or not line.startswith("{"):
+            if not line:
+                continue
+            if not line.startswith("{"):
+                await self._check_and_handle_tuned_line(line)
                 continue
 
             try:
@@ -230,6 +309,22 @@ class RTLManager:
                     continue
             except json.JSONDecodeError:
                 continue
+
+            # Update current_tuned_freq immediately if incoming packet is on ~433 or ~868 MHz
+            pkt_freq = extract_freq_mhz(payload)
+            if pkt_freq is not None:
+                inferred_band = None
+                if 430.0 <= pkt_freq <= 440.0:
+                    inferred_band = "433.92 MHz"
+                elif 860.0 <= pkt_freq <= 875.0:
+                    inferred_band = "868.30 MHz"
+                else:
+                    inferred_band = f"{pkt_freq:.2f} MHz"
+
+                if inferred_band and inferred_band != self._current_tuned_freq:
+                    self._current_tuned_freq = inferred_band
+                    self._last_hop_timestamp = time.time()
+                    await self._emit_freq_change()
 
             settings = self._get_settings()
             try:
@@ -255,6 +350,8 @@ class RTLManager:
             if not line:
                 continue
 
+            await self._check_and_handle_tuned_line(line)
+
             formatted = self._append_stderr(line)
             lower = line.lower()
             if any(
@@ -278,12 +375,39 @@ class RTLManager:
             except Exception:
                 pass
 
+    async def _hop_tracker_loop(self) -> None:
+        while self._state == "running" and self._process and self._process.returncode is None:
+            await asyncio.sleep(1.0)
+            if len(self._active_freqs) <= 1 or self._hop_interval <= 0:
+                continue
+            now = time.time()
+            elapsed_since_hop = now - self._last_hop_timestamp
+            if elapsed_since_hop >= self._hop_interval:
+                try:
+                    cur_idx = self._active_freqs.index(self._current_tuned_freq)
+                    next_idx = (cur_idx + 1) % len(self._active_freqs)
+                except ValueError:
+                    if self._started_at is not None:
+                        next_idx = int((now - self._started_at) // self._hop_interval) % len(self._active_freqs)
+                    else:
+                        next_idx = 0
+                self._current_tuned_freq = self._active_freqs[next_idx]
+                self._last_hop_timestamp = now
+                await self._emit_freq_change()
+
     async def _watchdog_loop(self) -> None:
         while self._running:
             self._restart_event.clear()
             settings = self._get_settings()
             cmd = self.build_command(settings)
             self._current_cmd = cmd
+            try:
+                self._hop_interval = max(5, int(settings.get("hop_interval", "60") or 60))
+            except (ValueError, TypeError):
+                self._hop_interval = 60
+            self._active_freqs = self._resolve_active_freqs(settings)
+            self._current_tuned_freq = self._active_freqs[0]
+            self._last_hop_timestamp = time.time()
 
             self._state = "starting"
             await self._on_status_change(self.get_status())
@@ -300,15 +424,19 @@ class RTLManager:
                     )
 
                 self._started_at = time.time()
+                self._last_hop_timestamp = self._started_at
                 self._state = "running"
                 self._last_error = ""
                 await self._on_status_change(self.get_status())
+                await self._emit_freq_change()
 
                 stdout_task = asyncio.create_task(self._read_stdout(self._process.stdout))
                 stderr_task = asyncio.create_task(self._read_stderr(self._process.stderr))
+                hop_task = asyncio.create_task(self._hop_tracker_loop())
 
                 return_code = await self._process.wait()
-                await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
+                hop_task.cancel()
+                await asyncio.gather(stdout_task, stderr_task, hop_task, return_exceptions=True)
 
                 if not self._running:
                     break

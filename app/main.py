@@ -102,11 +102,21 @@ async def on_rtl_stderr_line(line: str) -> None:
     )
 
 
+async def on_rtl_freq_change(freq_state: Dict[str, Any]) -> None:
+    await ws_manager.broadcast(
+        {
+            "type": "freq_change",
+            **freq_state,
+        }
+    )
+
+
 rtl_manager = RTLManager(
     get_settings_fn=db.get_settings,
     on_signal_fn=on_rtl_signal,
     on_status_change_fn=on_rtl_status_change,
     on_stderr_line_fn=on_rtl_stderr_line,
+    on_freq_change_fn=on_rtl_freq_change,
 )
 
 
@@ -201,6 +211,10 @@ class BulkGroupRequest(BaseModel):
     ignored: Optional[int] = None
 
 
+class DatabaseResetRequest(BaseModel):
+    keep_aliases: bool = False
+
+
 class SettingsUpdateRequest(BaseModel):
     device_index: Optional[str] = None
     mode: Optional[str] = None
@@ -233,6 +247,20 @@ async def serve_spa():
             "Pragma": "no-cache",
             "Expires": "0",
         },
+    )
+
+
+@app.get("/manifest.json", include_in_schema=False)
+async def serve_manifest():
+    return FileResponse(os.path.join(STATIC_DIR, "manifest.json"), media_type="application/manifest+json")
+
+
+@app.get("/sw.js", include_in_schema=False)
+async def serve_service_worker():
+    return FileResponse(
+        os.path.join(STATIC_DIR, "sw.js"),
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
     )
 
 
@@ -493,4 +521,20 @@ async def api_import_backup(payload: Dict[str, Any]):
 async def api_optimize_database():
     result = await asyncio.to_thread(db.optimize_database)
     await broadcast_full_status()
+    return result
+
+
+@app.post("/api/database/reset")
+async def api_reset_database(req: Optional[DatabaseResetRequest] = None, keep_aliases: bool = Query(default=False)):
+    keep = req.keep_aliases if req is not None else bool(keep_aliases)
+    result = await asyncio.to_thread(db.reset_database, keep)
+    rtl_manager.reset_stats_and_cache()
+    status_data = await asyncio.to_thread(build_status_payload)
+    await ws_manager.broadcast(
+        {
+            "type": "db_reset",
+            "keep_aliases": keep,
+            "status": status_data,
+        }
+    )
     return result

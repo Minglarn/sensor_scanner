@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>SensorScanner | RTL-SDR V4 RF Monitor</title>
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+  <link rel="apple-touch-icon" href="/static/icon.svg" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0284c7" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -72,9 +76,7 @@
       <!-- Brand Header -->
       <div id="sidebarBrandHeader" class="h-14 px-3.5 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div class="flex items-center gap-2.5 min-w-0">
-          <div class="w-8 h-8 rounded-lg bg-sky-500/10 dark:bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-600 dark:text-sky-400 shrink-0">
-            <i class="mdi mdi-radar text-xl leading-none"></i>
-          </div>
+          <img src="/static/icon.svg" alt="SensorScanner" class="w-8 h-8 rounded-lg shadow-xs shrink-0" />
           <div class="sidebar-label min-w-0">
             <h1 class="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate leading-tight">SensorScanner</h1>
             <p class="text-[10px] text-slate-500 dark:text-slate-400 truncate leading-tight">RTL-SDR V4 &amp; rtl_433</p>
@@ -166,7 +168,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.7</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.8</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -227,9 +229,12 @@
                   <span id="wsStatusText" class="hidden md:inline">WS: Ansluter</span>
                 </div>
 
-                <div id="sdrStatusBadge" class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300" title="Status för rtl_433-processen">
-                  <span id="sdrStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
-                  <span id="sdrStatusText">SDR: Initierar</span>
+                <div id="sdrStatusBadge" class="relative overflow-hidden flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-colors duration-200" title="Status och aktuell frekvens för rtl_433">
+                  <span id="sdrStatusDot" class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
+                  <span id="sdrStatusText" class="flex items-center gap-1 whitespace-nowrap">SDR: Initierar</span>
+                  <div id="sdrHopProgressWrap" class="hidden absolute bottom-0 left-0 right-0 h-[2px] bg-slate-200/40 dark:bg-slate-700/40">
+                    <div id="sdrHopProgressBar" class="h-full bg-sky-500 transition-all duration-500" style="width: 100%"></div>
+                  </div>
                 </div>
 
                 <div id="mqttStatusBadge" class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400" title="Status för MQTT-anslutning">
@@ -302,18 +307,18 @@
         <!-- =================================================================== -->
         <section id="view-signals" class="space-y-2.5">
       
-      <!-- Filter & View Controls Bar -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm space-y-2">
+      <!-- Filter & View Controls Bar (Single Compact Row with Dynamic Multi-Select Dropdowns) -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
           
           <!-- Free-text Search -->
-          <div class="lg:col-span-4 relative">
+          <div class="lg:col-span-3 relative">
             <i class="mdi mdi-magnify text-base text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
             <input
               type="text"
               id="signalSearchInput"
               oninput="debouncedLoadSignals()"
-              placeholder="Sök modell, ID, alias eller JSON-nyckel..."
+              placeholder="Sök modell, ID, alias eller JSON..."
               class="w-full pl-8 pr-14 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500"
             />
             <button onclick="clearSignalFilters()" title="Återställ alla filter" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-[11px] font-medium">
@@ -321,15 +326,74 @@
             </button>
           </div>
 
-          <!-- Model Dropdown -->
-          <div class="lg:col-span-2">
-            <select
-              id="signalModelSelect"
-              onchange="loadSignals()"
-              class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+          <!-- Searchable Multi-Select Model Dropdown -->
+          <div class="lg:col-span-2 relative" id="sigModelDropdownWrap">
+            <button
+              type="button"
+              onclick="toggleDropdownMenu('sigModelMenu')"
+              class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500/60 rounded-lg text-xs text-slate-700 dark:text-slate-200 flex items-center justify-between gap-1.5 transition"
             >
-              <option value="">Alla modeller</option>
-            </select>
+              <span class="flex items-center gap-1.5 truncate">
+                <i class="mdi mdi-chip text-sky-500"></i>
+                <span id="sigModelBtnLabel" class="truncate">Alla modeller</span>
+              </span>
+              <span class="flex items-center gap-1 shrink-0">
+                <span id="sigModelCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-sky-600 text-white text-[10px] font-mono font-bold">0</span>
+                <i class="mdi mdi-chevron-down text-slate-400"></i>
+              </span>
+            </button>
+
+            <!-- Dropdown Panel -->
+            <div id="sigModelMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-30 flex flex-col overflow-hidden text-xs">
+              <div class="p-2 border-b border-slate-100 dark:border-slate-800">
+                <div class="relative">
+                  <i class="mdi mdi-magnify text-slate-400 absolute left-2 top-1/2 -translate-y-1/2"></i>
+                  <input
+                    type="text"
+                    id="sigModelSearchInput"
+                    oninput="renderSignalModelDropdownList()"
+                    placeholder="Filtrera modell i listan..."
+                    class="w-full pl-7 pr-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
+              <div id="sigModelOptionsList" class="p-1.5 overflow-y-auto space-y-0.5 max-h-56">
+                <!-- Populated dynamically -->
+              </div>
+              <div class="p-2 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px]">
+                <button type="button" onclick="selectAllSignalModels()" class="text-sky-600 dark:text-sky-400 hover:underline font-semibold">Markera alla</button>
+                <button type="button" onclick="clearSignalModels()" class="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold">Rensa val</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Multi-Select "Kategorier & Filter" Dropdown -->
+          <div class="lg:col-span-3 relative" id="sigFilterDropdownWrap">
+            <button
+              type="button"
+              onclick="toggleDropdownMenu('sigFilterMenu')"
+              class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500/60 rounded-lg text-xs text-slate-700 dark:text-slate-200 flex items-center justify-between gap-1.5 transition"
+            >
+              <span class="flex items-center gap-1.5 truncate">
+                <i class="mdi mdi-filter-variant text-sky-500"></i>
+                <span id="sigFilterBtnLabel" class="truncate">Kategorier &amp; Filter</span>
+              </span>
+              <span class="flex items-center gap-1 shrink-0">
+                <span id="sigFilterCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-sky-600 text-white text-[10px] font-mono font-bold">0</span>
+                <i class="mdi mdi-chevron-down text-slate-400"></i>
+              </span>
+            </button>
+
+            <!-- Dropdown Panel -->
+            <div id="sigFilterMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-30 flex flex-col overflow-hidden text-xs">
+              <div id="sigFilterOptionsList" class="p-2 overflow-y-auto space-y-2 max-h-72">
+                <!-- Populated dynamically with Section A (Status) and Section B (Categories) -->
+              </div>
+              <div class="p-2 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px]">
+                <button type="button" onclick="selectAllSignalCategoriesAndFilters()" class="text-sky-600 dark:text-sky-400 hover:underline font-semibold">Markera alla</button>
+                <button type="button" onclick="clearSignalCategoriesAndFilters()" class="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold">Rensa val</button>
+              </div>
+            </div>
           </div>
 
           <!-- Frequency Band Dropdown -->
@@ -345,30 +409,19 @@
             </select>
           </div>
 
-          <!-- Group Duplicates + Alias Filter + View Switcher -->
-          <div class="lg:col-span-4 flex flex-wrap items-center justify-between sm:justify-end gap-2">
+          <!-- Group Duplicates + View Switcher + Visible Count -->
+          <div class="lg:col-span-2 flex flex-wrap items-center justify-between sm:justify-end gap-1.5">
             
             <!-- Group Devices Toggle -->
             <button
               id="groupDevicesBtn"
               onclick="toggleGroupDevices()"
-              class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition"
+              class="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition"
               title="Visa endast senaste kortet/raden per unik enhet och uppdatera på plats"
             >
               <i class="mdi mdi-layers-triple-outline text-sm leading-none"></i>
-              <span>Gruppera enheter</span>
+              <span class="hidden 2xl:inline">Gruppera</span>
             </button>
-
-            <!-- Only Aliased Checkbox -->
-            <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-300 px-2 py-1 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-              <input
-                type="checkbox"
-                id="signalOnlyAliased"
-                onchange="loadSignals()"
-                class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
-              />
-              <span>Endast Alias</span>
-            </label>
 
             <!-- View Switcher: Card vs Table -->
             <div class="inline-flex rounded-lg p-0.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
@@ -379,7 +432,6 @@
                 title="Kompakt Kortvy"
               >
                 <i class="mdi mdi-view-grid-outline text-sm leading-none"></i>
-                <span class="hidden xl:inline">Kort</span>
               </button>
               <button
                 id="viewModeBtn_table"
@@ -388,40 +440,12 @@
                 title="Tät Tabellvy"
               >
                 <i class="mdi mdi-table text-sm leading-none"></i>
-                <span class="hidden xl:inline">Tabell</span>
               </button>
             </div>
 
-          </div>
-        </div>
-
-        <!-- Quick Filter Pills Row -->
-        <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/70 overflow-x-auto">
-          <div class="flex items-center gap-1.5">
-            <button onclick="setQuickPill('all')" id="pill_all" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-all-inclusive"></i>
-              <span>Alla</span>
-            </button>
-            <button onclick="setQuickPill('weather')" id="pill_weather" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-weather-partly-cloudy"></i>
-              <span>Väder</span>
-            </button>
-            <button onclick="setQuickPill('tpms')" id="pill_tpms" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-car-tire-alert"></i>
-              <span>TPMS</span>
-            </button>
-            <button onclick="setQuickPill('meter_switch')" id="pill_meter_switch" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-flash-outline"></i>
-              <span>Mätare &amp; Switch</span>
-            </button>
-            <button onclick="setQuickPill('low_battery')" id="pill_low_battery" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-battery-alert-variant-outline"></i>
-              <span>Lågt batteri</span>
-            </button>
-          </div>
-
-          <div class="text-[11px] font-mono text-slate-400 dark:text-slate-500 shrink-0 hidden sm:block">
-            Visar <span id="visibleSignalCount" class="font-semibold text-slate-700 dark:text-slate-300">0</span> poster
+            <div class="text-[11px] font-mono text-slate-400 dark:text-slate-500 shrink-0" title="Antal synliga signaler">
+              <span id="visibleSignalCount" class="font-semibold text-slate-700 dark:text-slate-300">0</span> st
+            </div>
           </div>
         </div>
       </div>
@@ -479,19 +503,19 @@
         <!-- VIEW 2: ENHETER (#view-devices)                                     -->
         <!-- =================================================================== -->
         <section id="view-devices" class="hidden space-y-2.5 pb-16">
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm space-y-2">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 shadow-sm">
         
-        <!-- Row 1: Search, Group By, Sort By, Show Ignored -->
+        <!-- Single Compact Row: Search, Dynamic Categories & Filter Dropdown, Group By, Sort By, Ignored, Refresh & Reset -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
           
           <!-- Search Input -->
-          <div class="lg:col-span-4 relative">
+          <div class="lg:col-span-3 relative">
             <i class="mdi mdi-magnify text-base text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
             <input
               type="text"
               id="deviceSearchInput"
               oninput="renderDevicesList()"
-              placeholder="Sök modell, ID, alias, grupp eller kategori..."
+              placeholder="Sök modell, ID, alias, grupp..."
               class="w-full pl-8 pr-12 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500"
             />
             <button onclick="clearDeviceFilters()" title="Återställ enhetsfilter" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-[11px] font-medium">
@@ -499,43 +523,72 @@
             </button>
           </div>
 
+          <!-- Dynamic Multi-Select "Kategorier & Filter" Dropdown for Devices -->
+          <div class="lg:col-span-3 relative" id="devFilterDropdownWrap">
+            <button
+              type="button"
+              onclick="toggleDropdownMenu('devFilterMenu')"
+              class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-sky-500/60 rounded-lg text-xs text-slate-700 dark:text-slate-200 flex items-center justify-between gap-1.5 transition"
+            >
+              <span class="flex items-center gap-1.5 truncate">
+                <i class="mdi mdi-filter-variant text-sky-500"></i>
+                <span id="devFilterBtnLabel" class="truncate">Kategorier &amp; Filter</span>
+              </span>
+              <span class="flex items-center gap-1 shrink-0">
+                <span id="devFilterCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-sky-600 text-white text-[10px] font-mono font-bold">0</span>
+                <i class="mdi mdi-chevron-down text-slate-400"></i>
+              </span>
+            </button>
+
+            <!-- Dropdown Panel -->
+            <div id="devFilterMenu" class="hidden absolute left-0 mt-1.5 w-72 max-h-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-30 flex flex-col overflow-hidden text-xs">
+              <div id="devFilterOptionsList" class="p-2 overflow-y-auto space-y-2 max-h-72">
+                <!-- Populated dynamically with Section A (Status) and Section B (Categories) -->
+              </div>
+              <div class="p-2 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 text-[11px]">
+                <button type="button" onclick="selectAllDeviceCategoriesAndFilters()" class="text-sky-600 dark:text-sky-400 hover:underline font-semibold">Markera alla</button>
+                <button type="button" onclick="clearDeviceCategoriesAndFilters()" class="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold">Rensa val</button>
+              </div>
+            </div>
+          </div>
+
           <!-- Group By Dropdown -->
-          <div class="lg:col-span-3 flex items-center gap-1.5">
-            <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
-              <i class="mdi mdi-folder-multiple-outline text-sky-500 mr-0.5"></i>Gruppera:
+          <div class="lg:col-span-2 flex items-center gap-1">
+            <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap hidden xl:inline">
+              <i class="mdi mdi-folder-multiple-outline text-sky-500"></i>
             </span>
             <select
               id="deviceGroupBySelect"
               onchange="setDeviceGroupBy(this.value)"
-              class="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+              class="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
             >
-              <option value="custom_group">Egen Grupp (Standard)</option>
-              <option value="category">Kategori</option>
-              <option value="model">Modell / Protokoll</option>
-              <option value="none">Platt vy (Ingen gruppering)</option>
+              <option value="custom_group">Gruppera: Egen Grupp</option>
+              <option value="category">Gruppera: Kategori</option>
+              <option value="model">Gruppera: Modell</option>
+              <option value="none">Platt vy (Ingen grupp)</option>
             </select>
           </div>
 
           <!-- Sort Within Group Dropdown -->
-          <div class="lg:col-span-3 flex items-center gap-1.5">
-            <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
-              <i class="mdi mdi-sort text-sky-500 mr-0.5"></i>Sortera:
+          <div class="lg:col-span-2 flex items-center gap-1">
+            <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap hidden xl:inline">
+              <i class="mdi mdi-sort text-sky-500"></i>
             </span>
             <select
               id="deviceSortBySelect"
               onchange="setDeviceSortBy(this.value)"
-              class="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+              class="w-full px-2 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500"
             >
-              <option value="name">Alias / Modell (A–Ö) - Fasta platser</option>
-              <option value="last_seen">Senast aktiv</option>
-              <option value="hits">Flest träffar</option>
-              <option value="rssi">Starkast signal (RSSI)</option>
+              <option value="name">Sortera: Alias / Modell (A–Ö)</option>
+              <option value="last_seen">Sortera: Senast aktiv</option>
+              <option value="hits">Sortera: Flest träffar</option>
+              <option value="rssi">Sortera: Starkast RSSI</option>
             </select>
           </div>
 
-          <!-- Show Ignored + Refresh -->
-          <div class="lg:col-span-2 flex items-center justify-between sm:justify-end gap-2">
-            <label class="inline-flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-300" title="Visa även svartlistade/ignorerade enheter">
+          <!-- Show Ignored + Refresh + Factory Reset + Visible Count -->
+          <div class="lg:col-span-2 flex items-center justify-between sm:justify-end gap-1.5">
+            <label class="inline-flex items-center gap-1 cursor-pointer select-none text-xs text-slate-600 dark:text-slate-300" title="Visa även svartlistade/ignorerade enheter">
               <input
                 type="checkbox"
                 id="deviceShowIgnored"
@@ -543,51 +596,23 @@
                 onchange="loadDevices()"
                 class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
               />
-              <span>Ignorerade</span>
+              <span class="hidden 2xl:inline">Ignorerade</span>
             </label>
-            <button onclick="loadDevices()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700" title="Synka om enhetslistan">
+
+            <span class="text-[11px] font-mono text-slate-400 dark:text-slate-500 shrink-0" title="Antal synliga enheter">
+              <span id="visibleDeviceCount" class="font-semibold text-slate-700 dark:text-slate-300">0</span> st
+            </span>
+
+            <button onclick="loadDevices()" class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700" title="Synka om enhetslistan">
               <i class="mdi mdi-refresh"></i>
             </button>
-          </div>
 
-        </div>
-
-        <!-- Row 2: Device Quick Filter Pills -->
-        <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/70 overflow-x-auto">
-          <div class="flex items-center gap-1.5">
-            <button onclick="setDeviceQuickPill('all')" id="devPill_all" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-all-inclusive"></i>
-              <span>Alla</span>
-            </button>
-            <button onclick="setDeviceQuickPill('grouped')" id="devPill_grouped" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-folder-check-outline"></i>
-              <span>Grupperade</span>
-            </button>
-            <button onclick="setDeviceQuickPill('ungrouped')" id="devPill_ungrouped" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-folder-open-outline"></i>
-              <span>Ogrupperade</span>
-            </button>
-            <button onclick="setDeviceQuickPill('weather')" id="devPill_weather" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-weather-partly-cloudy"></i>
-              <span>Weather</span>
-            </button>
-            <button onclick="setDeviceQuickPill('tpms')" id="devPill_tpms" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-car-tire-alert"></i>
-              <span>TPMS</span>
-            </button>
-            <button onclick="setDeviceQuickPill('meter')" id="devPill_meter" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-lightning-bolt"></i>
-              <span>Meter</span>
-            </button>
-            <button onclick="setDeviceQuickPill('low_battery')" id="devPill_low_battery" class="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition">
-              <i class="mdi mdi-battery-alert-variant-outline"></i>
-              <span>Lågt batteri</span>
+            <button onclick="openResetDbModal()" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-xs font-semibold transition" title="Rensa databas & enheter...">
+              <i class="mdi mdi-delete-sweep-outline text-sm leading-none"></i>
+              <span class="hidden xl:inline">Rensa...</span>
             </button>
           </div>
 
-          <div class="text-[11px] font-mono text-slate-400 dark:text-slate-500 shrink-0 hidden sm:block">
-            Visar <span id="visibleDeviceCount" class="font-semibold text-slate-700 dark:text-slate-300">0</span> enheter
-          </div>
         </div>
       </div>
 
@@ -976,6 +1001,22 @@
                       <span>Rensa &amp; Optimera DB nu</span>
                     </button>
                   </div>
+
+                  <div class="p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 space-y-2">
+                    <div class="font-semibold text-rose-800 dark:text-rose-200 flex items-center gap-1.5">
+                      <i class="mdi mdi-delete-sweep-outline text-rose-500 text-sm"></i>
+                      <span>Nollställ Insamlad Data (Factory Reset)</span>
+                    </div>
+                    <p class="text-[11px] text-rose-700/80 dark:text-rose-300/80">Radera alla mottagna signaler och enheter för att börja om helt från noll, eller rensa endast historik och okända enheter.</p>
+                    <button
+                      type="button"
+                      onclick="openResetDbModal()"
+                      class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold shadow-xs transition"
+                    >
+                      <i class="mdi mdi-delete-sweep-outline"></i>
+                      <span>Rensa databas &amp; enheter...</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1119,11 +1160,15 @@
             <div class="sm:col-span-3">
               <label class="block text-slate-500 dark:text-slate-400 mb-1">Kategori</label>
               <select id="modalCategorySelect" class="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100">
-                <option value="Meter">Meter</option>
                 <option value="Weather">Weather</option>
                 <option value="TPMS">TPMS</option>
+                <option value="Meter">Meter</option>
                 <option value="Switch">Switch</option>
                 <option value="Security">Security</option>
+                <option value="Soil/Moisture">Soil/Moisture</option>
+                <option value="Smoke/Fire">Smoke/Fire</option>
+                <option value="Water">Water</option>
+                <option value="Remote">Remote</option>
                 <option value="Sensor">Sensor</option>
               </select>
             </div>
@@ -1209,6 +1254,57 @@
     </div>
   </div>
 
+  <!-- ===================================================================== -->
+  <!-- DATABASE RESET CONFIRMATION MODAL                                     -->
+  <!-- ===================================================================== -->
+  <div id="resetDbModal" class="fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden text-xs">
+      <div class="px-4 py-3 bg-rose-50 dark:bg-rose-950/60 border-b border-rose-200 dark:border-rose-900/70 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <i class="mdi mdi-alert-octagon-outline text-lg text-rose-600 dark:text-rose-400"></i>
+          <h3 class="text-sm font-bold text-rose-900 dark:text-rose-100">Rensa databas &amp; enheter</h3>
+        </div>
+        <button onclick="closeResetDbModal()" class="w-7 h-7 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center">
+          <i class="mdi mdi-close text-base"></i>
+        </button>
+      </div>
+
+      <div class="p-4 space-y-3.5">
+        <p class="text-slate-600 dark:text-slate-300 leading-relaxed">
+          Välj hur du vill rensa databasen. Åtgärden kör även <code class="font-mono">VACUUM</code> och nollställer räknare i realtid för alla anslutna klienter.
+        </p>
+
+        <div class="space-y-2">
+          <label class="flex items-start gap-2.5 p-3 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/25 cursor-pointer">
+            <input type="radio" name="resetDbMode" value="all" checked class="mt-0.5 text-rose-600 focus:ring-0" />
+            <div>
+              <div class="font-bold text-slate-900 dark:text-white">Rensa ALLT (Radera alla signaler och alla enheter – börja om helt från noll)</div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Tömmer både <code class="font-mono">signals</code> och <code class="font-mono">devices</code> helt och hållet.</div>
+            </div>
+          </label>
+
+          <label class="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 cursor-pointer">
+            <input type="radio" name="resetDbMode" value="keep_aliases" class="mt-0.5 text-sky-600 focus:ring-0" />
+            <div>
+              <div class="font-bold text-slate-900 dark:text-white">Rensa all signalhistorik och okända enheter, men behåll mina namngivna enheter (Alias &amp; Grupper)</div>
+              <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Raderar alla signaler och alla oidentifierade enheter, men sparar dina konfigurerade enheter med <code class="font-mono">hit_count = 0</code>.</div>
+            </div>
+          </label>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800">
+          <button type="button" onclick="closeResetDbModal()" class="px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold transition">
+            Avbryt
+          </button>
+          <button type="button" onclick="confirmResetDatabase()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold shadow transition">
+            <i class="mdi mdi-delete-forever-outline text-sm"></i>
+            <span>Ja, radera permanent</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST NOTIFICATION -->
   <div id="toastBox" class="fixed bottom-4 right-4 z-50 hidden px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 border border-slate-700 text-white text-xs font-medium shadow-xl"></div>
 
@@ -1221,19 +1317,43 @@
     let sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
     let viewMode = localStorage.getItem('ss_view_mode') || 'grid';
     let groupDevices = localStorage.getItem('ss_group_devices') !== 'false';
-    let activeQuickPill = 'all';
     let haDiscoveryEnabled = false;
 
     let appUptimeSeconds = 0;
     let sdrUptimeSeconds = 0;
     let sdrIsRunning = false;
+    let sdrMode = 'hop';
+    let sdrState = 'initializing';
+    let sdrCurrentFreq = '433.92 MHz';
+    let sdrLastHopTimestamp = Date.now() / 1000;
+    let sdrHopInterval = 60;
+    let sdrActiveFreqs = ['433.92 MHz', '868.30 MHz'];
+
     let statsHistoryChart = null;
     let cachedHourly24h = [];
 
-    // Enheter Tab Grouping, Sorting, Quick Filter & Multi-select state
+    // Multi-Select Filter Sets (Signaler & Enheter)
+    const BASE_CATEGORIES = [
+      'Weather',
+      'TPMS',
+      'Meter',
+      'Switch',
+      'Security',
+      'Soil/Moisture',
+      'Smoke/Fire',
+      'Water',
+      'Remote',
+      'Sensor'
+    ];
+    let selectedSignalModels = new Set();
+    let selectedSignalStatusFilters = new Set(); // 'new', 'low_battery', 'aliased'
+    let selectedSignalCategories = new Set();
+
+    // Enheter Tab Grouping, Sorting, Dynamic Multi-Select Filters & Bulk Selection state
     let deviceGroupBy = localStorage.getItem('ss_dev_group_by') || 'custom_group';
     let deviceSortBy = localStorage.getItem('ss_dev_sort_by') || 'name';
-    let activeDevicePill = 'all';
+    let selectedDeviceStatusFilters = new Set(); // 'new', 'low_battery', 'aliased', 'grouped', 'ungrouped'
+    let selectedDeviceCategories = new Set();
     let selectedDeviceKeys = new Set();
     let collapsedGroups = new Set();
 
@@ -1260,12 +1380,17 @@
     // Initialization
     // -----------------------------------------------------------------------
     window.addEventListener('DOMContentLoaded', () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      }
+
       syncThemeIcon();
       applySidebarCollapseState();
       syncViewModeButtons();
       syncGroupDevicesButton();
-      syncQuickPillButtons();
       syncDeviceToolbarControls();
+      renderCategoryFilterDropdowns();
+      renderSignalModelDropdownList();
       switchTab('signals', true);
       loadStatus();
       loadModels();
@@ -1274,13 +1399,30 @@
       loadSettingsForm();
       connectWebSocket();
 
-      // Tick App Uptime and SDR Uptime every 1 second in the Sidebar Footer & Stats KPI
+      // Close custom multi-select dropdowns when clicking outside
+      document.addEventListener('click', (e) => {
+        const wraps = [
+          { wrap: 'sigModelDropdownWrap', menu: 'sigModelMenu' },
+          { wrap: 'sigFilterDropdownWrap', menu: 'sigFilterMenu' },
+          { wrap: 'devFilterDropdownWrap', menu: 'devFilterMenu' }
+        ];
+        wraps.forEach(({ wrap, menu }) => {
+          const wEl = document.getElementById(wrap);
+          const mEl = document.getElementById(menu);
+          if (wEl && mEl && !wEl.contains(e.target)) {
+            mEl.classList.add('hidden');
+          }
+        });
+      });
+
+      // Tick App Uptime, SDR Uptime, and Live Hop Countdown every 1 second
       setInterval(() => {
         appUptimeSeconds += 1;
         if (sdrIsRunning) {
           sdrUptimeSeconds += 1;
         }
         renderUptimeCounters();
+        renderTopbarSdrStatusBadge();
       }, 1000);
 
       // Update relative timestamps every 2 seconds across the entire DOM
@@ -1453,30 +1595,347 @@
 
     function syncGroupDevicesButton() {
       const btn = document.getElementById('groupDevicesBtn');
+      if (!btn) return;
       if (groupDevices) {
-        btn.className = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40';
+        btn.className = 'inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40';
       } else {
-        btn.className = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300';
+        btn.className = 'inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300';
       }
     }
 
-    function setQuickPill(pill) {
-      activeQuickPill = pill;
-      syncQuickPillButtons();
+    // -----------------------------------------------------------------------
+    // Dynamic Multi-Select Dropdowns (Models, Categories & Status Filters)
+    // -----------------------------------------------------------------------
+    function toggleDropdownMenu(menuId) {
+      const menus = ['sigModelMenu', 'sigFilterMenu', 'devFilterMenu'];
+      menus.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (id === menuId) {
+          el.classList.toggle('hidden');
+          if (!el.classList.contains('hidden')) {
+            if (id === 'sigModelMenu') {
+              renderSignalModelDropdownList();
+              setTimeout(() => document.getElementById('sigModelSearchInput')?.focus(), 40);
+            } else {
+              renderCategoryFilterDropdowns();
+            }
+          }
+        } else {
+          el.classList.add('hidden');
+        }
+      });
+    }
+
+    function getDiscoveredCategoriesWithCounts() {
+      const countsMap = new Map();
+      BASE_CATEGORIES.forEach((cat) => countsMap.set(cat, 0));
+
+      devicesList.forEach((dev) => {
+        if (Number(dev.ignored) === 1 && !document.getElementById('deviceShowIgnored')?.checked) return;
+        const c = (dev.category || 'Sensor').trim() || 'Sensor';
+        countsMap.set(c, (countsMap.get(c) || 0) + 1);
+      });
+
+      rawSignalsList.forEach((sig) => {
+        const c = (sig.category || 'Sensor').trim() || 'Sensor';
+        if (!countsMap.has(c)) {
+          countsMap.set(c, 0);
+        }
+      });
+
+      return Array.from(countsMap.entries()).sort((a, b) => {
+        const idxA = BASE_CATEGORIES.indexOf(a[0]);
+        const idxB = BASE_CATEGORIES.indexOf(b[0]);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return a[0].localeCompare(b[0], 'sv');
+      });
+    }
+
+    function updateFilterDropdownBadges() {
+      // 1. Signal Models button
+      const modCount = selectedSignalModels.size;
+      const modBadge = document.getElementById('sigModelCountBadge');
+      const modLabel = document.getElementById('sigModelBtnLabel');
+      if (modBadge && modLabel) {
+        if (modCount > 0) {
+          modBadge.textContent = String(modCount);
+          modBadge.classList.remove('hidden');
+          modLabel.textContent = modCount === 1 ? Array.from(selectedSignalModels)[0] : `Modeller (${modCount})`;
+        } else {
+          modBadge.classList.add('hidden');
+          modLabel.textContent = 'Alla modeller';
+        }
+      }
+
+      // 2. Signal Categories & Status button
+      const sigTotal = selectedSignalStatusFilters.size + selectedSignalCategories.size;
+      const sigBadge = document.getElementById('sigFilterCountBadge');
+      const sigLabel = document.getElementById('sigFilterBtnLabel');
+      if (sigBadge && sigLabel) {
+        if (sigTotal > 0) {
+          sigBadge.textContent = String(sigTotal);
+          sigBadge.classList.remove('hidden');
+          sigLabel.textContent = `Kategorier & Filter (${sigTotal})`;
+        } else {
+          sigBadge.classList.add('hidden');
+          sigLabel.textContent = 'Kategorier & Filter';
+        }
+      }
+
+      // 3. Device Categories & Status button
+      const devTotal = selectedDeviceStatusFilters.size + selectedDeviceCategories.size;
+      const devBadge = document.getElementById('devFilterCountBadge');
+      const devLabel = document.getElementById('devFilterBtnLabel');
+      if (devBadge && devLabel) {
+        if (devTotal > 0) {
+          devBadge.textContent = String(devTotal);
+          devBadge.classList.remove('hidden');
+          devLabel.textContent = `Kategorier & Filter (${devTotal})`;
+        } else {
+          devBadge.classList.add('hidden');
+          devLabel.textContent = 'Kategorier & Filter';
+        }
+      }
+    }
+
+    function renderSignalModelDropdownList() {
+      const listEl = document.getElementById('sigModelOptionsList');
+      if (!listEl) return;
+      const q = (document.getElementById('sigModelSearchInput')?.value || '').trim().toLowerCase();
+
+      const modelCounts = new Map();
+      knownModels.forEach((m) => modelCounts.set(m, 0));
+      devicesList.forEach((d) => {
+        if (d.model) {
+          knownModels.add(d.model);
+          modelCounts.set(d.model, (modelCounts.get(d.model) || 0) + 1);
+        }
+      });
+      rawSignalsList.forEach((s) => {
+        if (s.model && !modelCounts.has(s.model)) {
+          knownModels.add(s.model);
+          modelCounts.set(s.model, 1);
+        }
+      });
+
+      const sorted = Array.from(knownModels)
+        .filter((m) => !q || m.toLowerCase().includes(q))
+        .sort((a, b) => a.localeCompare(b, 'sv'));
+
+      if (!sorted.length) {
+        listEl.innerHTML = '<div class="px-2 py-3 text-center text-slate-400 text-[11px]">Inga modeller matchar sökningen</div>';
+        updateFilterDropdownBadges();
+        return;
+      }
+
+      listEl.innerHTML = sorted.map((m) => {
+        const checked = selectedSignalModels.has(m);
+        const cnt = modelCounts.get(m) || 0;
+        return `
+          <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer select-none">
+            <span class="flex items-center gap-2 min-w-0">
+              <input
+                type="checkbox"
+                ${checked ? 'checked' : ''}
+                onchange="toggleSignalModelFilter('${escapeHtml(m)}', this.checked)"
+                class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
+              />
+              <span class="truncate font-mono text-[11px] text-slate-800 dark:text-slate-200">${escapeHtml(m)}</span>
+            </span>
+            <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">${cnt}</span>
+          </label>
+        `;
+      }).join('');
+
+      updateFilterDropdownBadges();
+    }
+
+    function toggleSignalModelFilter(model, checked) {
+      if (checked) selectedSignalModels.add(model);
+      else selectedSignalModels.delete(model);
+      updateFilterDropdownBadges();
       renderSignalsView();
     }
 
-    function syncQuickPillButtons() {
-      const pills = ['all', 'weather', 'tpms', 'meter_switch', 'low_battery'];
-      pills.forEach((p) => {
-        const el = document.getElementById(`pill_${p}`);
-        if (!el) return;
-        if (p === activeQuickPill) {
-          el.className = 'whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition bg-sky-600 text-white border-sky-600 shadow-sm';
-        } else {
-          el.className = 'whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800';
-        }
-      });
+    function selectAllSignalModels() {
+      knownModels.forEach((m) => selectedSignalModels.add(m));
+      renderSignalModelDropdownList();
+      renderSignalsView();
+    }
+
+    function clearSignalModels() {
+      selectedSignalModels.clear();
+      renderSignalModelDropdownList();
+      renderSignalsView();
+    }
+
+    function renderCategoryFilterDropdowns() {
+      const catsWithCounts = getDiscoveredCategoriesWithCounts();
+
+      // Build Signaler Dropdown Content
+      const sigListEl = document.getElementById('sigFilterOptionsList');
+      if (sigListEl) {
+        const statusItemsSig = [
+          { key: 'new', label: 'Nya fynd (NY)', icon: 'mdi-new-box text-emerald-500' },
+          { key: 'low_battery', label: 'Lågt batteri', icon: 'mdi-battery-alert-variant-outline text-rose-500' },
+          { key: 'aliased', label: 'Endast namngivna (Alias)', icon: 'mdi-tag-check-outline text-sky-500' }
+        ];
+        sigListEl.innerHTML = `
+          <div>
+            <div class="px-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Statusfilter</div>
+            <div class="space-y-0.5">
+              ${statusItemsSig.map((st) => `
+                <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer select-none">
+                  <span class="flex items-center gap-2 min-w-0">
+                    <input
+                      type="checkbox"
+                      ${selectedSignalStatusFilters.has(st.key) ? 'checked' : ''}
+                      onchange="toggleSignalStatusFilter('${st.key}', this.checked)"
+                      class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
+                    />
+                    <i class="mdi ${st.icon} text-sm leading-none"></i>
+                    <span class="truncate text-slate-800 dark:text-slate-200 font-medium">${st.label}</span>
+                  </span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+          <div class="pt-1.5 border-t border-slate-100 dark:border-slate-800">
+            <div class="px-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Sensortyper / Kategorier</div>
+            <div class="space-y-0.5">
+              ${catsWithCounts.map(([cat, count]) => `
+                <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer select-none">
+                  <span class="flex items-center gap-2 min-w-0">
+                    <input
+                      type="checkbox"
+                      ${selectedSignalCategories.has(cat) ? 'checked' : ''}
+                      onchange="toggleSignalCategoryFilter('${escapeHtml(cat)}', this.checked)"
+                      class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
+                    />
+                    <i class="mdi ${getCategoryIcon(cat)} text-sm leading-none"></i>
+                    <span class="truncate text-slate-800 dark:text-slate-200">${escapeHtml(cat)}</span>
+                  </span>
+                  <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">(${count})</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // Build Enheter Dropdown Content
+      const devListEl = document.getElementById('devFilterOptionsList');
+      if (devListEl) {
+        const statusItemsDev = [
+          { key: 'new', label: 'Nya fynd (NY)', icon: 'mdi-new-box text-emerald-500' },
+          { key: 'low_battery', label: 'Lågt batteri', icon: 'mdi-battery-alert-variant-outline text-rose-500' },
+          { key: 'aliased', label: 'Endast namngivna (Alias)', icon: 'mdi-tag-check-outline text-sky-500' },
+          { key: 'grouped', label: 'Grupperade enheter', icon: 'mdi-folder-check-outline text-indigo-500' },
+          { key: 'ungrouped', label: 'Ogrupperade enheter', icon: 'mdi-folder-open-outline text-amber-500' }
+        ];
+        devListEl.innerHTML = `
+          <div>
+            <div class="px-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Statusfilter</div>
+            <div class="space-y-0.5">
+              ${statusItemsDev.map((st) => `
+                <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer select-none">
+                  <span class="flex items-center gap-2 min-w-0">
+                    <input
+                      type="checkbox"
+                      ${selectedDeviceStatusFilters.has(st.key) ? 'checked' : ''}
+                      onchange="toggleDeviceStatusFilter('${st.key}', this.checked)"
+                      class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
+                    />
+                    <i class="mdi ${st.icon} text-sm leading-none"></i>
+                    <span class="truncate text-slate-800 dark:text-slate-200 font-medium">${st.label}</span>
+                  </span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+          <div class="pt-1.5 border-t border-slate-100 dark:border-slate-800">
+            <div class="px-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Sensortyper / Kategorier</div>
+            <div class="space-y-0.5">
+              ${catsWithCounts.map(([cat, count]) => `
+                <label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer select-none">
+                  <span class="flex items-center gap-2 min-w-0">
+                    <input
+                      type="checkbox"
+                      ${selectedDeviceCategories.has(cat) ? 'checked' : ''}
+                      onchange="toggleDeviceCategoryFilter('${escapeHtml(cat)}', this.checked)"
+                      class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 focus:ring-0"
+                    />
+                    <i class="mdi ${getCategoryIcon(cat)} text-sm leading-none"></i>
+                    <span class="truncate text-slate-800 dark:text-slate-200">${escapeHtml(cat)}</span>
+                  </span>
+                  <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 shrink-0">(${count})</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      updateFilterDropdownBadges();
+    }
+
+    function toggleSignalStatusFilter(key, checked) {
+      if (checked) selectedSignalStatusFilters.add(key);
+      else selectedSignalStatusFilters.delete(key);
+      updateFilterDropdownBadges();
+      renderSignalsView();
+    }
+
+    function toggleSignalCategoryFilter(cat, checked) {
+      if (checked) selectedSignalCategories.add(cat);
+      else selectedSignalCategories.delete(cat);
+      updateFilterDropdownBadges();
+      renderSignalsView();
+    }
+
+    function selectAllSignalCategoriesAndFilters() {
+      ['new', 'low_battery', 'aliased'].forEach((k) => selectedSignalStatusFilters.add(k));
+      getDiscoveredCategoriesWithCounts().forEach(([cat]) => selectedSignalCategories.add(cat));
+      renderCategoryFilterDropdowns();
+      renderSignalsView();
+    }
+
+    function clearSignalCategoriesAndFilters() {
+      selectedSignalStatusFilters.clear();
+      selectedSignalCategories.clear();
+      renderCategoryFilterDropdowns();
+      renderSignalsView();
+    }
+
+    function toggleDeviceStatusFilter(key, checked) {
+      if (checked) selectedDeviceStatusFilters.add(key);
+      else selectedDeviceStatusFilters.delete(key);
+      updateFilterDropdownBadges();
+      renderDevicesList();
+    }
+
+    function toggleDeviceCategoryFilter(cat, checked) {
+      if (checked) selectedDeviceCategories.add(cat);
+      else selectedDeviceCategories.delete(cat);
+      updateFilterDropdownBadges();
+      renderDevicesList();
+    }
+
+    function selectAllDeviceCategoriesAndFilters() {
+      ['new', 'low_battery', 'aliased', 'grouped', 'ungrouped'].forEach((k) => selectedDeviceStatusFilters.add(k));
+      getDiscoveredCategoriesWithCounts().forEach(([cat]) => selectedDeviceCategories.add(cat));
+      renderCategoryFilterDropdowns();
+      renderDevicesList();
+    }
+
+    function clearDeviceCategoriesAndFilters() {
+      selectedDeviceStatusFilters.clear();
+      selectedDeviceCategories.clear();
+      renderCategoryFilterDropdowns();
+      renderDevicesList();
     }
 
     // -----------------------------------------------------------------------
@@ -2068,6 +2527,8 @@
           const msg = JSON.parse(event.data);
           if (msg.type === 'status' && msg.data) {
             applyStatusUpdate(msg.data);
+          } else if (msg.type === 'freq_change' && msg.data) {
+            handleRtlFreqChange(msg.data);
           } else if (msg.type === 'signal' && msg.data) {
             handleIncomingSignal(msg.data, msg.device, msg.counts, msg.total_signals_count, msg.total_devices_count);
           } else if (msg.type === 'stderr' && msg.line) {
@@ -2081,8 +2542,11 @@
             devicesList = devicesList.filter((d) => d.device_key !== msg.device_key);
             selectedDeviceKeys.delete(msg.device_key);
             syncMultiSelectBar();
+            renderCategoryFilterDropdowns();
             renderSignalsView();
             if (activeTab === 'devices') renderDevicesList();
+          } else if (msg.type === 'db_reset') {
+            handleDatabaseResetEvent(msg);
           }
         } catch (err) {
           console.error('WS parse error:', err);
@@ -2155,19 +2619,21 @@
         updateNewDevicesNavBadge(Number(counts.new_devices));
       }
 
-      const sdrDot = document.getElementById('sdrStatusDot');
-      const sdrText = document.getElementById('sdrStatusText');
-      const sdrBadge = document.getElementById('sdrStatusBadge');
-
-      if (rtl.running) {
-        sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse-subtle';
-        sdrText.textContent = `SDR: Aktiv (${(rtl.mode || 'hop').toUpperCase()})`;
-        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300';
-      } else {
-        sdrDot.className = 'w-2 h-2 rounded-full bg-rose-500';
-        sdrText.textContent = `SDR: ${rtl.state === 'starting' ? 'Startar...' : 'Fel / Stoppad'}`;
-        sdrBadge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-700/60 text-rose-800 dark:text-rose-300';
+      sdrMode = (rtl.mode || 'hop').toLowerCase();
+      sdrState = rtl.state || (rtl.running ? 'running' : 'stopped');
+      if (rtl.current_tuned_freq) {
+        sdrCurrentFreq = rtl.current_tuned_freq;
       }
+      if (rtl.last_hop_timestamp) {
+        sdrLastHopTimestamp = Number(rtl.last_hop_timestamp);
+      }
+      if (rtl.hop_interval) {
+        sdrHopInterval = Math.max(5, Number(rtl.hop_interval) || 60);
+      }
+      if (Array.isArray(rtl.active_freqs) && rtl.active_freqs.length > 0) {
+        sdrActiveFreqs = rtl.active_freqs;
+      }
+      renderTopbarSdrStatusBadge();
 
       const errBanner = document.getElementById('sdrErrorBanner');
       const errText = document.getElementById('sdrErrorText');
@@ -2250,6 +2716,71 @@
       document.getElementById('statDebounced').textContent = rtl.debounced_count ?? 0;
       document.getElementById('statMqttPublished').textContent = mqtt.published_count ?? 0;
       document.getElementById('statRestarts').textContent = rtl.restart_count ?? 0;
+    }
+
+    function handleRtlFreqChange(data) {
+      if (!data) return;
+      if (data.current_tuned_freq) sdrCurrentFreq = data.current_tuned_freq;
+      if (data.last_hop_timestamp) sdrLastHopTimestamp = Number(data.last_hop_timestamp);
+      if (data.hop_interval) sdrHopInterval = Math.max(5, Number(data.hop_interval) || 60);
+      if (data.mode) sdrMode = String(data.mode).toLowerCase();
+      if (Array.isArray(data.active_freqs) && data.active_freqs.length > 0) {
+        sdrActiveFreqs = data.active_freqs;
+      }
+      renderTopbarSdrStatusBadge();
+    }
+
+    function renderTopbarSdrStatusBadge() {
+      const sdrDot = document.getElementById('sdrStatusDot');
+      const sdrText = document.getElementById('sdrStatusText');
+      const sdrBadge = document.getElementById('sdrStatusBadge');
+      const progWrap = document.getElementById('sdrHopProgressWrap');
+      const progBar = document.getElementById('sdrHopProgressBar');
+      if (!sdrDot || !sdrText || !sdrBadge) return;
+
+      if (!sdrIsRunning) {
+        if (progWrap) progWrap.classList.add('hidden');
+        sdrDot.className = 'w-2 h-2 rounded-full bg-rose-500 shrink-0';
+        sdrText.innerHTML = `<span>SDR: ${sdrState === 'starting' ? 'Startar...' : 'Fel / Stoppad'}</span>`;
+        sdrBadge.className = 'relative overflow-hidden flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-700/60 text-rose-800 dark:text-rose-300 transition-colors duration-200';
+        return;
+      }
+
+      const isHopMode = sdrMode === 'hop' || (sdrMode === 'custom' && sdrActiveFreqs.length > 1);
+      if (!isHopMode) {
+        if (progWrap) progWrap.classList.add('hidden');
+        const fixedFreq = sdrMode === '868' ? '868.30 MHz' : (sdrMode === '433' ? '433.92 MHz' : sdrCurrentFreq);
+        sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse-subtle shrink-0';
+        sdrText.innerHTML = `<i class="mdi mdi-access-point text-xs leading-none"></i><span>SDR: Aktiv • <strong>${escapeHtml(fixedFreq)}</strong></span>`;
+        sdrBadge.className = 'relative overflow-hidden flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300 transition-colors duration-200';
+        return;
+      }
+
+      // Hopping mode (Dual Hop 433.92 / 868.30 MHz or multi-freq Custom)
+      const nowSec = Date.now() / 1000;
+      const elapsed = Math.max(0, nowSec - (sdrLastHopTimestamp || nowSec));
+      const cycleElapsed = elapsed % sdrHopInterval;
+      const remainingSec = Math.max(1, Math.ceil(sdrHopInterval - cycleElapsed));
+      const pctRemaining = Math.max(4, Math.min(100, ((sdrHopInterval - cycleElapsed) / sdrHopInterval) * 100));
+
+      const is868 = String(sdrCurrentFreq).includes('868');
+      if (progWrap && progBar) {
+        progWrap.classList.remove('hidden');
+        progBar.style.width = `${pctRemaining.toFixed(1)}%`;
+        progBar.className = is868
+          ? 'h-full bg-purple-500 dark:bg-purple-400 transition-all duration-500'
+          : 'h-full bg-sky-500 dark:bg-sky-400 transition-all duration-500';
+      }
+
+      if (is868) {
+        sdrDot.className = 'w-2 h-2 rounded-full bg-purple-500 animate-pulse-subtle shrink-0';
+        sdrBadge.className = 'relative overflow-hidden flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-purple-50 dark:bg-purple-950/70 border border-purple-300 dark:border-purple-700/70 text-purple-800 dark:text-purple-200 transition-colors duration-200';
+      } else {
+        sdrDot.className = 'w-2 h-2 rounded-full bg-sky-500 animate-pulse-subtle shrink-0';
+        sdrBadge.className = 'relative overflow-hidden flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-sky-50 dark:bg-sky-950/70 border border-sky-300 dark:border-sky-700/70 text-sky-800 dark:text-sky-200 transition-colors duration-200';
+      }
+
+      sdrText.innerHTML = `<i class="mdi mdi-sine-wave text-xs leading-none"></i><span>Lyssnar: <strong>${escapeHtml(sdrCurrentFreq)}</strong> <span class="text-[10px] opacity-80 font-mono">(skiftar om ${remainingSec}s)</span></span>`;
     }
 
     function syncHaDiscoveryUiVisibility() {
@@ -2434,26 +2965,11 @@
         const res = await fetch('/api/models');
         if (!res.ok) return;
         const data = await res.json();
-        const select = document.getElementById('signalModelSelect');
-        const current = select.value;
-        knownModels = new Set(data.models || []);
-        renderModelOptions(current);
+        (data.models || []).forEach((m) => knownModels.add(m));
+        renderSignalModelDropdownList();
       } catch (e) {
         console.error(e);
       }
-    }
-
-    function renderModelOptions(selectedValue) {
-      const select = document.getElementById('signalModelSelect');
-      const sorted = Array.from(knownModels).sort((a, b) => a.localeCompare(b));
-      select.innerHTML = '<option value="">Alla modeller</option>';
-      sorted.forEach((m) => {
-        const opt = document.createElement('option');
-        opt.value = m;
-        opt.textContent = m;
-        if (m === selectedValue) opt.selected = true;
-        select.appendChild(opt);
-      });
     }
 
     function debouncedLoadSignals() {
@@ -2463,27 +2979,29 @@
 
     function clearSignalFilters() {
       document.getElementById('signalSearchInput').value = '';
-      document.getElementById('signalModelSelect').value = '';
       document.getElementById('signalFreqSelect').value = '';
-      document.getElementById('signalOnlyAliased').checked = false;
-      activeQuickPill = 'all';
-      syncQuickPillButtons();
+      selectedSignalModels.clear();
+      selectedSignalStatusFilters.clear();
+      selectedSignalCategories.clear();
+      renderSignalModelDropdownList();
+      renderCategoryFilterDropdowns();
       loadSignals();
     }
 
     async function loadSignals() {
       const search = document.getElementById('signalSearchInput').value.trim();
-      const model = document.getElementById('signalModelSelect').value;
       const freqBand = document.getElementById('signalFreqSelect').value;
-      const onlyAliased = document.getElementById('signalOnlyAliased').checked;
+      const onlyAliased = selectedSignalStatusFilters.has('aliased');
 
       const params = new URLSearchParams({
-        limit: '200',
+        limit: '250',
         offset: '0',
         unique_devices: groupDevices ? 'true' : 'false'
       });
       if (search) params.set('search', search);
-      if (model) params.set('model', model);
+      if (selectedSignalModels.size === 1) {
+        params.set('model', Array.from(selectedSignalModels)[0]);
+      }
       if (freqBand) params.set('freq_band', freqBand);
       if (onlyAliased) params.set('only_aliased', 'true');
 
@@ -2492,74 +3010,62 @@
         if (!res.ok) return;
         const data = await res.json();
         rawSignalsList = data.items || [];
+        rawSignalsList.forEach((s) => {
+          if (s.model) knownModels.add(s.model);
+        });
+        renderSignalModelDropdownList();
+        renderCategoryFilterDropdowns();
         renderSignalsView();
       } catch (e) {
         console.error('Error loading signals:', e);
       }
     }
 
-    function matchesQuickPill(sig) {
-      if (activeQuickPill === 'all') return true;
-      const cat = (sig.category || '').toLowerCase();
-      const p = sig.payload || {};
-      const bat = sig.battery_ok !== null && sig.battery_ok !== undefined ? sig.battery_ok : p.battery_ok;
-
-      if (activeQuickPill === 'weather') {
-        const pKeys = Object.keys(p);
-        return (
-          cat === 'weather' ||
-          p.temperature_C !== undefined ||
-          p.humidity !== undefined ||
-          p.wind_avg_km_h !== undefined ||
-          p.wind_avg_m_s !== undefined ||
-          p.wind_speed_m_s !== undefined ||
-          p.rain_mm !== undefined ||
-          p.rain_in !== undefined ||
-          pKeys.some(k => /temp.*_[cf]$/i.test(k) || /^humidity_/i.test(k) || /moisture/i.test(k))
-        );
-      }
-      if (activeQuickPill === 'tpms') {
-        return cat === 'tpms' || p.pressure_kPa !== undefined || p.pressure_bar !== undefined || p.pressure_PSI !== undefined;
-      }
-      if (activeQuickPill === 'meter_switch') {
-        return (
-          cat === 'meter' ||
-          cat === 'switch' ||
-          cat === 'security' ||
-          p.cumulative_kwh !== undefined ||
-          p.effect !== undefined ||
-          p.power_W !== undefined ||
-          p.energy_kWh !== undefined ||
-          p.state !== undefined ||
-          p.cmd !== undefined
-        );
-      }
-      if (activeQuickPill === 'low_battery') {
-        return (bat !== null && bat !== undefined && Number(bat) === 0) || Number(p.battery_low) === 1;
-      }
-      return true;
-    }
-
     function signalMatchesActiveFilters(sig) {
       const search = document.getElementById('signalSearchInput').value.trim().toLowerCase();
-      const model = document.getElementById('signalModelSelect').value;
       const freqBand = document.getElementById('signalFreqSelect').value;
-      const onlyAliased = document.getElementById('signalOnlyAliased').checked;
+      const p = sig.payload || {};
 
-      if (model && sig.model !== model) return false;
-      if (onlyAliased && (!sig.alias || !sig.alias.trim())) return false;
+      // 1. Multi-Select Models filter
+      if (selectedSignalModels.size > 0 && !selectedSignalModels.has(sig.model)) {
+        return false;
+      }
 
+      // 2. Multi-Select Status filters ('new', 'low_battery', 'aliased')
+      if (selectedSignalStatusFilters.has('aliased')) {
+        if (!sig.alias || !sig.alias.trim()) return false;
+      }
+      if (selectedSignalStatusFilters.has('low_battery')) {
+        const bat = sig.battery_ok !== null && sig.battery_ok !== undefined ? sig.battery_ok : p.battery_ok;
+        const isLow = (bat !== null && bat !== undefined && Number(bat) === 0) || Number(p.battery_low) === 1;
+        if (!isLow) return false;
+      }
+      if (selectedSignalStatusFilters.has('new')) {
+        const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
+        const devObj = devicesList.find((d) => d.device_key === devKey);
+        const hasAlias = Boolean(sig.alias && sig.alias.trim()) || Boolean(devObj && devObj.alias && devObj.alias.trim());
+        const hasGroup = Boolean(sig.group_name && sig.group_name.trim()) || Boolean(devObj && devObj.group_name && devObj.group_name.trim());
+        const isNewFlag = devObj ? Number(devObj.is_new ?? 1) === 1 : true;
+        if (hasAlias || hasGroup || !isNewFlag) return false;
+      }
+
+      // 3. Multi-Select Categories filter
+      if (selectedSignalCategories.size > 0) {
+        const cat = (sig.category || 'Sensor').trim() || 'Sensor';
+        if (!selectedSignalCategories.has(cat)) return false;
+      }
+
+      // 4. Frequency band filter
       if (freqBand === '433' || freqBand === '868') {
-        const radio = extractRadioMetadata(sig, sig.payload);
+        const radio = extractRadioMetadata(sig, p);
         const f = radio.freqMHz;
         if (freqBand === '433' && !(f >= 430 && f <= 440)) return false;
         if (freqBand === '868' && !(f >= 860 && f <= 875)) return false;
       }
 
-      if (!matchesQuickPill(sig)) return false;
-
+      // 5. Free-text search
       if (search) {
-        const hay = `${sig.model || ''} ${sig.device_id || ''} ${sig.alias || ''} ${sig.group_name || ''} ${sig.category || ''} ${JSON.stringify(sig.payload || {})}`.toLowerCase();
+        const hay = `${sig.model || ''} ${sig.device_id || ''} ${sig.alias || ''} ${sig.group_name || ''} ${sig.category || ''} ${JSON.stringify(p)}`.toLowerCase();
         if (!hay.includes(search)) return false;
       }
       return true;
@@ -2577,7 +3083,7 @@
     function handleIncomingSignal(sig, dev, counts, totalSignalsCount, totalDevicesCount) {
       if (sig.model && !knownModels.has(sig.model)) {
         knownModels.add(sig.model);
-        renderModelOptions(document.getElementById('signalModelSelect').value);
+        renderSignalModelDropdownList();
       }
 
       if (dev) {
@@ -2756,6 +3262,10 @@
       if (c === 'meter') return 'mdi-lightning-bolt text-emerald-500';
       if (c === 'switch') return 'mdi-toggle-switch-outline text-indigo-500';
       if (c === 'security') return 'mdi-shield-alert-outline text-rose-500';
+      if (c.includes('soil') || c.includes('moisture')) return 'mdi-sprout-outline text-emerald-500';
+      if (c.includes('smoke') || c.includes('fire')) return 'mdi-fire-alert text-rose-500';
+      if (c.includes('water')) return 'mdi-water-pump text-blue-500';
+      if (c.includes('remote')) return 'mdi-remote text-amber-500';
       return 'mdi-access-point text-slate-400';
     }
 
@@ -3192,7 +3702,7 @@
       const srtSel = document.getElementById('deviceSortBySelect');
       if (grpSel) grpSel.value = deviceGroupBy;
       if (srtSel) srtSel.value = deviceSortBy;
-      syncDeviceQuickPillButtons();
+      updateFilterDropdownBadges();
     }
 
     function setDeviceGroupBy(val) {
@@ -3207,29 +3717,11 @@
       renderDevicesList();
     }
 
-    function setDeviceQuickPill(pill) {
-      activeDevicePill = pill || 'all';
-      syncDeviceQuickPillButtons();
-      renderDevicesList();
-    }
-
-    function syncDeviceQuickPillButtons() {
-      const pills = ['all', 'grouped', 'ungrouped', 'weather', 'tpms', 'meter', 'low_battery'];
-      pills.forEach((p) => {
-        const el = document.getElementById(`devPill_${p}`);
-        if (!el) return;
-        if (p === activeDevicePill) {
-          el.className = 'whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition bg-sky-600 text-white border-sky-600 shadow-sm';
-        } else {
-          el.className = 'whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800';
-        }
-      });
-    }
-
     function clearDeviceFilters() {
       document.getElementById('deviceSearchInput').value = '';
-      activeDevicePill = 'all';
-      syncDeviceQuickPillButtons();
+      selectedDeviceStatusFilters.clear();
+      selectedDeviceCategories.clear();
+      renderCategoryFilterDropdowns();
       renderDevicesList();
     }
 
@@ -3259,8 +3751,13 @@
         if (!res.ok) return;
         const data = await res.json();
         devicesList = data.devices || [];
+        devicesList.forEach((d) => {
+          if (d.model) knownModels.add(d.model);
+        });
         updateExistingGroupsDatalist();
         updateNewDevicesNavBadge();
+        renderSignalModelDropdownList();
+        renderCategoryFilterDropdowns();
         renderDevicesList();
       } catch (e) {
         console.error(e);
@@ -3275,6 +3772,8 @@
       if (isNewDevice) {
         devicesList.unshift(dev);
         updateExistingGroupsDatalist();
+        renderCategoryFilterDropdowns();
+        renderSignalModelDropdownList();
       } else {
         devicesList[idx] = { ...devicesList[idx], ...dev };
       }
@@ -3364,6 +3863,7 @@
       syncDeviceToCaches(dev);
       updateExistingGroupsDatalist();
       updateNewDevicesNavBadge();
+      renderCategoryFilterDropdowns();
       if (activeTab === 'signals') renderSignalsView();
       if (activeTab === 'devices') renderDevicesList();
     }
@@ -3372,6 +3872,7 @@
       devs.forEach((d) => syncDeviceToCaches(d));
       updateExistingGroupsDatalist();
       updateNewDevicesNavBadge();
+      renderCategoryFilterDropdowns();
       if (activeTab === 'signals') renderSignalsView();
       if (activeTab === 'devices') renderDevicesList();
     }
@@ -3381,19 +3882,29 @@
       if (!showIgnored && Number(dev.ignored) === 1) return false;
 
       const p = dev.last_payload || {};
-      const cat = (dev.category || 'Sensor').toLowerCase();
+      const cat = (dev.category || 'Sensor').trim() || 'Sensor';
       const grp = (dev.group_name || '').trim();
+      const hasAlias = Boolean(dev.alias && dev.alias.trim());
 
-      if (activeDevicePill === 'grouped' && !grp) return false;
-      if (activeDevicePill === 'ungrouped' && grp) return false;
-      if (activeDevicePill === 'weather' && cat !== 'weather') return false;
-      if (activeDevicePill === 'tpms' && cat !== 'tpms') return false;
-      if (activeDevicePill === 'meter' && cat !== 'meter') return false;
-      if (activeDevicePill === 'low_battery') {
+      // 1. Multi-Select Status filters ('new', 'low_battery', 'aliased', 'grouped', 'ungrouped')
+      if (selectedDeviceStatusFilters.has('new')) {
+        const isNew = Number(dev.is_new ?? 1) === 1 && !hasAlias && !grp;
+        if (!isNew) return false;
+      }
+      if (selectedDeviceStatusFilters.has('low_battery')) {
         const isLow = (p.battery_ok !== undefined && Number(p.battery_ok) === 0) || Number(p.battery_low) === 1;
         if (!isLow) return false;
       }
+      if (selectedDeviceStatusFilters.has('aliased') && !hasAlias) return false;
+      if (selectedDeviceStatusFilters.has('grouped') && !grp) return false;
+      if (selectedDeviceStatusFilters.has('ungrouped') && grp) return false;
 
+      // 2. Multi-Select Category filters
+      if (selectedDeviceCategories.size > 0 && !selectedDeviceCategories.has(cat)) {
+        return false;
+      }
+
+      // 3. Free-text search
       const search = document.getElementById('deviceSearchInput').value.trim().toLowerCase();
       if (search) {
         const hay = `${dev.model || ''} ${dev.device_id || ''} ${dev.alias || ''} ${dev.group_name || ''} ${dev.category || ''} ${JSON.stringify(p)}`.toLowerCase();
@@ -3653,7 +4164,7 @@
                   id="devCat_${escapeHtml(devKey)}"
                   class="w-full px-1.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-800 dark:text-slate-200 text-xs"
                 >
-                  ${['Meter', 'Weather', 'TPMS', 'Switch', 'Security', 'Sensor'].map(
+                  ${BASE_CATEGORIES.map(
                     (c) => `<option value="${c}" ${dev.category === c ? 'selected' : ''}>${c}</option>`
                   ).join('')}
                 </select>
@@ -4144,6 +4655,63 @@
       } catch (e) {
         showToast('Fel vid optimering av databas', true);
       }
+    }
+
+    function openResetDbModal() {
+      const modal = document.getElementById('resetDbModal');
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeResetDbModal() {
+      const modal = document.getElementById('resetDbModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    async function confirmResetDatabase() {
+      const radio = document.querySelector('input[name="resetDbMode"]:checked');
+      const keepAliases = radio ? radio.value === 'keep_aliases' : false;
+      closeResetDbModal();
+
+      try {
+        const res = await fetch('/api/database/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keep_aliases: keepAliases })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          handleDatabaseResetEvent({ keep_aliases: keepAliases, counts: data.status?.counts });
+          if (data.status) applyStatusUpdate(data.status);
+          showToast('Databasen har rensats!');
+        } else {
+          showToast('Kunde inte rensa databasen', true);
+        }
+      } catch (e) {
+        showToast('Nätverksfel vid rensning av databas', true);
+      }
+    }
+
+    function handleDatabaseResetEvent(msg) {
+      rawSignalsList = [];
+      selectedDeviceKeys.clear();
+      syncMultiSelectBar();
+
+      if (msg && msg.keep_aliases) {
+        loadDevices();
+      } else {
+        devicesList = [];
+        knownModels.clear();
+        selectedSignalModels.clear();
+        updateExistingGroupsDatalist();
+        updateNewDevicesNavBadge(0);
+        renderSignalModelDropdownList();
+        renderCategoryFilterDropdowns();
+        renderDevicesList();
+      }
+
+      renderSignalsView();
+      loadStatus();
+      if (activeTab === 'stats') loadStats();
     }
 
     async function loadSettingsForm() {
