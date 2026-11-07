@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.13</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.14</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -422,11 +422,6 @@
           <!-- Synchronized Sort Dropdown + Group Duplicates + View Switcher + Visible Count -->
           <div class="lg:col-span-4 xl:col-span-3 flex flex-wrap items-center justify-between sm:justify-end gap-1.5">
             
-            <!-- Hover Lock Indicator Badge -->
-            <span id="hover-lock-badge" class="hidden inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">
-              <i class="mdi mdi-cursor-default-click-outline"></i> Flöde låst vid hover
-            </span>
-
             <!-- Synchronized Signal Sort Dropdown -->
             <div class="relative flex items-center min-w-0 flex-1 sm:flex-initial">
               <i class="mdi mdi-sort-variant text-sky-500 text-sm absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
@@ -1541,8 +1536,7 @@
     let rawSignalsList = [];
     let devicesList = [];
     let knownModels = new Set();
-    let isHoverLocked = false;
-    let pendingReorderCount = 0;
+    let hasInPlaceUpdates = false;
     let currentModalDeviceKey = null;
     let currentModalPayload = null;
     let searchDebounceTimer = null;
@@ -3521,12 +3515,18 @@
 
     function toggleSignalSort(field) {
       if (signalSort.field === field) {
-        signalSort.dir = signalSort.dir === 'desc' ? 'asc' : 'desc';
+        if (field === 'time' && signalSort.dir === 'desc' && hasInPlaceUpdates) {
+          // If rows were updated in-place without reordering, clicking TID immediately re-sorts newest-first (desc)
+          signalSort.dir = 'desc';
+        } else {
+          signalSort.dir = signalSort.dir === 'desc' ? 'asc' : 'desc';
+        }
       } else {
         signalSort.field = field;
         // Default direction: 'desc' for time, hits, rssi; 'asc' for name, category, id, freq
         signalSort.dir = ['time', 'hits', 'rssi'].includes(field) ? 'desc' : 'asc';
       }
+      hasInPlaceUpdates = false;
       saveSignalSort();
       syncSignalSortUi();
       renderSignalsView();
@@ -3538,6 +3538,7 @@
         field: field || 'time',
         dir: dir === 'asc' ? 'asc' : 'desc'
       };
+      hasInPlaceUpdates = false;
       saveSignalSort();
       syncSignalSortUi();
       renderSignalsView();
@@ -3580,28 +3581,6 @@
         } else {
           hitsBtn.className = 'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900 hover:border-sky-500/60 text-slate-500 dark:text-slate-400 text-[10px] font-mono normal-case transition';
           hitsIcon.innerHTML = '<i class="mdi mdi-unfold-more-horizontal opacity-40"></i>';
-        }
-      }
-    }
-
-    function setSignalsHoverLock(locked) {
-      const badge = document.getElementById('hover-lock-badge');
-      if (locked) {
-        isHoverLocked = true;
-        if (badge) badge.classList.remove('hidden');
-      } else {
-        // Keep hover lock active if the Detail Modal is currently open
-        const detailModal = document.getElementById('detailModal');
-        if (detailModal && !detailModal.classList.contains('hidden')) {
-          return;
-        }
-        isHoverLocked = false;
-        if (badge) badge.classList.add('hidden');
-        if (pendingReorderCount > 0) {
-          pendingReorderCount = 0;
-          if (activeTab === 'signals') {
-            renderSignalsView();
-          }
         }
       }
     }
@@ -3672,11 +3651,23 @@
 
     function pulseElement(el) {
       if (!el) return;
-      el.classList.add('bg-sky-500/10', 'signal-flash-highlight', 'transition-colors', 'duration-700');
+      el.classList.add(
+        'bg-emerald-500/15',
+        'dark:bg-emerald-500/20',
+        'border-l-4',
+        'border-l-emerald-500',
+        'transition-all',
+        'duration-700'
+      );
       clearTimeout(el._pulseTimer);
       el._pulseTimer = setTimeout(() => {
-        el.classList.remove('bg-sky-500/10', 'signal-flash-highlight');
-      }, 800);
+        el.classList.remove(
+          'bg-emerald-500/15',
+          'dark:bg-emerald-500/20',
+          'border-l-4',
+          'border-l-emerald-500'
+        );
+      }, 2500);
     }
 
     function handleIncomingSignal(sig, dev, counts, totalSignalsCount, totalDevicesCount) {
@@ -3750,47 +3741,11 @@
           else gridEl.classList.remove('hidden');
         }
 
-        const isDefaultTimeDesc = signalSort.field === 'time' && signalSort.dir === 'desc';
-
-        if (isHoverLocked) {
-          // Hover Lock Active: NEVER reorder rows/cards or prepend new items!
-          // Silently update existing element's metrics/timestamp in place if visible.
-          pendingReorderCount += 1;
-          if (groupDevices && container) {
-            const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
-            if (existingEl) {
-              const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, sig.payload || {});
-              const titleTarget = existingEl.querySelector('[data-sig-title]');
-              if (titleTarget) {
-                titleTarget.innerHTML = secondaryName
-                  ? `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 truncate">(${escapeHtml(secondaryName)})</span>`
-                  : `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span>`;
-              }
-
-              const { badgesHtml } = extractAndFormatMetrics(sig.payload || {}, sig);
-              const badgesTarget = existingEl.querySelector('[data-sig-badges]');
-              if (badgesTarget) badgesTarget.innerHTML = badgesHtml;
-
-              const strengthTarget = existingEl.querySelector('[data-sig-strength]');
-              if (strengthTarget) strengthTarget.innerHTML = buildFooterSignalStrength(sig.rssi, sig.snr, (sig.payload || {}).mod, sig.freq ?? (sig.payload || {}).freq);
-
-              const hitsTarget = existingEl.querySelector('[data-sig-hits]');
-              if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${sig.hit_count || 1}`;
-
-              const tsTarget = existingEl.querySelector('[data-timestamp]');
-              if (tsTarget) {
-                tsTarget.setAttribute('data-timestamp', sig.timestamp);
-                tsTarget.setAttribute('data-ts', sig.timestamp);
-                tsTarget.setAttribute('title', formatTimestamp(sig.timestamp));
-                const relLabel = tsTarget.querySelector('.rel-time-label');
-                if (relLabel) relLabel.textContent = formatRelativeTime(sig.timestamp);
-              }
-            }
-          }
-        } else if (groupDevices && container) {
+        if (groupDevices && container) {
           const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
           if (existingEl) {
-            // Update existing card or row in place without full re-render
+            // In-Place DOM Update ONLY: NEVER call prepend() or reorder existing rows/cards!
+            hasInPlaceUpdates = true;
             const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, sig.payload || {});
             const titleTarget = existingEl.querySelector('[data-sig-title]');
             if (titleTarget) {
@@ -3811,59 +3766,32 @@
 
             const tsTarget = existingEl.querySelector('[data-timestamp]');
             if (tsTarget) {
+              const freshUntil = Date.now() + 10000;
               tsTarget.setAttribute('data-timestamp', sig.timestamp);
               tsTarget.setAttribute('data-ts', sig.timestamp);
+              tsTarget.setAttribute('data-fresh-until', String(freshUntil));
               tsTarget.setAttribute('title', formatTimestamp(sig.timestamp));
-              const relLabel = tsTarget.querySelector('.rel-time-label');
-              if (relLabel) relLabel.textContent = formatRelativeTime(sig.timestamp);
+              tsTarget.innerHTML = renderSignalTimeInnerHtml(sig.timestamp, freshUntil);
             }
-
-            if (isDefaultTimeDesc) {
-              // Immediately move updated element to the very top (row 1 / card 1)
-              container.prepend(existingEl);
-            } else if (signalSort.field === 'hits' || signalSort.field === 'rssi' || (signalSort.field === 'time' && signalSort.dir === 'asc')) {
-              // Dynamic value sort: reposition element only if its sorted position changed
-              const sortedItems = getFilteredSignals();
-              const targetIdx = sortedItems.findIndex((item) => (item.device_key || `${item.model}_${item.device_id}`) === devKey);
-              if (targetIdx !== -1 && container.children[targetIdx] !== existingEl) {
-                const refNode = container.children[targetIdx] || null;
-                container.insertBefore(existingEl, refNode);
-              }
-            }
-            // For 'name', 'category', 'id', 'freq': stays strictly in place!
 
             pulseElement(existingEl);
           } else {
-            // Brand new device not in DOM yet -> insert at correct sorted position
+            // Brand new device not in DOM yet -> insert at top
             const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
-            temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig) : buildSignalCardHtml(sig)).trim();
+            temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig, Date.now() + 10000) : buildSignalCardHtml(sig, Date.now() + 10000)).trim();
             const newEl = temp.firstElementChild;
             if (newEl) {
-              if (isDefaultTimeDesc) {
-                container.prepend(newEl);
-              } else {
-                const sortedItems = getFilteredSignals();
-                const targetIdx = sortedItems.findIndex((item) => (item.device_key || `${item.model}_${item.device_id}`) === devKey);
-                const refNode = (targetIdx !== -1 && container.children[targetIdx]) ? container.children[targetIdx] : null;
-                container.insertBefore(newEl, refNode);
-              }
+              container.prepend(newEl);
               pulseElement(newEl);
             }
           }
         } else if (!groupDevices && container) {
-          // Ungrouped stream -> insert at sorted position (top for time:desc) and trim > 100
+          // Ungrouped stream -> insert at top and trim > 100
           const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
-          temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig) : buildSignalCardHtml(sig)).trim();
+          temp.innerHTML = (viewMode === 'table' ? buildSignalTableRowHtml(sig, Date.now() + 10000) : buildSignalCardHtml(sig, Date.now() + 10000)).trim();
           const newEl = temp.firstElementChild;
           if (newEl) {
-            if (isDefaultTimeDesc) {
-              container.prepend(newEl);
-            } else {
-              const sortedItems = getFilteredSignals();
-              const targetIdx = sortedItems.findIndex((item) => item === sig || (item.id && sig.id && item.id === sig.id));
-              const refNode = (targetIdx !== -1 && container.children[targetIdx]) ? container.children[targetIdx] : null;
-              container.insertBefore(newEl, refNode);
-            }
+            container.prepend(newEl);
             pulseElement(newEl);
             while (container.children.length > 100) {
               container.removeChild(container.lastElementChild);
@@ -3897,6 +3825,7 @@
     }
 
     function renderSignalsView() {
+      hasInPlaceUpdates = false;
       const items = getFilteredSignals();
       document.getElementById('visibleSignalCount').textContent = items.length;
 
@@ -3945,7 +3874,7 @@
       return 'mdi-access-point text-slate-400';
     }
 
-    function buildSignalCardHtml(sig) {
+    function buildSignalCardHtml(sig, freshUntilMs = 0) {
       const p = sig.payload || {};
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
@@ -3975,7 +3904,7 @@
         : '';
 
       const exactTime = formatTimestamp(sig.timestamp);
-      const relTime = formatRelativeTime(sig.timestamp);
+      const timeInnerHtml = renderSignalTimeInnerHtml(sig.timestamp, freshUntilMs);
 
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
       const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
@@ -4001,7 +3930,7 @@
               <i class="mdi ${catIcon} text-base shrink-0"></i>
               <div data-sig-title class="text-xs truncate flex items-baseline gap-1 min-w-0">${titleHtml}</div>
             </div>
-            <div data-sig-actions onmouseenter="setSignalsHoverLock(true)" onmouseleave="setSignalsHoverLock(false)" class="flex items-center gap-0.5 shrink-0">
+            <div class="flex items-center gap-0.5 shrink-0">
               ${groupBadgeHtml}
               <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wide bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
               <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias, Grupp & Kategori">
@@ -4022,9 +3951,8 @@
               ${freqBadge}
               ${protoBadge}
             </div>
-            <span class="inline-flex items-center gap-0.5 text-slate-400 dark:text-slate-500" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}">
-              <i class="mdi mdi-clock-outline text-xs"></i>
-              <span class="rel-time-label">${escapeHtml(relTime)}</span>
+            <span data-sig-time class="inline-flex items-center gap-0.5 text-slate-400 dark:text-slate-500" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
+              ${timeInnerHtml}
             </span>
           </div>
 
@@ -4047,13 +3975,13 @@
       `;
     }
 
-    function buildSignalTableRowHtml(sig) {
+    function buildSignalTableRowHtml(sig, freshUntilMs = 0) {
       const p = sig.payload || {};
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
       const catIcon = getCategoryIcon(sig.category);
       const exactTime = formatTimestamp(sig.timestamp);
-      const relTime = formatRelativeTime(sig.timestamp);
+      const timeInnerHtml = renderSignalTimeInnerHtml(sig.timestamp, freshUntilMs);
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
       const radio = extractRadioMetadata(sig, p);
       const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
@@ -4069,8 +3997,8 @@
 
       return `
         <tr data-device-key="${escapeHtml(devKey)}" onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})" class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
-          <td class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}">
-            <i class="mdi mdi-clock-outline mr-0.5"></i><span class="rel-time-label">${escapeHtml(relTime)}</span>
+          <td data-sig-time class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
+            ${timeInnerHtml}
           </td>
           <td class="w-48 max-w-[200px] py-2 px-2.5 truncate" title="${escapeHtml(secondaryName ? primaryName + ' (' + secondaryName + ')' : primaryName)}">
             <div class="flex items-center gap-1.5 min-w-0">
@@ -4099,7 +4027,7 @@
             ${footerSignalHtml}
           </td>
           <td class="w-24 py-2 px-2.5 whitespace-nowrap text-right">
-            <div data-sig-actions onmouseenter="setSignalsHoverLock(true)" onmouseleave="setSignalsHoverLock(false)" class="inline-flex items-center justify-end gap-1">
+            <div class="inline-flex items-center justify-end gap-1">
               <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center" title="Redigera Alias">
                 <i class="mdi mdi-pencil-outline"></i>
               </button>
@@ -4387,7 +4315,6 @@
     function closeDetailModal() {
       document.getElementById('detailModal').classList.add('hidden');
       currentModalDeviceKey = null;
-      setSignalsHoverLock(false);
     }
 
     async function saveModalDevice() {
@@ -5546,12 +5473,21 @@
       return clean.length > 19 ? clean.slice(0, 19) : clean;
     }
 
+    function isTimestampFresh10s(ts, freshUntilMs = 0) {
+      if (freshUntilMs && Date.now() < freshUntilMs) return true;
+      if (!ts) return false;
+      const parsed = Date.parse(String(ts).includes('T') ? ts : String(ts).replace(' ', 'T'));
+      if (Number.isNaN(parsed)) return false;
+      const diffSec = Math.max(0, (Date.now() - parsed) / 1000);
+      return diffSec <= 10;
+    }
+
     function formatRelativeTime(ts) {
       if (!ts) return '-';
-      const parsed = Date.parse(ts.includes('T') ? ts : ts.replace(' ', 'T'));
+      const parsed = Date.parse(String(ts).includes('T') ? ts : String(ts).replace(' ', 'T'));
       if (Number.isNaN(parsed)) return formatTimestamp(ts);
       const diffSec = Math.max(0, Math.floor((Date.now() - parsed) / 1000));
-      if (diffSec < 5) return 'Just nu';
+      if (diffSec <= 10) return 'Just nu';
       if (diffSec < 60) return `${diffSec}s sedan`;
       const diffMin = Math.floor(diffSec / 60);
       if (diffMin < 60) return `${diffMin}m sedan`;
@@ -5561,13 +5497,28 @@
       return `${diffDays}d sedan`;
     }
 
+    function renderSignalTimeInnerHtml(ts, freshUntilMs = 0) {
+      const relTime = formatRelativeTime(ts);
+      const isFresh = isTimestampFresh10s(ts, freshUntilMs);
+      if (isFresh) {
+        return `<span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-1.5"></span><span class="rel-time-label font-semibold text-emerald-600 dark:text-emerald-400">Just nu</span>`;
+      }
+      return `<i class="mdi mdi-clock-outline mr-0.5"></i><span class="rel-time-label">${escapeHtml(relTime)}</span>`;
+    }
+
     function updateRelativeTimestampsInDom() {
       document.querySelectorAll('[data-timestamp], [data-ts]').forEach((el) => {
         const ts = el.getAttribute('data-timestamp') || el.getAttribute('data-ts');
+        if (!ts) return;
+        if (el.hasAttribute('data-sig-time')) {
+          const freshUntil = Number(el.getAttribute('data-fresh-until') || 0);
+          el.innerHTML = renderSignalTimeInnerHtml(ts, freshUntil);
+          return;
+        }
         const label = el.querySelector('.rel-time-label');
-        if (ts && label) {
+        if (label) {
           label.textContent = formatRelativeTime(ts);
-        } else if (ts && el.children.length === 0) {
+        } else if (el.children.length === 0) {
           el.textContent = formatRelativeTime(ts);
         }
       });
