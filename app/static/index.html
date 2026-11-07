@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.28</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.29</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1730,6 +1730,21 @@
           </div>
         </div>
 
+        <!-- 2B. GATT-PROFIL & KARAKTERISTIKER (SYNS NÄR GATT-INSPEKTION HAR KÖRTS) -->
+        <div id="modalGattProfileSection" class="hidden bg-slate-50/90 dark:bg-slate-950/80 border border-sky-500/30 dark:border-sky-500/30 rounded-xl p-3.5 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+            <div class="flex items-center gap-2">
+              <i class="mdi mdi-layers-triple-outline text-base text-sky-500"></i>
+              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">GATT-Profil &amp; Karakteristiker</span>
+              <span id="modalGattSummaryBadge" class="px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 text-[10px] font-mono font-semibold"></span>
+            </div>
+            <span id="modalGattInspectedAt" class="text-[11px] font-mono text-slate-400"></span>
+          </div>
+          <div id="modalGattServicesContainer" class="space-y-2.5">
+            <!-- Populated via renderModalGattProfile() -->
+          </div>
+        </div>
+
         <!-- 3. HOPFÄLLBAR RÅ JSON-PAYLOAD (STÄNGD SOM STANDARD) -->
         <details class="group bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
           <summary class="cursor-pointer list-none px-3.5 py-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition">
@@ -1904,8 +1919,8 @@
     </div>
   </div>
 
-  <!-- TOAST NOTIFICATION -->
-  <div id="toastBox" class="fixed bottom-4 right-4 z-50 hidden px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 border border-slate-700 text-white text-xs font-medium shadow-xl"></div>
+  <!-- GLOBAL TOAST NOTIFICATION CONTAINER (TOP-RIGHT, ABOVE ALL MODALS) -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-[100] flex flex-col gap-2.5 max-w-md w-full pointer-events-none px-3 sm:px-0"></div>
 
   <!-- ===================================================================== -->
   <!-- APPLICATION JAVASCRIPT                                                -->
@@ -2080,7 +2095,10 @@
       'manufacturer_data', 'manufacturer_id', 'manufacturer_name', 'service_data',
       'service_uuids', 'ble_service_name', 'apple_type', 'tx_power', 'distance_m',
       'beacon_hash', 'tesla_node', 'is_own_vehicle', 'vehicle_status',
-      'ibeacon_uuid', 'uuid', 'major', 'minor', 'category', 'is_beacon_only'
+      'ibeacon_uuid', 'ibeacon_profile', 'mac_vendor', 'gatt_name', 'gatt_appearance',
+      'gatt_manufacturer', 'gatt_model', 'gatt_serial', 'gatt_firmware', 'gatt_hardware',
+      'gatt_software', 'gatt_services', 'services_count', 'chars_count',
+      'gatt_connectable', 'gatt_inspected_at', 'uuid', 'major', 'minor', 'category', 'is_beacon_only'
     ]);
 
     // -----------------------------------------------------------------------
@@ -2789,19 +2807,108 @@
     }
 
     // -----------------------------------------------------------------------
-    // Toast Notification
+    // Global Toast Notification System (Top-Right, Above All Modals)
     // -----------------------------------------------------------------------
-    function showToast(message, isError = false) {
-      const box = document.getElementById('toastBox');
-      box.textContent = message;
-      box.className = `fixed bottom-4 right-4 z-50 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-xl border transition ${
-        isError
-          ? 'bg-rose-900 border-rose-700 text-rose-100'
-          : 'bg-slate-900 dark:bg-slate-800 border-sky-500/50 text-white'
-      }`;
-      box.classList.remove('hidden');
-      clearTimeout(box._timer);
-      box._timer = setTimeout(() => box.classList.add('hidden'), 3200);
+    function showToast(title, message = '', type = 'info', duration = 5000) {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+
+      let normTitle = String(title ?? '');
+      let normMsg = message;
+      let normType = type;
+      let normDuration = Number(duration) || 5000;
+
+      // Support legacy 1-arg or 2-arg calls: showToast('Text') or showToast('Text', true/false)
+      if (typeof message === 'boolean') {
+        const isErr = message;
+        normType = isErr ? 'error' : 'success';
+        normMsg = normTitle;
+        normTitle = isErr ? 'Ett fel uppstod' : 'Åtgärd slutförd';
+      } else if (message === '' || message === undefined || message === null) {
+        normMsg = normTitle;
+        if (normType === 'error') normTitle = 'Ett fel uppstod';
+        else if (normType === 'warning') normTitle = 'Observera';
+        else if (normType === 'info') normTitle = 'Information';
+        else {
+          normType = 'success';
+          normTitle = 'Klart';
+        }
+      }
+
+      const styleMap = {
+        success: {
+          border: 'border-emerald-500',
+          icon: 'mdi-check-circle text-emerald-500',
+          bar: 'bg-emerald-500',
+          titleCls: 'text-slate-900 dark:text-white'
+        },
+        info: {
+          border: 'border-sky-500',
+          icon: 'mdi-radar text-sky-500',
+          bar: 'bg-sky-500',
+          titleCls: 'text-slate-900 dark:text-white'
+        },
+        warning: {
+          border: 'border-amber-500',
+          icon: 'mdi-alert text-amber-500',
+          bar: 'bg-amber-500',
+          titleCls: 'text-slate-900 dark:text-white'
+        },
+        error: {
+          border: 'border-rose-500',
+          icon: 'mdi-close-circle text-rose-500',
+          bar: 'bg-rose-500',
+          titleCls: 'text-rose-900 dark:text-rose-100'
+        }
+      };
+
+      const st = styleMap[normType] || styleMap.info;
+      const toastEl = document.createElement('div');
+      toastEl.className = `pointer-events-auto relative overflow-hidden flex items-start gap-3 p-4 rounded-xl bg-white dark:bg-slate-800 border-l-4 ${st.border} shadow-2xl ring-1 ring-black/10 dark:ring-white/10 transition-all duration-300 opacity-0 translate-x-4`;
+
+      toastEl.innerHTML = `
+        <i class="mdi ${st.icon} text-2xl leading-none shrink-0 mt-0.5"></i>
+        <div class="flex-1 min-w-0 pr-1">
+          <div class="text-xs font-bold ${st.titleCls} leading-snug">${escapeHtml(normTitle)}</div>
+          <div class="text-xs text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed break-words">${escapeHtml(String(normMsg ?? ''))}</div>
+        </div>
+        <button type="button" class="toast-close-btn w-6 h-6 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/70 flex items-center justify-center shrink-0 transition" title="Stäng">
+          <i class="mdi mdi-close text-sm"></i>
+        </button>
+        <div class="toast-progress-bar absolute bottom-0 left-0 h-1 ${st.bar}" style="width: 100%; transition: width ${normDuration}ms linear;"></div>
+      `;
+
+      let dismissed = false;
+      const dismissToast = () => {
+        if (dismissed) return;
+        dismissed = true;
+        toastEl.classList.add('opacity-0', 'translate-x-4');
+        setTimeout(() => {
+          if (toastEl.parentNode) toastEl.parentNode.removeChild(toastEl);
+        }, 280);
+      };
+
+      const closeBtn = toastEl.querySelector('.toast-close-btn');
+      if (closeBtn) closeBtn.addEventListener('click', dismissToast);
+
+      container.appendChild(toastEl);
+
+      // Keep max 4 visible toasts simultaneously
+      while (container.children.length > 4) {
+        container.removeChild(container.firstElementChild);
+      }
+
+      requestAnimationFrame(() => {
+        toastEl.classList.remove('opacity-0', 'translate-x-4');
+        const barEl = toastEl.querySelector('.toast-progress-bar');
+        if (barEl) {
+          requestAnimationFrame(() => {
+            barEl.style.width = '0%';
+          });
+        }
+      });
+
+      setTimeout(dismissToast, normDuration);
     }
 
     // -----------------------------------------------------------------------
@@ -2929,8 +3036,9 @@
         'calculated_power_W', 'local_name', 'manufacturer_name', 'manufacturer_id',
         'service_uuids', 'ble_service_name', 'mac_type', 'apple_type', 'tesla_node',
         'is_own_vehicle', 'tx_power', 'distance_m', 'measured_power_1m', 'beacon_hash', 'ibeacon_uuid',
-        'ibeacon_profile', 'mac_vendor', 'gatt_name', 'gatt_manufacturer', 'gatt_model',
-        'gatt_firmware', 'gatt_services', 'gatt_connectable', 'gatt_inspected_at',
+        'ibeacon_profile', 'mac_vendor', 'gatt_name', 'gatt_appearance', 'gatt_manufacturer',
+        'gatt_model', 'gatt_serial', 'gatt_firmware', 'gatt_hardware', 'gatt_software',
+        'gatt_services', 'services_count', 'chars_count', 'gatt_connectable', 'gatt_inspected_at',
         'uuid', 'major', 'minor', 'is_beacon_only'
       ].forEach((k) => consumed.add(k));
 
@@ -2947,10 +3055,15 @@
       }
       if (p.gatt_manufacturer || p.gatt_model) {
         const hwLabel = [p.gatt_manufacturer, p.gatt_model].filter(Boolean).join(' • ');
-        addModalOnlyKpi('mdi-memory', 'teal', 'HÅRDVARA / MODELL', hwLabel);
+        addModalOnlyKpi('mdi-memory', 'teal', 'HÅRDVARA / MODELL', hwLabel, p.gatt_serial ? `S/N: ${p.gatt_serial}` : '');
       }
-      if (p.gatt_firmware) {
-        addModalOnlyKpi('mdi-chip', 'indigo', 'FIRMWARE', String(p.gatt_firmware));
+      if (p.gatt_firmware || p.gatt_hardware || p.gatt_software) {
+        const fwPrimary = String(p.gatt_firmware || p.gatt_software || p.gatt_hardware);
+        const fwSec = [
+          p.gatt_hardware && p.gatt_firmware ? `HW: ${p.gatt_hardware}` : '',
+          p.gatt_software && p.gatt_firmware ? `SW: ${p.gatt_software}` : ''
+        ].filter(Boolean).join(' | ');
+        addModalOnlyKpi('mdi-chip', 'indigo', 'FIRMWARE / REV', fwPrimary, fwSec);
       }
       if (p.mac_vendor) {
         addModalOnlyKpi(
@@ -2982,13 +3095,19 @@
       if (Array.isArray(p.gatt_services) && p.gatt_services.length > 0) {
         const srvSummary = p.gatt_services
           .map((s) => {
+            const uLower = String(s.uuid || '').toLowerCase();
             const uShort = String(s.uuid || '').split('-')[0].replace(/^0000/, '').toUpperCase();
-            return s.description && s.description !== 'GATT Service'
-              ? `${s.description} (0x${uShort})`
+            const desc = uLower === 'cf1d96fe-9461-5c4a-8668-75584696a730'
+              ? 'Daikin / Smart HVAC BLE Provisioning Service'
+              : s.description;
+            return desc && desc !== 'GATT Service'
+              ? `${desc} (0x${uShort})`
               : `0x${uShort}`;
           })
           .join(', ');
-        addModalOnlyKpi('mdi-layers-triple-outline', 'sky', 'GATT TJÄNSTER', `${p.gatt_services.length} st`, srvSummary);
+        const charTotal = p.chars_count ?? p.gatt_services.reduce((acc, s) => acc + (Array.isArray(s.characteristics) ? s.characteristics.length : 0), 0);
+        const countLabel = charTotal > 0 ? `${p.gatt_services.length} tjänster (${charTotal} chars)` : `${p.gatt_services.length} st`;
+        addModalOnlyKpi('mdi-layers-triple-outline', 'sky', 'GATT TJÄNSTER', countLabel, srvSummary);
       } else if (p.gatt_connectable === false) {
         addModalOnlyKpi('mdi-shield-lock-outline', 'amber', 'GATT STATUS', 'Non-Connectable Beacon', 'Passivt sändningsläge');
       }
@@ -5443,7 +5562,7 @@
           method: 'DELETE'
         });
         if (!res.ok) {
-          showToast('Kunde inte radera enhet från databasen', true);
+          showToast('Radering misslyckades', 'Kunde inte radera enheten från databasen.', 'error');
           return;
         }
         rawSignalsList = rawSignalsList.filter((s) => s.device_key !== targetKey);
@@ -5456,16 +5575,23 @@
         renderDevicesList();
         closeDetailModal();
         loadStatus();
-        showToast(`Enhet ${targetKey} och dess historik har raderats från databasen`);
+        showToast('Enhet raderad ur DB', `Enheten "${targetKey}" och dess historik har raderats permanent.`, 'success');
       } catch (e) {
-        showToast('Kunde inte radera enhet från databasen', true);
+        showToast('Nätverksfel vid radering', 'Kunde inte kommunicera med servern vid radering.', 'error');
       }
     }
 
+    let gattBtnResetTimer = null;
+
     function resetGattInspectButton(show = false) {
+      if (gattBtnResetTimer) {
+        clearTimeout(gattBtnResetTimer);
+        gattBtnResetTimer = null;
+      }
       const btn = document.getElementById('btn-gatt-inspect');
       if (!btn) return;
       btn.disabled = false;
+      btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 transition-colors cursor-pointer';
       btn.innerHTML = `
         <i class="mdi mdi-radar text-sm"></i>
         <span>Inspektera GATT / Hårdvara</span>
@@ -5485,26 +5611,41 @@
         ? String(currentModalPayload.mac)
         : (devObj && devObj.device_id ? String(devObj.device_id) : currentModalDeviceKey);
 
+      if (gattBtnResetTimer) {
+        clearTimeout(gattBtnResetTimer);
+        gattBtnResetTimer = null;
+      }
       if (btn) {
         btn.disabled = true;
+        btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/15 border border-amber-500/40 transition-colors cursor-wait';
         btn.innerHTML = `
           <i class="mdi mdi-loading mdi-spin text-sm"></i>
-          <span>Ansluter till enhet...</span>
+          <span>Inspekterar GATT (upp till 8s)...</span>
         `;
       }
+
+      showToast(
+        'Ansluter via GATT...',
+        `Upprättar aktiv BLE-anslutning mot ${macTarget} och läser ut GATT-tjänster & karakteristiker...`,
+        'info',
+        5000
+      );
 
       try {
         const res = await fetch(`/api/ble/inspect/${encodeURIComponent(macTarget)}`, {
           method: 'POST'
         });
         const data = await res.json();
-        resetGattInspectButton(true);
 
         if (data && data.device) {
           currentModalPayload = data.device.last_payload || currentModalPayload;
           handleDeviceUpdated(data.device);
         } else if (data && currentModalPayload) {
-          ['gatt_name', 'gatt_manufacturer', 'gatt_model', 'gatt_firmware', 'battery_pct', 'gatt_services', 'gatt_connectable', 'gatt_inspected_at', 'mac_vendor'].forEach((k) => {
+          [
+            'gatt_name', 'gatt_appearance', 'gatt_manufacturer', 'gatt_model', 'gatt_serial',
+            'gatt_firmware', 'gatt_hardware', 'gatt_software', 'battery_pct', 'gatt_services',
+            'services_count', 'chars_count', 'gatt_connectable', 'gatt_inspected_at', 'mac_vendor'
+          ].forEach((k) => {
             if (data[k] !== undefined && data[k] !== null) {
               currentModalPayload[k] = data[k];
             }
@@ -5513,13 +5654,44 @@
 
         renderModalTelemetryAndHistory(currentModalPayload, null, null);
         if (data && data.connectable) {
-          showToast(data.message || 'GATT-inspektion slutförd');
+          if (btn) {
+            btn.disabled = false;
+            btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 border border-emerald-500/40 transition-colors cursor-pointer';
+            btn.innerHTML = `
+              <i class="mdi mdi-check-bold text-sm"></i>
+              <span>GATT Inspekterad!</span>
+            `;
+            gattBtnResetTimer = setTimeout(() => resetGattInspectButton(true), 4000);
+          }
+          const srvCnt = data.services_count ?? (Array.isArray(data.gatt_services) ? data.gatt_services.length : 0);
+          const chrCnt = data.chars_count ?? 0;
+          showToast(
+            'GATT-inspektion slutförd!',
+            data.message || `Hittade ${srvCnt} GATT-tjänster och ${chrCnt} karakteristiker på ${macTarget}.`,
+            'success',
+            6000
+          );
+          const gattSec = document.getElementById('modalGattProfileSection');
+          if (gattSec && !gattSec.classList.contains('hidden')) {
+            gattSec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
         } else {
-          showToast((data && data.message) || 'Enheten är i passivt beacon-läge (Non-Connectable)', false);
+          resetGattInspectButton(true);
+          showToast(
+            'Enheten är Non-Connectable',
+            (data && data.message) || 'Enheten sänder i passivt beacon-läge och accepterar inte inkommande GATT-anslutning.',
+            'warning',
+            6000
+          );
         }
       } catch (e) {
         resetGattInspectButton(true);
-        showToast('Kunde inte utföra GATT-inspektion', true);
+        showToast(
+          'GATT-anslutning misslyckades (Timeout)',
+          `Kunde inte slutföra GATT-inspektion mot ${macTarget}.`,
+          'error',
+          6000
+        );
       }
     }
 
@@ -5714,6 +5886,7 @@
       }
 
       document.getElementById('modalKpiGrid').innerHTML = kpiCardsHtml.join('');
+      renderModalGattProfile(payload);
 
       if (Array.isArray(historyList)) {
         const tbody = document.getElementById('modalHistoryBody');
@@ -5721,6 +5894,200 @@
       }
 
       document.getElementById('modalRawJson').innerHTML = syntaxHighlightJson(payload);
+    }
+
+    const KNOWN_GATT_SERVICE_DESCRIPTIONS = {
+      'cf1d96fe-9461-5c4a-8668-75584696a730': 'Daikin / Smart HVAC BLE Provisioning Service',
+      '00001800-0000-1000-8000-00805f9b34fb': 'Generic Access Profile (GAP)',
+      '00001801-0000-1000-8000-00805f9b34fb': 'Generic Attribute Profile (GATT)',
+      '0000180a-0000-1000-8000-00805f9b34fb': 'Device Information Service (DIS)',
+      '0000180f-0000-1000-8000-00805f9b34fb': 'Battery Service',
+      '0000fef5-0000-1000-8000-00805f9b34fb': 'Dialog Semiconductor OTA Service'
+    };
+
+    function renderModalGattProfile(payload) {
+      const sectionEl = document.getElementById('modalGattProfileSection');
+      const badgeEl = document.getElementById('modalGattSummaryBadge');
+      const inspectedEl = document.getElementById('modalGattInspectedAt');
+      const containerEl = document.getElementById('modalGattServicesContainer');
+      if (!sectionEl || !containerEl) return;
+
+      const p = payload || {};
+      const services = Array.isArray(p.gatt_services) ? p.gatt_services : [];
+      const hasServices = services.length > 0;
+      const hasInspectedState = Boolean(
+        p.gatt_inspected_at ||
+        p.gatt_connectable !== undefined ||
+        p.gatt_name ||
+        p.gatt_manufacturer ||
+        p.gatt_model ||
+        p.gatt_firmware
+      );
+
+      if (!hasServices && !hasInspectedState) {
+        sectionEl.classList.add('hidden');
+        containerEl.innerHTML = '';
+        return;
+      }
+
+      sectionEl.classList.remove('hidden');
+      if (inspectedEl) {
+        inspectedEl.textContent = p.gatt_inspected_at
+          ? `Inspekterad: ${formatTimestamp(p.gatt_inspected_at)}`
+          : '';
+      }
+
+      if (!hasServices && p.gatt_connectable === false) {
+        if (badgeEl) {
+          badgeEl.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30';
+          badgeEl.textContent = 'Non-Connectable Beacon';
+        }
+        containerEl.innerHTML = `
+          <div class="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2.5">
+            <i class="mdi mdi-shield-lock-outline text-base text-amber-500 shrink-0 mt-0.5"></i>
+            <div>
+              <div class="font-semibold">Enheten är i passivt sändningsläge (Non-Connectable Beacon)</div>
+              <div class="text-[11px] opacity-85 mt-0.5">Enheten sänder reklam-telegram (t.ex. iBeacon / BTHome) men accepterar inte inkommande GATT-anslutningar.</div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      const srvCount = p.services_count ?? services.length;
+      const chrCount = p.chars_count ?? services.reduce(
+        (acc, s) => acc + (Array.isArray(s.characteristics) ? s.characteristics.length : 0),
+        0
+      );
+
+      if (badgeEl) {
+        badgeEl.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30';
+        badgeEl.textContent = `${srvCount} ${srvCount === 1 ? 'Tjänst' : 'Tjänster'} • ${chrCount} ${chrCount === 1 ? 'Karakteristik' : 'Karakteristiker'}`;
+      }
+
+      const identityItems = [];
+      if (p.gatt_name) identityItems.push({ label: 'Device Name (0x2A00)', val: p.gatt_name, icon: 'mdi-tag-text-outline' });
+      if (p.gatt_appearance !== undefined && p.gatt_appearance !== null) identityItems.push({ label: 'Appearance (0x2A01)', val: `0x${Number(p.gatt_appearance).toString(16).padStart(4, '0').toUpperCase()} (${p.gatt_appearance})`, icon: 'mdi-shape-outline' });
+      if (p.gatt_manufacturer) identityItems.push({ label: 'Manufacturer (0x2A29)', val: p.gatt_manufacturer, icon: 'mdi-domain' });
+      if (p.gatt_model) identityItems.push({ label: 'Model Number (0x2A24)', val: p.gatt_model, icon: 'mdi-memory' });
+      if (p.gatt_serial) identityItems.push({ label: 'Serial Number (0x2A25)', val: p.gatt_serial, icon: 'mdi-barcode' });
+      if (p.gatt_firmware) identityItems.push({ label: 'Firmware (0x2A26)', val: p.gatt_firmware, icon: 'mdi-chip' });
+      if (p.gatt_hardware) identityItems.push({ label: 'Hardware (0x2A27)', val: p.gatt_hardware, icon: 'mdi-expansion-card-variant' });
+      if (p.gatt_software) identityItems.push({ label: 'Software (0x2A28)', val: p.gatt_software, icon: 'mdi-code-tags' });
+
+      const identityHtml = identityItems.length > 0
+        ? `
+          <div class="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-sky-500/30 flex flex-wrap items-center gap-2">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400 flex items-center gap-1 mr-1">
+              <i class="mdi mdi-fingerprint text-sm"></i> GATT Identitet:
+            </span>
+            ${identityItems.map((it) => `
+              <div class="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-sky-500/10 border border-sky-500/20 text-xs">
+                <i class="mdi ${it.icon} text-sky-500"></i>
+                <span class="text-[10px] text-slate-500 dark:text-slate-400 font-medium">${escapeHtml(it.label)}:</span>
+                <span class="font-mono font-bold text-slate-800 dark:text-slate-100">${escapeHtml(String(it.val))}</span>
+              </div>
+            `).join('')}
+          </div>
+        `
+        : '';
+
+      const servicesHtml = services.map((srv) => {
+        const rawUuid = String(srv.uuid || '').trim();
+        const lowerUuid = rawUuid.toLowerCase();
+        const isStd16 = lowerUuid.endsWith('-0000-1000-8000-00805f9b34fb') && lowerUuid.startsWith('0000');
+        const shortHex = isStd16 ? `0x${rawUuid.slice(4, 8).toUpperCase()}` : null;
+        const srvDesc = KNOWN_GATT_SERVICE_DESCRIPTIONS[lowerUuid]
+          || (srv.description && srv.description !== 'Unknown' && srv.description !== 'Vendor Specific' ? srv.description : 'GATT Service');
+        const chars = Array.isArray(srv.characteristics) ? srv.characteristics : [];
+
+        const charsRowsHtml = chars.length > 0
+          ? `
+            <div class="divide-y divide-slate-200/60 dark:divide-slate-800/80">
+              ${chars.map((c) => {
+                const cUuid = String(c.uuid || '').trim();
+                const cLower = cUuid.toLowerCase();
+                const cStd16 = cLower.endsWith('-0000-1000-8000-00805f9b34fb') && cLower.startsWith('0000');
+                const cShort = cStd16 ? `0x${cUuid.slice(4, 8).toUpperCase()}` : null;
+                const cDesc = c.description || 'GATT Characteristic';
+                const props = Array.isArray(c.properties) ? c.properties : [];
+
+                const propBadges = props.map((prop) => {
+                  const pUp = String(prop).toUpperCase();
+                  let pCls = 'bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+                  if (pUp === 'READ') {
+                    pCls = 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30';
+                  } else if (pUp.includes('WRITE')) {
+                    pCls = 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30';
+                  } else if (pUp === 'NOTIFY' || pUp === 'INDICATE') {
+                    pCls = 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30';
+                  }
+                  return `<span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold border ${pCls}">${escapeHtml(pUp)}</span>`;
+                }).join('');
+
+                let valHtml = '';
+                if (c.value_ascii !== undefined && c.value_ascii !== null && String(c.value_ascii).length > 0) {
+                  valHtml += `
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30 font-mono text-xs font-semibold break-all" title="Läst UTF-8 / ASCII-värde">
+                      <i class="mdi mdi-format-text text-emerald-500"></i>"${escapeHtml(String(c.value_ascii))}"
+                    </span>
+                  `;
+                }
+                if (c.value_hex !== undefined && c.value_hex !== null && String(c.value_hex).length > 0) {
+                  valHtml += `
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/80 dark:border-slate-700 font-mono text-[11px] break-all" title="Rådata (HEX)">
+                      <span class="text-slate-400">HEX:</span> 0x${escapeHtml(String(c.value_hex))}
+                    </span>
+                  `;
+                }
+                if (!valHtml) {
+                  const canRead = props.some((pr) => String(pr).toLowerCase() === 'read');
+                  valHtml = canRead
+                    ? '<span class="text-[11px] font-mono text-slate-400 italic">Tomt / Skyddat attribut</span>'
+                    : '<span class="text-[11px] font-mono text-slate-400 italic">Endast Write / Notify</span>';
+                }
+
+                return `
+                  <div class="px-3 py-2 flex flex-col lg:flex-row lg:items-center justify-between gap-2 hover:bg-slate-50/70 dark:hover:bg-slate-800/30">
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-1.5">
+                        <i class="mdi mdi-vector-point text-sky-500 text-xs"></i>
+                        <span class="text-xs font-semibold text-slate-800 dark:text-slate-100">${escapeHtml(cDesc)}</span>
+                        ${cShort ? `<span class="px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/25 font-mono text-[11px] font-bold">${escapeHtml(cShort)}</span>` : ''}
+                        ${c.handle !== undefined && c.handle !== null ? `<span class="text-[10px] font-mono text-slate-400">Handle: ${escapeHtml(String(c.handle))}</span>` : ''}
+                      </div>
+                      <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 pl-4 break-all">${escapeHtml(cUuid)}</div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5 lg:justify-end">
+                      <div class="flex flex-wrap items-center gap-1">${propBadges}</div>
+                      <div class="flex flex-wrap items-center gap-1.5">${valHtml}</div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `
+          : `<div class="px-3 py-2 text-[11px] text-slate-400 italic">Inga underliggande karakteristiker rapporterade för denna tjänst.</div>`;
+
+        return `
+          <div class="rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+            <div class="px-3 py-2 bg-slate-100/80 dark:bg-slate-800/70 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-2 min-w-0">
+                <i class="mdi mdi-layers-triple-outline text-sky-500 text-sm"></i>
+                <span class="text-xs font-bold text-slate-800 dark:text-slate-100">${escapeHtml(srvDesc)}</span>
+                ${shortHex ? `<span class="px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 font-mono text-[11px] font-bold">${escapeHtml(shortHex)}</span>` : ''}
+                <code class="text-[11px] font-mono text-slate-500 dark:text-slate-400 break-all">${escapeHtml(rawUuid)}</code>
+              </div>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-slate-200/70 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border border-slate-300/60 dark:border-slate-700">
+                ${chars.length} ${chars.length === 1 ? 'characteristic' : 'characteristics'}
+              </span>
+            </div>
+            ${charsRowsHtml}
+          </div>
+        `;
+      }).join('');
+
+      containerEl.innerHTML = `${identityHtml}${servicesHtml}`;
     }
 
     function buildModalHistoryRowHtml(h) {
@@ -5790,16 +6157,23 @@
             if (el) el.textContent = '';
           }, 2000);
           handleDeviceUpdated(data.device);
+          showToast(
+            'Enhet sparad',
+            `Inställningar och alias för "${alias || currentModalDeviceKey}" har uppdaterats.`,
+            'success'
+          );
+        } else {
+          showToast('Kunde inte spara enhet', 'Servern returnerade ett fel vid sparande.', 'error');
         }
       } catch (e) {
-        showToast('Kunde inte spara enhet', true);
+        showToast('Kunde inte spara enhet', 'Nätverksfel vid kommunikation med servern.', 'error');
       }
     }
 
     function copyModalJson() {
       if (!currentModalPayload) return;
       navigator.clipboard.writeText(JSON.stringify(currentModalPayload, null, 2));
-      showToast('JSON kopierad till urklipp');
+      showToast('JSON kopierad', 'Rådata-payload har kopierats till urklipp.', 'info', 3000);
     }
 
     // -----------------------------------------------------------------------
@@ -6506,11 +6880,11 @@
         });
         if (res.ok) {
           const data = await res.json();
-          showToast('Enhet sparad');
+          showToast('Enhet sparad', `Uppdaterade "${alias || deviceKey}" i databasen.`, 'success');
           handleDeviceUpdated(data.device);
         }
       } catch (e) {
-        showToast('Fel vid uppdatering av enhet', true);
+        showToast('Fel vid uppdatering', 'Kunde inte spara enhetens inställningar.', 'error');
       }
     }
 
@@ -6562,12 +6936,12 @@
           rawSignalsList = rawSignalsList.filter((s) => s.device_key !== deviceKey);
           selectedDeviceKeys.delete(deviceKey);
           syncMultiSelectBar();
-          showToast('Enhet och historik raderad');
+          showToast('Enhet raderad ur DB', `Enheten "${deviceKey}" och dess historik har raderats permanent.`, 'success');
           renderDevicesList();
           renderSignalsView();
         }
       } catch (e) {
-        showToast('Kunde inte radera enhet', true);
+        showToast('Kunde inte radera enhet', 'Nätverksfel vid radering av enhet.', 'error');
       }
     }
 
@@ -7054,32 +7428,37 @@
         });
         const data = await res.json();
         if (!res.ok || !data.ok) {
-          showToast(data.detail || data.error || 'Underhållsåtgärden misslyckades', true);
+          showToast('Underhållsåtgärd misslyckades', data.detail || data.error || 'Ett oväntat fel uppstod.', 'error');
           return;
         }
 
+        let summaryTitle = 'Underhåll slutfört';
         let summaryMsg = 'Underhållsåtgärd slutförd!';
         if (action === 'prune_now') {
-          summaryMsg = `Automatisk städning klar: Rensade ${data.devices_deleted ?? 0} tillfälliga/inaktiva enheter och ${data.signals_deleted ?? 0} historikrader (${Number(data.db_size_mb ?? 0).toFixed(2)} MB).`;
+          summaryTitle = 'Automatisk städning klar';
+          summaryMsg = `Rensade ${data.devices_deleted ?? 0} tillfälliga/inaktiva enheter och ${data.signals_deleted ?? 0} historikrader (${Number(data.db_size_mb ?? 0).toFixed(2)} MB).`;
         } else if (action === 'clear_unaliased_tpms') {
-          summaryMsg = `TPMS-städning klar: Rensade ${data.devices_deleted ?? 0} okända TPMS-däcksensorer och ${data.signals_deleted ?? 0} signalrader.`;
+          summaryTitle = 'TPMS-städning klar';
+          summaryMsg = `Rensade ${data.devices_deleted ?? 0} okända TPMS-däcksensorer och ${data.signals_deleted ?? 0} signalrader.`;
         } else if (action === 'clear_unaliased_ble') {
-          summaryMsg = `BLE-städning klar: Rensade ${data.devices_deleted ?? 0} okända passiva BLE-beacons och ${data.signals_deleted ?? 0} signalrader.`;
+          summaryTitle = 'BLE-städning klar';
+          summaryMsg = `Rensade ${data.devices_deleted ?? 0} okända passiva BLE-beacons och ${data.signals_deleted ?? 0} signalrader.`;
         } else if (action === 'vacuum') {
-          summaryMsg = `SQLite VACUUM slutförd: Databasen komprimerades från ${Number(data.size_before_mb ?? 0).toFixed(2)} MB till ${Number(data.db_size_mb ?? 0).toFixed(2)} MB.`;
+          summaryTitle = 'SQLite VACUUM slutförd';
+          summaryMsg = `Databasen komprimerades från ${Number(data.size_before_mb ?? 0).toFixed(2)} MB till ${Number(data.db_size_mb ?? 0).toFixed(2)} MB.`;
         }
 
         if (fbBanner && fbText) {
-          fbText.textContent = summaryMsg;
+          fbText.textContent = `${summaryTitle}: ${summaryMsg}`;
           fbBanner.classList.remove('hidden');
         }
-        showToast(summaryMsg);
+        showToast(summaryTitle, summaryMsg, 'success', 6000);
         await loadDbStats();
         await loadDevices();
         await loadSignals();
         await loadStatus();
       } catch (e) {
-        showToast('Kommunikationsfel vid databasunderhåll', true);
+        showToast('Kommunikationsfel', 'Kunde inte utföra databasunderhåll mot servern.', 'error');
       }
     }
 

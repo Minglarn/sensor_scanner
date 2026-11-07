@@ -93,6 +93,12 @@ BLE_SERVICE_UUIDS: Dict[str, str] = {
     "FEAF": "Nest",
     "FEED": "Tile Tracker",
     "FEF3": "Google Nearby Share",
+    "CF1D96FE-9461-5C4A-8668-75584696A730": "Daikin / Smart HVAC BLE Provisioning Service",
+}
+
+KNOWN_FULL_GATT_SERVICE_UUIDS: Dict[str, str] = {
+    "cf1d96fe-9461-5c4a-8668-75584696a730": "Daikin / Smart HVAC BLE Provisioning Service",
+    "00000211-b2d1-43f0-9b88-960cebf8b91e": "Tesla VCSEC Vehicle Security Service",
 }
 
 TESLA_NODE_NAMES: Dict[str, str] = {
@@ -172,11 +178,48 @@ BUILTIN_OUI_VENDORS: Dict[str, str] = {
 
 GATT_IDENTITY_CHARS: Dict[str, str] = {
     "00002a00-0000-1000-8000-00805f9b34fb": "gatt_name",
+    "00002a01-0000-1000-8000-00805f9b34fb": "gatt_appearance",
     "00002a29-0000-1000-8000-00805f9b34fb": "gatt_manufacturer",
     "00002a24-0000-1000-8000-00805f9b34fb": "gatt_model",
+    "00002a25-0000-1000-8000-00805f9b34fb": "gatt_serial",
     "00002a26-0000-1000-8000-00805f9b34fb": "gatt_firmware",
+    "00002a27-0000-1000-8000-00805f9b34fb": "gatt_hardware",
+    "00002a28-0000-1000-8000-00805f9b34fb": "gatt_software",
     "00002a19-0000-1000-8000-00805f9b34fb": "battery_pct",
 }
+
+GATT_CHAR_DESCRIPTIONS: Dict[str, str] = {
+    "2A00": "Device Name",
+    "2A01": "Appearance",
+    "2A04": "Peripheral Preferred Connection Parameters",
+    "2A05": "Service Changed",
+    "2A19": "Battery Level",
+    "2A23": "System ID",
+    "2A24": "Model Number String",
+    "2A25": "Serial Number String",
+    "2A26": "Firmware Revision String",
+    "2A27": "Hardware Revision String",
+    "2A28": "Software Revision String",
+    "2A29": "Manufacturer Name String",
+    "2A2A": "IEEE 11073-20601 Regulatory Certification",
+    "2A50": "PnP ID",
+    "2AA6": "Central Address Resolution",
+}
+
+
+def _decode_printable_ascii(raw_bytes: bytes) -> Optional[str]:
+    if not raw_bytes:
+        return None
+    cleaned = raw_bytes.replace(b"\x00", b"").strip()
+    if not cleaned:
+        return None
+    try:
+        txt = cleaned.decode("utf-8", errors="strict").strip()
+        if txt and all(c.isprintable() or c in ("\t", "\n", "\r") for c in txt):
+            return txt
+    except Exception:
+        pass
+    return None
 
 
 def compute_tesla_ble_prefix(tesla_vin: Optional[str]) -> str:
@@ -254,6 +297,10 @@ def lookup_ble_service_names(srv_uuids: List[str], srv_data: Dict[str, bytes]) -
                 short_hex = first_seg[4:]
         if short_hex and short_hex in BLE_SERVICE_UUIDS:
             label = f"{BLE_SERVICE_UUIDS[short_hex]} (0x{short_hex})"
+            if label not in found:
+                found.append(label)
+        elif u.lower() in KNOWN_FULL_GATT_SERVICE_UUIDS:
+            label = KNOWN_FULL_GATT_SERVICE_UUIDS[u.lower()]
             if label not in found:
                 found.append(label)
         elif "00000211-B2D1-43F0-9B88-960CEBF8B91E" in u:
@@ -798,42 +845,174 @@ class BLEManager:
                 result["connectable"] = True
                 result["gatt_connectable"] = True
 
-                gatt_services: List[Dict[str, str]] = []
-                for srv in client.services:
-                    s_uuid = str(srv.uuid)
-                    s_desc = str(getattr(srv, "description", "") or "").strip()
-                    short_u = s_uuid.split("-")[0][-4:].upper() if "-" in s_uuid else s_uuid.upper()
-                    if (not s_desc or s_desc.lower() in ("unknown", "vendor specific")) and short_u in BLE_SERVICE_UUIDS:
-                        s_desc = BLE_SERVICE_UUIDS[short_u]
-                    gatt_services.append({"uuid": s_uuid, "description": s_desc or "GATT Service"})
-
-                result["gatt_services"] = gatt_services
-
+                # 1. Force-read standard identity characteristics directly (even if 0x1800/0x180A is hidden by BlueZ)
+                forced_char_reads: Dict[str, bytes] = {}
                 for char_uuid, field_name in GATT_IDENTITY_CHARS.items():
                     try:
                         raw_val = await client.read_gatt_char(char_uuid)
                         if raw_val is not None and len(raw_val) > 0:
+                            raw_b = bytes(raw_val)
+                            forced_char_reads[char_uuid.lower()] = raw_b
                             if field_name == "battery_pct":
-                                bat_int = int(raw_val[0])
+                                bat_int = int(raw_b[0])
                                 if 0 <= bat_int <= 100:
                                     result["battery_pct"] = bat_int
                                     result["battery_ok"] = 1 if bat_int > 15 else 0
+                            elif field_name == "gatt_appearance":
+                                app_u16 = (
+                                    int.from_bytes(raw_b[:2], byteorder="little", signed=False)
+                                    if len(raw_b) >= 2
+                                    else int(raw_b[0])
+                                )
+                                result["gatt_appearance"] = app_u16
                             else:
-                                txt = bytes(raw_val).decode("utf-8", errors="ignore").replace("\x00", "").strip()
+                                txt = _decode_printable_ascii(raw_b)
                                 if txt:
                                     result[field_name] = txt
                     except Exception:
                         pass
 
+                # 2. Enumerate all Services and their Characteristics + read all readable values
+                gatt_services: List[Dict[str, Any]] = []
+                total_chars_count = 0
+                seen_char_uuids: Set[str] = set()
+
+                for srv in client.services:
+                    s_uuid = str(srv.uuid)
+                    s_uuid_lower = s_uuid.lower()
+                    s_desc = str(getattr(srv, "description", "") or "").strip()
+                    short_u = s_uuid.split("-")[0][-4:].upper() if "-" in s_uuid else s_uuid.upper()
+                    if s_uuid_lower in KNOWN_FULL_GATT_SERVICE_UUIDS:
+                        s_desc = KNOWN_FULL_GATT_SERVICE_UUIDS[s_uuid_lower]
+                    elif s_uuid.upper() in BLE_SERVICE_UUIDS:
+                        s_desc = BLE_SERVICE_UUIDS[s_uuid.upper()]
+                    elif (not s_desc or s_desc.lower() in ("unknown", "vendor specific")) and short_u in BLE_SERVICE_UUIDS:
+                        s_desc = BLE_SERVICE_UUIDS[short_u]
+
+                    chars_list: List[Dict[str, Any]] = []
+                    for ch in getattr(srv, "characteristics", []) or []:
+                        c_uuid = str(ch.uuid)
+                        c_uuid_lower = c_uuid.lower()
+                        seen_char_uuids.add(c_uuid_lower)
+                        c_short = c_uuid.split("-")[0][-4:].upper() if "-" in c_uuid else c_uuid.upper()
+                        c_desc = str(getattr(ch, "description", "") or "").strip()
+                        if (not c_desc or c_desc.lower() in ("unknown", "vendor specific")) and c_short in GATT_CHAR_DESCRIPTIONS:
+                            c_desc = GATT_CHAR_DESCRIPTIONS[c_short]
+                        c_handle = getattr(ch, "handle", None)
+                        c_props = [str(p) for p in (getattr(ch, "properties", []) or [])]
+
+                        val_hex: Optional[str] = None
+                        val_ascii: Optional[str] = None
+
+                        raw_char_bytes: Optional[bytes] = forced_char_reads.get(c_uuid_lower)
+                        if raw_char_bytes is None and any(p.lower() == "read" for p in c_props):
+                            try:
+                                read_res = await client.read_gatt_char(ch)
+                                if read_res is not None:
+                                    raw_char_bytes = bytes(read_res)
+                            except Exception:
+                                try:
+                                    read_res = await client.read_gatt_char(c_uuid)
+                                    if read_res is not None:
+                                        raw_char_bytes = bytes(read_res)
+                                except Exception:
+                                    raw_char_bytes = None
+
+                        if raw_char_bytes is not None:
+                            val_hex = raw_char_bytes.hex()
+                            val_ascii = _decode_printable_ascii(raw_char_bytes)
+                            if c_uuid_lower in GATT_IDENTITY_CHARS:
+                                f_name = GATT_IDENTITY_CHARS[c_uuid_lower]
+                                if f_name == "battery_pct" and len(raw_char_bytes) > 0:
+                                    b_val = int(raw_char_bytes[0])
+                                    if 0 <= b_val <= 100:
+                                        result["battery_pct"] = b_val
+                                        result["battery_ok"] = 1 if b_val > 15 else 0
+                                elif f_name == "gatt_appearance" and len(raw_char_bytes) > 0:
+                                    app_u16 = (
+                                        int.from_bytes(raw_char_bytes[:2], byteorder="little", signed=False)
+                                        if len(raw_char_bytes) >= 2
+                                        else int(raw_char_bytes[0])
+                                    )
+                                    result["gatt_appearance"] = app_u16
+                                    if val_ascii is None:
+                                        val_ascii = f"0x{app_u16:04X} ({app_u16})"
+                                elif val_ascii and not result.get(f_name):
+                                    result[f_name] = val_ascii
+
+                        chars_list.append(
+                            {
+                                "uuid": c_uuid,
+                                "description": c_desc or "Characteristic",
+                                "handle": c_handle,
+                                "properties": c_props,
+                                "value_hex": val_hex,
+                                "value_ascii": val_ascii,
+                            }
+                        )
+                        total_chars_count += 1
+
+                    gatt_services.append(
+                        {
+                            "uuid": s_uuid,
+                            "description": s_desc or "GATT Service",
+                            "characteristics": chars_list,
+                        }
+                    )
+
+                # If BlueZ hid 0x1800 (Generic Access) from client.services but forced reads succeeded, append it
+                hidden_ga_chars: List[Dict[str, Any]] = []
+                for ga_uuid, ga_desc in (
+                    ("00002a00-0000-1000-8000-00805f9b34fb", "Device Name"),
+                    ("00002a01-0000-1000-8000-00805f9b34fb", "Appearance"),
+                ):
+                    if ga_uuid in forced_char_reads and ga_uuid not in seen_char_uuids:
+                        rb = forced_char_reads[ga_uuid]
+                        asc = _decode_printable_ascii(rb)
+                        if ga_uuid.startswith("00002a01") and asc is None and len(rb) > 0:
+                            u16_v = int.from_bytes(rb[:2], byteorder="little", signed=False) if len(rb) >= 2 else int(rb[0])
+                            asc = f"0x{u16_v:04X} ({u16_v})"
+                        hidden_ga_chars.append(
+                            {
+                                "uuid": ga_uuid,
+                                "description": ga_desc,
+                                "handle": None,
+                                "properties": ["read"],
+                                "value_hex": rb.hex(),
+                                "value_ascii": asc,
+                            }
+                        )
+                        total_chars_count += 1
+
+                if hidden_ga_chars:
+                    gatt_services.insert(
+                        0,
+                        {
+                            "uuid": "00001800-0000-1000-8000-00805f9b34fb",
+                            "description": "Generic Access",
+                            "characteristics": hidden_ga_chars,
+                        },
+                    )
+
+                result["gatt_services"] = gatt_services
+                result["services_count"] = len(gatt_services)
+                result["chars_count"] = total_chars_count
+
                 cached = self._device_state_cache.setdefault(mac_norm, {})
                 for k in (
                     "gatt_name",
+                    "gatt_appearance",
                     "gatt_manufacturer",
                     "gatt_model",
+                    "gatt_serial",
                     "gatt_firmware",
+                    "gatt_hardware",
+                    "gatt_software",
                     "battery_pct",
                     "battery_ok",
                     "gatt_services",
+                    "services_count",
+                    "chars_count",
                     "gatt_connectable",
                     "gatt_inspected_at",
                     "mac_vendor",
@@ -850,7 +1029,7 @@ class BLEManager:
                     summary_parts.append(f"Modell='{result['gatt_model']}'")
                 if result.get("gatt_firmware"):
                     summary_parts.append(f"FW='{result['gatt_firmware']}'")
-                summary_parts.append(f"{len(gatt_services)} tjänster")
+                summary_parts.append(f"{len(gatt_services)} tjänster / {total_chars_count} karakteristiker")
                 msg = f"GATT-anslutning lyckades ({', '.join(summary_parts)})"
                 result["message"] = msg
                 await self._emit_log(f"GATT {mac_norm}: {msg}")
@@ -1259,10 +1438,16 @@ class BLEManager:
             "mac_vendor",
             "ibeacon_profile",
             "gatt_name",
+            "gatt_appearance",
             "gatt_manufacturer",
             "gatt_model",
+            "gatt_serial",
             "gatt_firmware",
+            "gatt_hardware",
+            "gatt_software",
             "gatt_services",
+            "services_count",
+            "chars_count",
             "gatt_connectable",
             "gatt_inspected_at",
         )

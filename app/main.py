@@ -937,12 +937,18 @@ async def api_inspect_ble_device(mac: str):
     }
     for k in (
         "gatt_name",
+        "gatt_appearance",
         "gatt_manufacturer",
         "gatt_model",
+        "gatt_serial",
         "gatt_firmware",
+        "gatt_hardware",
+        "gatt_software",
         "battery_pct",
         "battery_ok",
         "gatt_services",
+        "services_count",
+        "chars_count",
         "mac_vendor",
     ):
         if res.get(k) is not None:
