@@ -72,7 +72,7 @@
             <div>
               <div class="flex items-center gap-2">
                 <h1 class="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">SensorScanner</h1>
-                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">v2026.11.07.5</span>
+                <span id="appVersionBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">v2026.11.07.6</span>
               </div>
               <p class="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block leading-tight">RTL-SDR Blog V4 &amp; rtl_433 RF-signalanalysator</p>
             </div>
@@ -1262,25 +1262,94 @@
         addMetric('mdi-alert-outline', `Alert: ${p.alert}`, isAlert ? 'rose' : 'neutral', 'TPMS Larm', String(p.alert));
       }
 
-      // 5. Temperature (temperature_C, temperature_F, temp_C)
+      // 5. Temperature (Primary + Dynamic Regex for all *_F, temp*_[CF], soil_temp_F, temperature_2_F, etc.)
+      const allPayloadKeys = Object.keys(p);
+      const hasSecondaryTempKeys = allPayloadKeys.some(k => {
+        if (['temperature_C', 'temp_C', 'temperature_F', 'temp_F'].includes(k)) return false;
+        return /temp.*_[cf]$/i.test(k) || /_f$/i.test(k);
+      });
+
       let tempC = null;
       let rawF = null;
       if (p.temperature_C !== undefined && p.temperature_C !== null) {
         consumed.add('temperature_C');
+        if (p.temperature_F !== undefined) consumed.add('temperature_F');
         tempC = Number(p.temperature_C);
       } else if (p.temp_C !== undefined && p.temp_C !== null) {
         consumed.add('temp_C');
+        if (p.temp_F !== undefined) consumed.add('temp_F');
         tempC = Number(p.temp_C);
       } else if (p.temperature_F !== undefined && p.temperature_F !== null) {
         consumed.add('temperature_F');
         rawF = Number(p.temperature_F);
         if (!Number.isNaN(rawF)) tempC = ((rawF - 32.0) * 5.0) / 9.0;
-      } else if (sig && sig.temperature_c !== null && sig.temperature_c !== undefined) {
+      } else if (p.temp_F !== undefined && p.temp_F !== null) {
+        consumed.add('temp_F');
+        rawF = Number(p.temp_F);
+        if (!Number.isNaN(rawF)) tempC = ((rawF - 32.0) * 5.0) / 9.0;
+      } else if (!hasSecondaryTempKeys && sig && sig.temperature_c !== null && sig.temperature_c !== undefined) {
         tempC = Number(sig.temperature_c);
       }
       if (tempC !== null && !Number.isNaN(tempC)) {
         const subF = rawF !== null ? `${rawF.toFixed(1)} °F` : '';
         addMetric('mdi-thermometer', `${tempC.toFixed(1)} °C`, 'amber', 'Temperatur', `${tempC.toFixed(1)} °C`, subF);
+      }
+
+      // Dynamic secondary/indexed temperatures (e.g. temperature_1_C, temperature_2_F, temperature_2_C, soil_temp_F, water_temp_F)
+      const secondaryTempKeys = allPayloadKeys
+        .filter(k => !consumed.has(k) && (/temp.*_[cf]$/i.test(k) || /_f$/i.test(k)))
+        .sort((a, b) => a.localeCompare(b, 'sv', { numeric: true }));
+
+      for (const k of secondaryTempKeys) {
+        if (consumed.has(k)) continue;
+        const rawVal = p[k];
+        if (rawVal === undefined || rawVal === null || rawVal === '') continue;
+        const numVal = Number(rawVal);
+        if (Number.isNaN(numVal)) continue;
+
+        const isFahrenheit = /_f$/i.test(k);
+        if (isFahrenheit) {
+          const cKeyUpper = k.replace(/_f$/i, '_C');
+          const cKeyLower = k.replace(/_f$/i, '_c');
+          if ((p[cKeyUpper] !== undefined && p[cKeyUpper] !== null) || (p[cKeyLower] !== undefined && p[cKeyLower] !== null)) {
+            consumed.add(k);
+            continue;
+          }
+        } else {
+          const fKeyUpper = k.replace(/_c$/i, '_F');
+          const fKeyLower = k.replace(/_c$/i, '_f');
+          if (p[fKeyUpper] !== undefined) consumed.add(fKeyUpper);
+          if (p[fKeyLower] !== undefined) consumed.add(fKeyLower);
+        }
+
+        consumed.add(k);
+        const cVal = isFahrenheit ? ((numVal - 32.0) * 5.0) / 9.0 : numVal;
+        const subFStr = isFahrenheit ? `${numVal.toFixed(1)} °F` : '';
+
+        const chMatch = k.match(/^(?:temperature|temp)_?(\d+)_[cf]$/i);
+        if (chMatch) {
+          const chNum = chMatch[1];
+          addMetric(
+            'mdi-thermometer',
+            `T${chNum}: ${cVal.toFixed(1)} °C`,
+            'amber',
+            `Temperatur (Kanal ${chNum})`,
+            `${cVal.toFixed(1)} °C`,
+            subFStr
+          );
+        } else {
+          const prefixMatch = k.match(/^(.+?)_?(?:temperature|temp)?_[cf]$/i);
+          const rawPrefix = prefixMatch ? prefixMatch[1].replace(/_/g, ' ').trim() : k;
+          const cleanPrefix = rawPrefix ? rawPrefix.charAt(0).toUpperCase() + rawPrefix.slice(1) : 'Extra';
+          addMetric(
+            'mdi-thermometer',
+            `${cleanPrefix}: ${cVal.toFixed(1)} °C`,
+            'amber',
+            `Temperatur (${cleanPrefix})`,
+            `${cVal.toFixed(1)} °C`,
+            subFStr
+          );
+        }
       }
 
       // 6. Wind (Oregon-WGR800 etc.)
@@ -1381,11 +1450,57 @@
         addMetric('mdi-weather-pouring', `${rainRateMmH.toFixed(1)} mm/h`, 'blue', 'Regnintensitet', `${rainRateMmH.toFixed(1)} mm/h`);
       }
 
-      // 8. Humidity & Atmospheric Pressure
-      const humVal = p.humidity ?? (sig ? sig.humidity : null);
+      // 8. Humidity, Secondary Humidity (humidity_1, humidity_2), Moisture & Atmospheric Pressure
+      const hasSecondaryHumidityKeys = allPayloadKeys.some(k => /^humidity_.+/i.test(k) || /moisture/i.test(k));
+      const humVal = p.humidity !== undefined && p.humidity !== null
+        ? p.humidity
+        : (!hasSecondaryHumidityKeys && sig ? sig.humidity : null);
       if (humVal !== undefined && humVal !== null && !Number.isNaN(Number(humVal))) {
         consumed.add('humidity');
         addMetric('mdi-water-percent', `${Number(humVal).toFixed(0)} %`, 'sky', 'Luftfuktighet', `${Number(humVal).toFixed(0)} %`);
+      }
+
+      const secondaryHumKeys = allPayloadKeys
+        .filter(k => !consumed.has(k) && (/^humidity_.+/i.test(k) || /moisture/i.test(k)))
+        .sort((a, b) => a.localeCompare(b, 'sv', { numeric: true }));
+
+      for (const k of secondaryHumKeys) {
+        if (consumed.has(k)) continue;
+        const rawH = p[k];
+        if (rawH === undefined || rawH === null || rawH === '') continue;
+        const hNum = Number(rawH);
+        if (Number.isNaN(hNum)) continue;
+        consumed.add(k);
+
+        const hChMatch = k.match(/^humidity_(\d+)$/i);
+        if (hChMatch) {
+          const chNum = hChMatch[1];
+          addMetric(
+            'mdi-water-percent',
+            `H${chNum}: ${hNum.toFixed(0)} %`,
+            'blue',
+            `Luftfuktighet (Kanal ${chNum})`,
+            `${hNum.toFixed(0)} %`
+          );
+        } else if (/^humidity_(.+)$/i.test(k)) {
+          const hSub = k.replace(/^humidity_/i, '').replace(/_/g, ' ').trim();
+          const hLabel = hSub ? hSub.charAt(0).toUpperCase() + hSub.slice(1) : 'Extra';
+          addMetric(
+            'mdi-water-percent',
+            `H (${hLabel}): ${hNum.toFixed(0)} %`,
+            'blue',
+            `Luftfuktighet (${hLabel})`,
+            `${hNum.toFixed(0)} %`
+          );
+        } else {
+          addMetric(
+            'mdi-water-percent',
+            `Fukt: ${hNum.toFixed(0)} %`,
+            'blue',
+            'Fuktighet / Markfukt',
+            `${hNum.toFixed(0)} %`
+          );
+        }
       }
 
       if (p.pressure_hPa !== undefined && p.pressure_hPa !== null) {
@@ -1896,6 +2011,7 @@
       const bat = sig.battery_ok !== null && sig.battery_ok !== undefined ? sig.battery_ok : p.battery_ok;
 
       if (activeQuickPill === 'weather') {
+        const pKeys = Object.keys(p);
         return (
           cat === 'weather' ||
           p.temperature_C !== undefined ||
@@ -1904,7 +2020,8 @@
           p.wind_avg_m_s !== undefined ||
           p.wind_speed_m_s !== undefined ||
           p.rain_mm !== undefined ||
-          p.rain_in !== undefined
+          p.rain_in !== undefined ||
+          pKeys.some(k => /temp.*_[cf]$/i.test(k) || /^humidity_/i.test(k) || /moisture/i.test(k))
         );
       }
       if (activeQuickPill === 'tpms') {

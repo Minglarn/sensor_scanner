@@ -97,28 +97,39 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
     ) or any(w in model_lower for w in ("sparsnas", "efergy", "owl", "cm180", "wmbus", "meter", "energy", "water", "emon", "gas")):
         return "Meter"
 
-    if any(
-        k in keys
-        for k in (
-            "temperature_c",
-            "temperature_f",
-            "temp_c",
-            "humidity",
-            "wind_avg_km_h",
-            "wind_max_km_h",
-            "wind_avg_m_s",
-            "wind_max_m_s",
-            "wind_speed_m_s",
-            "wind_speed_km_h",
-            "wind_dir_deg",
-            "rain_mm",
-            "total_rain_mm",
-            "rain_in",
-            "rain_rate_mm_h",
-            "rain_rate_in_h",
-            "pressure_hpa",
+    if (
+        any(
+            k in keys
+            for k in (
+                "temperature_c",
+                "temperature_f",
+                "temp_c",
+                "temperature_1_c",
+                "temperature_2_c",
+                "temperature_1_f",
+                "temperature_2_f",
+                "humidity",
+                "humidity_1",
+                "humidity_2",
+                "moisture",
+                "wind_avg_km_h",
+                "wind_max_km_h",
+                "wind_avg_m_s",
+                "wind_max_m_s",
+                "wind_speed_m_s",
+                "wind_speed_km_h",
+                "wind_dir_deg",
+                "rain_mm",
+                "total_rain_mm",
+                "rain_in",
+                "rain_rate_mm_h",
+                "rain_rate_in_h",
+                "pressure_hpa",
+            )
         )
-    ) or any(w in model_lower for w in ("wgr800", "pcr800", "weather", "wind", "rain", "therm")):
+        or any(k.startswith("temperature_") or k.startswith("humidity_") for k in keys)
+        or any(w in model_lower for w in ("wgr800", "pcr800", "ft0385", "weather", "wind", "rain", "therm"))
+    ):
         return "Weather"
 
     if any(k in keys for k in ("motion", "contact_open")) or any(
@@ -146,22 +157,34 @@ def extract_device_id(payload: Dict[str, Any]) -> str:
 
 
 def extract_temperature_c(payload: Dict[str, Any]) -> Optional[float]:
-    if "temperature_C" in payload and payload["temperature_C"] is not None:
-        try:
-            return round(float(payload["temperature_C"]), 2)
-        except (ValueError, TypeError):
-            pass
-    if "temperature_F" in payload and payload["temperature_F"] is not None:
-        try:
-            f_val = float(payload["temperature_F"])
-            return round((f_val - 32.0) * 5.0 / 9.0, 2)
-        except (ValueError, TypeError):
-            pass
-    if "temp_C" in payload and payload["temp_C"] is not None:
-        try:
-            return round(float(payload["temp_C"]), 2)
-        except (ValueError, TypeError):
-            pass
+    for c_key in ("temperature_C", "temp_C", "temperature_1_C", "temperature_2_C"):
+        if c_key in payload and payload[c_key] is not None:
+            try:
+                return round(float(payload[c_key]), 2)
+            except (ValueError, TypeError):
+                pass
+    for f_key in ("temperature_F", "temp_F", "temperature_1_F", "temperature_2_F"):
+        if f_key in payload and payload[f_key] is not None:
+            try:
+                f_val = float(payload[f_key])
+                return round((f_val - 32.0) * 5.0 / 9.0, 2)
+            except (ValueError, TypeError):
+                pass
+    for k, val in payload.items():
+        if val is None:
+            continue
+        kl = str(k).lower()
+        if "temp" in kl and kl.endswith("_c"):
+            try:
+                return round(float(val), 2)
+            except (ValueError, TypeError):
+                pass
+        if "temp" in kl and kl.endswith("_f"):
+            try:
+                f_val = float(val)
+                return round((f_val - 32.0) * 5.0 / 9.0, 2)
+            except (ValueError, TypeError):
+                pass
     return None
 
 
