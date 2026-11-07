@@ -104,24 +104,6 @@ HA_METRIC_SPECS: List[Tuple[str, str, str, str, Optional[str], str, str]] = [
         "{{ value_json.humidity_2 | float | round(1) }}",
     ),
     (
-        "battery_ok",
-        "battery",
-        "Batteri",
-        "%",
-        "battery",
-        "measurement",
-        "{{ 100 if value_json.battery_ok | int == 1 else 10 }}",
-    ),
-    (
-        "battery_pct",
-        "battery_pct",
-        "Batterinivå",
-        "%",
-        "battery",
-        "measurement",
-        "{{ value_json.battery_pct | int }}",
-    ),
-    (
         "lux",
         "illuminance",
         "Ljusstyrka",
@@ -420,6 +402,10 @@ class MQTTManager:
         alias_raw = str(device.get("alias", "") or "").strip()
 
         enriched_payload = enrich_sparsnas_payload(dict(payload))
+        if enriched_payload.get("battery_mV") is not None and "battery_mv" not in enriched_payload:
+            enriched_payload["battery_mv"] = enriched_payload["battery_mV"]
+        elif enriched_payload.get("battery_mv") is not None and "battery_mV" not in enriched_payload:
+            enriched_payload["battery_mV"] = enriched_payload["battery_mv"]
         if alias_raw:
             enriched_payload["alias"] = alias_raw
         enriched_payload["device_key"] = device.get("device_key") or safe_device_key
@@ -638,7 +624,112 @@ class MQTTManager:
             )
             published_topics.append(tracker_topic)
 
-        # 3. Telemetry sensor entities (with expire_after: 120 on BLE distance_m and rssi)
+        # 3. Battery entities (strictly deduplicated: battery_pct vs binary_sensor battery_low + diagnostic battery_mv)
+        has_battery_pct = payload.get("battery_pct") is not None
+        has_battery_mv = payload.get("battery_mV") is not None or payload.get("battery_mv") is not None
+        has_battery_ok = payload.get("battery_ok") is not None or device.get("battery_ok") is not None
+
+        if has_battery_pct:
+            # Clear any legacy/duplicate battery_ok or duplicate battery topics so ONLY ONE "Batteri" (%) sensor exists
+            for dup_bat_topic in (
+                f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_battery/config",
+                f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_battery_ok/config",
+                f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery_ok/config",
+                f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery/config",
+                f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery_pct/config",
+                f"{self._ha_discovery_prefix}/binary_sensor/{safe_device_key}/battery_low/config",
+                f"{self._ha_discovery_prefix}/binary_sensor/sensor_scanner_{safe_device_key}_battery_low/config",
+            ):
+                try:
+                    self._client.publish(dup_bat_topic, payload="", qos=1, retain=True)
+                except Exception:
+                    pass
+
+            bat_pct_uid = f"sensor_scanner_{safe_device_key}_battery_pct"
+            bat_pct_topic = f"{self._ha_discovery_prefix}/sensor/{bat_pct_uid}/config"
+            bat_pct_config: Dict[str, Any] = {
+                "name": "Batteri",
+                "unique_id": bat_pct_uid,
+                "state_topic": state_topic,
+                "device_class": "battery",
+                "unit_of_measurement": "%",
+                "state_class": "measurement",
+                "value_template": "{{ value_json.battery_pct }}",
+                "device": ha_device_block,
+            }
+            self._client.publish(
+                bat_pct_topic,
+                payload=json.dumps(bat_pct_config, ensure_ascii=False),
+                qos=1,
+                retain=True,
+            )
+            published_topics.append(bat_pct_topic)
+        elif has_battery_ok:
+            # Only battery_ok (0 or 1) exists (e.g., 433 MHz sensors): clear fake 100% percentage sensors
+            for legacy_bat_topic in (
+                f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_battery/config",
+                f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_battery_ok/config",
+                f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_battery_pct/config",
+                f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery_ok/config",
+                f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery/config",
+                f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery_pct/config",
+            ):
+                try:
+                    self._client.publish(legacy_bat_topic, payload="", qos=1, retain=True)
+                except Exception:
+                    pass
+
+            bat_low_topic = f"{self._ha_discovery_prefix}/binary_sensor/{safe_device_key}/battery_low/config"
+            bat_low_config: Dict[str, Any] = {
+                "name": "Batteristatus",
+                "unique_id": f"{safe_device_key}_battery_low",
+                "state_topic": state_topic,
+                "device_class": "battery",
+                "value_template": "{{ 'ON' if value_json.battery_ok == 0 else 'OFF' }}",
+                "payload_on": "ON",
+                "payload_off": "OFF",
+                "device": ha_device_block,
+            }
+            self._client.publish(
+                bat_low_topic,
+                payload=json.dumps(bat_low_config, ensure_ascii=False),
+                qos=1,
+                retain=True,
+            )
+            published_topics.append(bat_low_topic)
+
+        if has_battery_mv:
+            for dup_mv_topic in (
+                f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery_mv/config",
+                f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery_mV/config",
+            ):
+                try:
+                    self._client.publish(dup_mv_topic, payload="", qos=1, retain=True)
+                except Exception:
+                    pass
+
+            bat_mv_uid = f"sensor_scanner_{safe_device_key}_battery_mv"
+            bat_mv_topic = f"{self._ha_discovery_prefix}/sensor/{bat_mv_uid}/config"
+            bat_mv_config: Dict[str, Any] = {
+                "name": "Batterispänning",
+                "unique_id": bat_mv_uid,
+                "state_topic": state_topic,
+                "device_class": "voltage",
+                "unit_of_measurement": "mV",
+                "state_class": "measurement",
+                "entity_category": "diagnostic",
+                "value_template": "{{ (value_json.battery_mV if value_json.battery_mV is defined else value_json.battery_mv) | int }}",
+                "device": ha_device_block,
+            }
+            self._client.publish(
+                bat_mv_topic,
+                payload=json.dumps(bat_mv_config, ensure_ascii=False),
+                qos=1,
+                retain=True,
+            )
+            published_topics.append(bat_mv_topic)
+
+        # 4. Telemetry sensor entities (with expire_after: 120 on BLE distance_m and rssi)
         for json_key, metric_slug, suffix, unit, dev_class, state_class, val_tpl in HA_METRIC_SPECS:
             if json_key not in payload or payload[json_key] is None:
                 continue
@@ -746,9 +837,20 @@ class MQTTManager:
         cleared_topics: List[str] = []
         extra_topics = [
             f"{self._ha_discovery_prefix}/binary_sensor/{safe_device_key}/presence/config",
+            f"{self._ha_discovery_prefix}/binary_sensor/{safe_device_key}/battery_low/config",
+            f"{self._ha_discovery_prefix}/binary_sensor/sensor_scanner_{safe_device_key}_battery_low/config",
             f"{self._ha_discovery_prefix}/device_tracker/{safe_device_key}/config",
             f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_vehicle_status/config",
             f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/vehicle_status/config",
+            f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_battery/config",
+            f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_battery_ok/config",
+            f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_battery_pct/config",
+            f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_battery_mv/config",
+            f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery_ok/config",
+            f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery/config",
+            f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery_pct/config",
+            f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery_mv/config",
+            f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/battery_mV/config",
         ]
         for topic in extra_topics:
             try:

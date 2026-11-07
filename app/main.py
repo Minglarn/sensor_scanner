@@ -517,16 +517,20 @@ async def ble_presence_timeout_worker() -> None:
             if mqtt_st.get("connected"):
                 if not ha_synced_on_connect:
                     devices = await asyncio.to_thread(db.get_devices, include_ignored=False)
+                    synced_count = 0
                     for d in devices:
                         if int(d.get("ha_discovery") or 0) == 1:
                             await asyncio.to_thread(mqtt_manager.publish_ha_discovery, d)
+                            synced_count += 1
+                    if synced_count > 0:
+                        print(f"[SYSTEM] Synced HA Auto-Discovery for {synced_count} devices", flush=True)
                     ha_synced_on_connect = True
                 await asyncio.to_thread(mqtt_manager.check_ble_presence_timeouts, 120.0)
             else:
                 ha_synced_on_connect = False
         except Exception as exc:
             logger.debug("Error in ble_presence_timeout_worker: %s", exc)
-        await asyncio.sleep(30)
+        await asyncio.sleep(2 if not ha_synced_on_connect else 30)
 
 
 async def github_update_worker() -> None:
@@ -1036,6 +1040,11 @@ async def api_update_settings(req: SettingsUpdateRequest):
             new_settings,
             reconnect_broker=mqtt_broker_changed,
         )
+        if new_ha_en and mqtt_manager.get_status().get("connected"):
+            active_devs = await asyncio.to_thread(db.get_devices, include_ignored=False)
+            for d in active_devs:
+                if int(d.get("ha_discovery", 0)) == 1:
+                    await asyncio.to_thread(mqtt_manager.publish_ha_discovery, d)
 
     if sdr_changed:
         await rtl_manager.restart()
