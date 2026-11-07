@@ -168,7 +168,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.9</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.10</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -2086,11 +2086,9 @@
         consumed.add('lux');
         addMetric('mdi-brightness-6', `${Number(p.lux).toFixed(0)} lx`, 'amber', 'Ljusstyrka', `${Number(p.lux).toFixed(0)} lx`);
       }
-      if (p.distance_m !== undefined && p.distance_m !== null && !Number.isNaN(Number(p.distance_m))) {
-        consumed.add('distance_m');
-        const txSub = p.tx_power !== undefined && p.tx_power !== null ? `TX: ${p.tx_power} dBm` : '';
-        addMetric('mdi-map-marker-distance', `~${Number(p.distance_m).toFixed(1)} m`, 'teal', 'Uppskattat Avstånd', `~${Number(p.distance_m).toFixed(1)} m`, txSub);
-      }
+      // Always consume distance_m & tx_power so misleading free-space distance (~99.9 m) is never shown on cards/table
+      consumed.add('distance_m');
+      consumed.add('tx_power');
 
       // 1. Energy / Cumulative Consumption (cumulative_kwh, energy_kWh, total_kWh, energy_mWh)
       let kwhVal = null;
@@ -2141,13 +2139,13 @@
         addMetric('mdi-flash', `${kw.toFixed(2)} kW`, 'amber', 'Aktuell Effekt', `${kw.toFixed(2)} kW`);
       }
 
-      // Current & Voltage if present
+      // Current & Mains Voltage if present (ignore low DC battery voltages < 40V)
       const elExtras = [];
       if (p.current_A !== undefined && p.current_A !== null) {
         consumed.add('current_A');
         elExtras.push(`${Number(p.current_A).toFixed(1)} A`);
       }
-      if (p.voltage_V !== undefined && p.voltage_V !== null) {
+      if (p.voltage_V !== undefined && p.voltage_V !== null && Number(p.voltage_V) >= 40) {
         consumed.add('voltage_V');
         elExtras.push(`${Number(p.voltage_V).toFixed(0)} V`);
       }
@@ -2499,10 +2497,14 @@
       let voltStr = '';
       if (p.battery_mV !== undefined && p.battery_mV !== null) {
         consumed.add('battery_mV');
+        consumed.add('voltage_V');
         voltStr = `${Number(p.battery_mV).toFixed(0)} mV`;
       } else if (p.battery_V !== undefined && p.battery_V !== null) {
         consumed.add('battery_V');
         voltStr = `${Number(p.battery_V).toFixed(2)} V`;
+      } else if (p.voltage_V !== undefined && p.voltage_V !== null && Number(p.voltage_V) < 40) {
+        consumed.add('voltage_V');
+        voltStr = `${Number(p.voltage_V).toFixed(2)} V`;
       }
 
       if (batPct !== null && !Number.isNaN(batPct)) {
@@ -2510,10 +2512,20 @@
         consumed.add('battery_ok');
         consumed.add('battery_low');
         const isLowPct = batPct <= 15 || Number(batLow) === 1 || (batOk !== undefined && batOk !== null && Number(batOk) === 0);
+        let batIcon = 'mdi-battery';
+        if (isLowPct || batPct < 15) batIcon = 'mdi-battery-alert-variant-outline';
+        else if (batPct < 25) batIcon = 'mdi-battery-20';
+        else if (batPct < 35) batIcon = 'mdi-battery-30';
+        else if (batPct < 45) batIcon = 'mdi-battery-40';
+        else if (batPct < 55) batIcon = 'mdi-battery-50';
+        else if (batPct < 65) batIcon = 'mdi-battery-60';
+        else if (batPct < 75) batIcon = 'mdi-battery-70';
+        else if (batPct < 85) batIcon = 'mdi-battery-80';
+        else if (batPct < 95) batIcon = 'mdi-battery-90';
         const vSuffix = voltStr ? ` (${voltStr})` : '';
         addMetric(
-          isLowPct ? 'mdi-battery-alert-variant-outline' : 'mdi-battery-check',
-          `Batteri: ${batPct.toFixed(0)} %${vSuffix}`,
+          batIcon,
+          `${batPct.toFixed(0)} %${vSuffix}`,
           isLowPct ? 'rose' : 'emerald',
           'Batterinivå',
           `${batPct.toFixed(0)} %`,
@@ -3331,7 +3343,7 @@
             if (badgesTarget) badgesTarget.innerHTML = badgesHtml;
 
             const strengthTarget = existingEl.querySelector('[data-sig-strength]');
-            if (strengthTarget) strengthTarget.innerHTML = buildFooterSignalStrength(sig.rssi, sig.snr, (sig.payload || {}).mod);
+            if (strengthTarget) strengthTarget.innerHTML = buildFooterSignalStrength(sig.rssi, sig.snr, (sig.payload || {}).mod, sig.freq ?? (sig.payload || {}).freq);
 
             const hitsTarget = existingEl.querySelector('[data-sig-hits]');
             if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${sig.hit_count || 1}`;
@@ -3475,7 +3487,7 @@
       const relTime = formatRelativeTime(sig.timestamp);
 
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
-      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod);
+      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
       const hitCount = sig.hit_count || 1;
       const isHaActive = Number(sig.ha_discovery) === 1;
 
@@ -3554,7 +3566,7 @@
       const relTime = formatRelativeTime(sig.timestamp);
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
       const radio = extractRadioMetadata(sig, p);
-      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod);
+      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
       const hitCount = sig.hit_count || 1;
       const isHaActive = Number(sig.ha_discovery) === 1;
 
@@ -3608,25 +3620,37 @@
       `;
     }
 
-    function buildFooterSignalStrength(rssi, snr, mod = '') {
+    function buildFooterSignalStrength(rssi, snr, mod = '', freq = null) {
       if (rssi === null || rssi === undefined) {
         return `<span class="text-slate-400"><i class="mdi mdi-wifi-strength-outline mr-1"></i>RSSI -</span>`;
       }
       const val = Number(rssi);
-      const isBle = String(mod || '').toUpperCase() === 'BLE' || (snr === null || snr === undefined) && val <= -28;
+      const isBle =
+        String(mod || '').toUpperCase() === 'BLE' ||
+        (freq !== null && freq !== undefined && Number(freq) >= 2400) ||
+        ((snr === null || snr === undefined) && val <= -28);
+
       let icon = 'mdi-wifi-strength-4';
       let color = 'text-emerald-600 dark:text-emerald-400';
 
       if (isBle) {
-        if (val < -82) {
-          icon = 'mdi-wifi-strength-1';
-          color = 'text-rose-600 dark:text-rose-400';
-        } else if (val < -72) {
-          icon = 'mdi-wifi-strength-2';
-          color = 'text-amber-600 dark:text-amber-400';
-        } else if (val < -62) {
+        // 1. BLE (2.4 GHz) RSSI in dBm:
+        // >= -68 dBm: Strong (Green, mdi-wifi-strength-4)
+        // -69 to -84 dBm: Good / Normal indoor (Sky/Blue, mdi-wifi-strength-3)
+        // -85 to -96 dBm: Medium / Far (Amber, mdi-wifi-strength-2)
+        // < -96 dBm: Weak / Edge (Rose, mdi-wifi-strength-1)
+        if (val >= -68) {
+          icon = 'mdi-wifi-strength-4';
+          color = 'text-emerald-600 dark:text-emerald-400';
+        } else if (val >= -84) {
           icon = 'mdi-wifi-strength-3';
           color = 'text-sky-600 dark:text-sky-400';
+        } else if (val >= -96) {
+          icon = 'mdi-wifi-strength-2';
+          color = 'text-amber-600 dark:text-amber-400';
+        } else {
+          icon = 'mdi-wifi-strength-1';
+          color = 'text-rose-500 dark:text-rose-400';
         }
         return `
           <span class="inline-flex items-center gap-1 ${color}">
@@ -3636,15 +3660,23 @@
         `;
       }
 
-      if (val < -20) {
-        icon = 'mdi-wifi-strength-1';
-        color = 'text-rose-600 dark:text-rose-400';
-      } else if (val < -12) {
-        icon = 'mdi-wifi-strength-2';
-        color = 'text-amber-600 dark:text-amber-400';
-      } else if (val < -5) {
+      // 2. SDR 433/868 MHz RSSI in dB:
+      // >= -6 dB: Strong (Green, mdi-wifi-strength-4)
+      // -6 to -14 dB: Good (Sky/Blue, mdi-wifi-strength-3)
+      // -14 to -22 dB: Medium (Amber, mdi-wifi-strength-2)
+      // < -22 dB: Weak (Rose, mdi-wifi-strength-1)
+      if (val >= -6) {
+        icon = 'mdi-wifi-strength-4';
+        color = 'text-emerald-600 dark:text-emerald-400';
+      } else if (val >= -14) {
         icon = 'mdi-wifi-strength-3';
         color = 'text-sky-600 dark:text-sky-400';
+      } else if (val >= -22) {
+        icon = 'mdi-wifi-strength-2';
+        color = 'text-amber-600 dark:text-amber-400';
+      } else {
+        icon = 'mdi-wifi-strength-1';
+        color = 'text-rose-500 dark:text-rose-400';
       }
 
       const snrText = snr !== null && snr !== undefined ? ` <span class="text-slate-400 dark:text-slate-500">/ SNR ${Number(snr).toFixed(1)}</span>` : '';
@@ -3786,17 +3818,25 @@
       `);
 
       if (payload.rssi !== undefined) {
-        const rssiVal = Number(payload.rssi).toFixed(2);
-        const snrVal = payload.snr !== undefined ? `${Number(payload.snr).toFixed(1)} dB SNR` : '';
+        const isBleSig = radio.isBle;
+        const rssiNum = Number(payload.rssi);
+        const rssiVal = isBleSig ? `${rssiNum.toFixed(0)} dBm` : `${rssiNum.toFixed(1)} dB`;
+        const snrVal = payload.snr !== undefined && payload.snr !== null ? `${Number(payload.snr).toFixed(1)} dB SNR` : '';
+        const txPowerVal = payload.tx_power !== undefined && payload.tx_power !== null ? `TX Power: ${payload.tx_power} dBm` : '';
+        const subParts = [
+          snrVal,
+          payload.noise !== undefined && payload.noise !== null ? `Brus: ${Number(payload.noise).toFixed(1)} dB` : '',
+          txPowerVal
+        ].filter(Boolean);
         kpiCardsHtml.push(`
           <div class="p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
             <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-              <span class="font-semibold uppercase tracking-wider">Signal</span>
+              <span class="font-semibold uppercase tracking-wider">Signalstyrka</span>
               <i class="mdi mdi-wifi-strength-4 text-base text-emerald-500"></i>
             </div>
             <div class="mt-1">
-              <div class="text-sm sm:text-base font-bold font-mono text-slate-900 dark:text-white leading-tight">${rssiVal} dB RSSI</div>
-              <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(snrVal)}${payload.noise !== undefined ? ` • Brus: ${Number(payload.noise).toFixed(1)} dB` : ''}</div>
+              <div class="text-sm sm:text-base font-bold font-mono text-slate-900 dark:text-white leading-tight">${rssiVal} RSSI</div>
+              <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(subParts.join(' • ') || (isBleSig ? 'Bluetooth BLE 2.4 GHz' : 'RF Signal'))}</div>
             </div>
           </div>
         `);
@@ -3816,11 +3856,12 @@
       const hp = h.payload || {};
       const hMetrics = extractAndFormatMetrics(hp, h);
       const hRadio = extractRadioMetadata(h, hp);
+      const rssiUnit = hRadio.isBle ? 'dBm' : 'dB';
       return `
         <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
           <td class="py-2 px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">${formatTimestamp(h.timestamp)}</td>
           <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${escapeHtml(hRadio.freqLabel)}</td>
-          <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${h.rssi !== null && h.rssi !== undefined ? h.rssi + ' dB' : '-'}</td>
+          <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${h.rssi !== null && h.rssi !== undefined ? h.rssi + ' ' + rssiUnit : '-'}</td>
           <td class="py-2 px-3"><div class="flex flex-wrap items-center gap-1">${hMetrics.badgesHtml}</div></td>
         </tr>
       `;
@@ -3980,7 +4021,7 @@
         const lastPayload = dev.last_payload || sig.payload || {};
         const { badgesHtml } = extractAndFormatMetrics(lastPayload, sig);
         const radio = extractRadioMetadata(sig, lastPayload);
-        const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi ?? sig.rssi, lastPayload.snr ?? sig.snr, radio.mod);
+        const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi ?? sig.rssi, lastPayload.snr ?? sig.snr, radio.mod, radio.freqMHz);
 
         const badgesEl = cardEl.querySelector('[data-dev-badges]');
         if (badgesEl) {
@@ -4250,7 +4291,7 @@
       const lastPayload = dev.last_payload || {};
       const { badgesHtml } = extractAndFormatMetrics(lastPayload);
       const radio = extractRadioMetadata(null, lastPayload);
-      const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi, lastPayload.snr, radio.mod);
+      const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi, lastPayload.snr, radio.mod, radio.freqMHz);
       const hasGroup = Boolean(dev.group_name && dev.group_name.trim());
 
       let borderClass = 'border-slate-200 dark:border-slate-800';

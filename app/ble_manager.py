@@ -190,11 +190,15 @@ def parse_bthome_v2(data: bytes) -> Dict[str, Any]:
 
 def parse_atc_pvvx_181a(data: bytes) -> Dict[str, Any]:
     """
-    Parses ATC1441 (13 bytes, big-endian) and PVVX custom firmware (15 bytes, little-endian)
-    frames on Service UUID 0x181A.
+    Parses ATC1441 (13 bytes, big-endian) and PVVX custom firmware (15+ bytes, little-endian)
+    frames on Service UUID 0x181A (0000181a-0000-1000-8000-00805f9b34fb), as well as
+    headerless 7-byte (ATC1441) and 9-byte (PVVX) variants.
     """
     out: Dict[str, Any] = {}
     if len(data) == 13:
+        # Format 2: ATC1441 Original (13 bytes in 0x181a)
+        # Bytes 0..5: MAC (big-endian), Bytes 6..7: int16 BE (0.1 C), Byte 8: uint8 (%),
+        # Byte 9: uint8 (%), Bytes 10..11: uint16 BE (mV), Byte 12: uint8 counter
         temp_raw = struct.unpack_from(">h", data, 6)[0]
         hum = data[8]
         bat_pct = data[9]
@@ -208,11 +212,15 @@ def parse_atc_pvvx_181a(data: bytes) -> Dict[str, Any]:
         out["voltage_V"] = round(bat_mv / 1000.0, 3)
         out["sequence"] = int(seq)
     elif len(data) >= 15:
+        # Format 1: Custom PVVX (15..19 bytes in 0x181a)
+        # Bytes 0..5: MAC (little-endian), Bytes 6..7: int16 LE (0.01 C), Bytes 8..9: uint16 LE (0.01 %),
+        # Bytes 10..11: uint16 LE (mV), Byte 12: uint8 (%), Byte 13: uint8 counter, Byte 14: uint8 flags
         temp_raw = struct.unpack_from("<h", data, 6)[0]
         hum_raw = struct.unpack_from("<H", data, 8)[0]
         bat_mv = struct.unpack_from("<H", data, 10)[0]
         bat_pct = data[12]
         seq = data[13]
+        flags = data[14]
         out["temperature_C"] = round(temp_raw / 100.0, 2)
         out["humidity"] = round(hum_raw / 100.0, 1)
         out["battery_pct"] = int(bat_pct)
@@ -220,6 +228,69 @@ def parse_atc_pvvx_181a(data: bytes) -> Dict[str, Any]:
         out["battery_mV"] = int(bat_mv)
         out["voltage_V"] = round(bat_mv / 1000.0, 3)
         out["sequence"] = int(seq)
+        out["flags"] = int(flags)
+    elif len(data) == 7:
+        temp_raw = struct.unpack_from(">h", data, 0)[0]
+        hum = data[2]
+        bat_pct = data[3]
+        bat_mv = struct.unpack_from(">H", data, 4)[0]
+        seq = data[6]
+        if -450 <= temp_raw <= 850 and 0 <= hum <= 100 and 0 <= bat_pct <= 100:
+            out["temperature_C"] = round(temp_raw / 10.0, 1)
+            out["humidity"] = int(hum)
+            out["battery_pct"] = int(bat_pct)
+            out["battery_ok"] = 1 if bat_pct > 15 else 0
+            out["battery_mV"] = int(bat_mv)
+            out["voltage_V"] = round(bat_mv / 1000.0, 3)
+            out["sequence"] = int(seq)
+    elif len(data) in (9, 10):
+        temp_raw = struct.unpack_from("<h", data, 0)[0]
+        hum_raw = struct.unpack_from("<H", data, 2)[0]
+        bat_mv = struct.unpack_from("<H", data, 4)[0]
+        bat_pct = data[6]
+        seq = data[7]
+        if -4500 <= temp_raw <= 8500 and 0 <= hum_raw <= 10000 and 0 <= bat_pct <= 100:
+            out["temperature_C"] = round(temp_raw / 100.0, 2)
+            out["humidity"] = round(hum_raw / 100.0, 1)
+            out["battery_pct"] = int(bat_pct)
+            out["battery_ok"] = 1 if bat_pct > 15 else 0
+            out["battery_mV"] = int(bat_mv)
+            out["voltage_V"] = round(bat_mv / 1000.0, 3)
+            out["sequence"] = int(seq)
+    return out
+
+
+def parse_bthome_v1_181c(data: bytes) -> Dict[str, Any]:
+    """
+    Parses unencrypted BTHome v1 / HA BLE service data (UUID 0x181C).
+    """
+    out: Dict[str, Any] = {}
+    idx = 0
+    n = len(data)
+    while idx + 2 <= n:
+        header = data[idx]
+        val_len = header & 0x1F
+        if idx + 1 + val_len > n or val_len == 0:
+            break
+        meas_type = data[idx + 1]
+        val_bytes = data[idx + 2 : idx + 1 + val_len]
+        idx += 1 + val_len
+        if meas_type == 0x00 and len(val_bytes) == 1:
+            out["sequence"] = val_bytes[0]
+        elif meas_type == 0x01 and len(val_bytes) == 1:
+            bat = val_bytes[0]
+            out["battery_pct"] = int(bat)
+            out["battery_ok"] = 1 if bat > 15 else 0
+        elif meas_type == 0x02 and len(val_bytes) == 2:
+            val = struct.unpack_from("<h", val_bytes, 0)[0]
+            out["temperature_C"] = round(val * 0.01, 2)
+        elif meas_type == 0x03 and len(val_bytes) == 2:
+            val = struct.unpack_from("<H", val_bytes, 0)[0]
+            out["humidity"] = round(val * 0.01, 1)
+        elif meas_type == 0x0C and len(val_bytes) == 2:
+            val = struct.unpack_from("<H", val_bytes, 0)[0]
+            out["battery_mV"] = int(val)
+            out["voltage_V"] = round(val * 0.001, 3)
     return out
 
 
@@ -244,36 +315,41 @@ def parse_xiaomi_fe95(data: bytes) -> Dict[str, Any]:
         offset += 6
     if has_cap:
         offset += 1
-    if offset + 3 > len(data):
-        return out
 
-    obj_type = struct.unpack_from("<H", data, offset)[0]
-    obj_len = data[offset + 2]
-    obj_start = offset + 3
-    if obj_start + obj_len > len(data):
-        return out
-    obj_bytes = data[obj_start : obj_start + obj_len]
+    while offset + 3 <= len(data):
+        obj_type = struct.unpack_from("<H", data, offset)[0]
+        obj_len = data[offset + 2]
+        obj_start = offset + 3
+        if obj_start + obj_len > len(data):
+            break
+        obj_bytes = data[obj_start : obj_start + obj_len]
+        offset = obj_start + obj_len
 
-    if obj_type == 0x1004 and len(obj_bytes) >= 2:
-        t = struct.unpack_from("<h", obj_bytes, 0)[0] / 10.0
-        out["temperature_C"] = round(t, 1)
-    elif obj_type == 0x1006 and len(obj_bytes) >= 2:
-        h = struct.unpack_from("<H", obj_bytes, 0)[0] / 10.0
-        out["humidity"] = round(h, 1)
-    elif obj_type == 0x100A and len(obj_bytes) >= 1:
-        bat = obj_bytes[0]
-        out["battery_pct"] = int(bat)
-        out["battery_ok"] = 1 if bat > 15 else 0
-    elif obj_type == 0x100D and len(obj_bytes) >= 4:
-        t = struct.unpack_from("<h", obj_bytes, 0)[0] / 10.0
-        h = struct.unpack_from("<H", obj_bytes, 2)[0] / 10.0
-        out["temperature_C"] = round(t, 1)
-        out["humidity"] = round(h, 1)
-    elif obj_type == 0x1007 and len(obj_bytes) >= 3:
-        lux = int.from_bytes(obj_bytes[:3], "little")
-        out["lux"] = lux
-    elif obj_type == 0x1008 and len(obj_bytes) >= 1:
-        out["moisture"] = int(obj_bytes[0])
+        if obj_type == 0x1004 and len(obj_bytes) >= 2:
+            t = struct.unpack_from("<h", obj_bytes, 0)[0] / 10.0
+            out["temperature_C"] = round(t, 1)
+        elif obj_type == 0x1006 and len(obj_bytes) >= 2:
+            h = struct.unpack_from("<H", obj_bytes, 0)[0] / 10.0
+            out["humidity"] = round(h, 1)
+        elif obj_type == 0x100A and len(obj_bytes) >= 1:
+            bat = obj_bytes[0]
+            out["battery_pct"] = int(bat)
+            out["battery_ok"] = 1 if bat > 15 else 0
+            if len(obj_bytes) >= 3:
+                mv = struct.unpack_from("<H", obj_bytes, 1)[0]
+                if 1800 <= mv <= 3600:
+                    out["battery_mV"] = int(mv)
+                    out["voltage_V"] = round(mv / 1000.0, 3)
+        elif obj_type == 0x100D and len(obj_bytes) >= 4:
+            t = struct.unpack_from("<h", obj_bytes, 0)[0] / 10.0
+            h = struct.unpack_from("<H", obj_bytes, 2)[0] / 10.0
+            out["temperature_C"] = round(t, 1)
+            out["humidity"] = round(h, 1)
+        elif obj_type == 0x1007 and len(obj_bytes) >= 3:
+            lux = int.from_bytes(obj_bytes[:3], "little")
+            out["lux"] = lux
+        elif obj_type == 0x1008 and len(obj_bytes) >= 1:
+            out["moisture"] = int(obj_bytes[0])
     return out
 
 
@@ -381,6 +457,7 @@ class BLEManager:
         self._debounced_count: int = 0
         self._discovered_devices: Set[str] = set()
         self._debounce_cache: Dict[str, Tuple[float, str]] = {}
+        self._device_state_cache: Dict[str, Dict[str, Any]] = {}
         self._log_tail: Deque[str] = deque(maxlen=100)
 
     def reset_stats_and_cache(self) -> None:
@@ -388,6 +465,7 @@ class BLEManager:
         self._debounced_count = 0
         self._discovered_devices.clear()
         self._debounce_cache.clear()
+        self._device_state_cache.clear()
 
     def get_status(self) -> Dict[str, Any]:
         settings = self._get_settings()
@@ -548,6 +626,12 @@ class BLEManager:
         if is_mac_like_name(local_name):
             local_name = ""
 
+        cached_state = self._device_state_cache.setdefault(mac, {})
+        if local_name:
+            cached_state["local_name"] = local_name
+        elif cached_state.get("local_name"):
+            local_name = str(cached_state["local_name"])
+
         rssi = getattr(adv, "rssi", None)
         tx_power = getattr(adv, "tx_power", None)
         mfg_data: Dict[int, bytes] = getattr(adv, "manufacturer_data", {}) or {}
@@ -567,12 +651,6 @@ class BLEManager:
             payload["local_name"] = local_name
         if tx_power is not None:
             payload["tx_power"] = tx_power
-            if rssi is not None:
-                try:
-                    dist_m = 10.0 ** ((float(tx_power) - float(rssi)) / 24.0)
-                    payload["distance_m"] = round(max(0.1, min(dist_m, 99.9)), 1)
-                except Exception:
-                    pass
 
         if srv_uuids:
             payload["service_uuids"] = srv_uuids
@@ -655,12 +733,19 @@ class BLEManager:
             except Exception:
                 pass
 
-        # Built-in binary parsers for BTHome v2, ATC/PVVX 0x181A, Xiaomi 0xFE95, Ruuvi 0x0499, Govee 0xEC88
+        # Built-in binary parsers for BTHome v2, BTHome v1, ATC/PVVX 0x181A, Xiaomi 0xFE95, Ruuvi 0x0499, Govee 0xEC88
         for suuid, sbytes in srv_data.items():
             u_low = suuid.lower()
             raw_b = bytes(sbytes)
             if "fcd2" in u_low:
                 parsed = parse_bthome_v2(raw_b)
+                if parsed:
+                    payload.update({k: v for k, v in parsed.items() if k not in payload})
+                    has_decoded_sensor = True
+                    if not theengs_model:
+                        theengs_model = "BTHome-BLE"
+            elif "181c" in u_low:
+                parsed = parse_bthome_v1_181c(raw_b)
                 if parsed:
                     payload.update({k: v for k, v in parsed.items() if k not in payload})
                     has_decoded_sensor = True
@@ -672,7 +757,7 @@ class BLEManager:
                     payload.update({k: v for k, v in parsed.items() if k not in payload})
                     has_decoded_sensor = True
                     if not theengs_model:
-                        theengs_model = "ATC-Thermo-BLE"
+                        theengs_model = "ATC-Thermometer"
             elif "fe95" in u_low:
                 parsed = parse_xiaomi_fe95(raw_b)
                 if parsed:
@@ -701,6 +786,26 @@ class BLEManager:
                 has_decoded_sensor = True
                 if not theengs_model:
                     theengs_model = "iBeacon-BLE"
+
+        # Merge cached sensor metrics for this MAC if a split advertisement (e.g. scan response) arrived
+        sensor_cache_keys = (
+            "temperature_C",
+            "humidity",
+            "pressure_hPa",
+            "battery_pct",
+            "battery_ok",
+            "battery_mV",
+            "voltage_V",
+            "lux",
+            "moisture",
+            "sequence",
+        )
+        for sk in sensor_cache_keys:
+            if sk in payload and payload[sk] is not None:
+                cached_state[sk] = payload[sk]
+            elif sk in cached_state and cached_state[sk] is not None:
+                payload[sk] = cached_state[sk]
+                has_decoded_sensor = True
 
         # -------------------------------------------------------------------
         # 2. Smart Identification of Specific BLE Device Types & Models
@@ -732,7 +837,17 @@ class BLEManager:
             payload["category"] = "Vehicle"
             has_decoded_sensor = True
 
-        # C. Govee Devices (ihoment_*, Govee_*, GVH*, B5178*, H5074*, H5075* or Manufacturer 0xEC88)
+        # C. Xiaomi ATC / PVVX Thermometers (local_name starts with ATC_ or LYWSD, or MAC starts with A4:C1:38)
+        elif (
+            name_upper.startswith("ATC_")
+            or name_upper.startswith("LYWSD")
+            or mac.startswith("A4:C1:38")
+            or theengs_model == "ATC-Thermometer"
+        ):
+            model = "ATC-Thermometer"
+            payload["category"] = "Weather"
+
+        # D. Govee Devices (ihoment_*, Govee_*, GVH*, B5178*, H5074*, H5075* or Manufacturer 0xEC88)
         elif (
             any(name_upper.startswith(p) for p in ("IHOMENT_", "GOVEE_", "GVH", "H507", "H510", "H517", "B517"))
             or 0xEC88 in mfg_data
@@ -743,17 +858,17 @@ class BLEManager:
             else:
                 payload["category"] = "Switch"
 
-        # D. Plejd / Bluetooth Mesh (local_name == "P mesh" or Company ID 0x09A3)
+        # E. Plejd / Bluetooth Mesh (local_name == "P mesh" or Company ID 0x09A3)
         elif local_name.lower() == "p mesh" or 0x09A3 in mfg_data:
             model = "Plejd-Mesh"
             payload["category"] = "Switch"
 
-        # E. Xiaomi / Aqara / BTHome / Qingping / RuuviTag
+        # F. Xiaomi / Aqara / BTHome / Qingping / RuuviTag
         elif theengs_model:
             model = theengs_model
         elif any(
             name_upper.startswith(p)
-            for p in ("LYWSD", "ATC_", "MIJIA", "QINGPING", "CGD1", "CGG1", "RUUVI", "BTHOME")
+            for p in ("MIJIA", "QINGPING", "CGD1", "CGG1", "RUUVI", "BTHOME")
         ):
             clean_p = re.sub(r"[^A-Za-z0-9]+", "-", local_name).strip("-").split("-")[0]
             model = f"{clean_p}-BLE"
@@ -810,10 +925,13 @@ class BLEManager:
         if prev_entry is not None:
             prev_ts, prev_sig = prev_entry
             elapsed = now_mono - prev_ts
+            prev_was_name_only = "=" not in prev_sig
+            cur_has_metrics = bool(metric_sig_parts)
             if metric_sig == prev_sig and elapsed < debounce_window:
                 self._debounced_count += 1
                 return
-            if metric_sig != prev_sig and elapsed < 1.5:
+            # Allow immediate update if previous packet had no metrics and current packet decoded sensor metrics
+            if not (prev_was_name_only and cur_has_metrics) and metric_sig != prev_sig and elapsed < 1.5:
                 self._debounced_count += 1
                 return
 

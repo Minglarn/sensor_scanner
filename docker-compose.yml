@@ -9,6 +9,8 @@ services:
     cap_add:
       - NET_ADMIN
       - NET_RAW
+    security_opt:
+      - apparmor:unconfined
     devices:
       - /dev/bus/usb:/dev/bus/usb
     volumes:

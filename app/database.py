@@ -339,6 +339,28 @@ class Database:
                         "UPDATE devices SET category = 'Weather' WHERE model LIKE '%Oregon-PCR%' OR last_payload LIKE '%rain%';"
                     )
 
+                    # Migrate any legacy ATC-BLE / ATC-Thermo-BLE devices to ATC-Thermometer (Weather)
+                    atc_rows = conn.execute(
+                        "SELECT device_key, device_id FROM devices WHERE model IN ('ATC-BLE', 'ATC-Thermo-BLE');"
+                    ).fetchall()
+                    for ar in atc_rows:
+                        old_key = ar["device_key"]
+                        dev_id = ar["device_id"]
+                        new_key = f"ATC-Thermometer_{dev_id}"
+                        exists_new = conn.execute(
+                            "SELECT 1 FROM devices WHERE device_key = ?;", (new_key,)
+                        ).fetchone()
+                        if exists_new:
+                            conn.execute("DELETE FROM devices WHERE device_key = ?;", (old_key,))
+                        else:
+                            conn.execute(
+                                "UPDATE devices SET device_key = ?, model = 'ATC-Thermometer', category = 'Weather' WHERE device_key = ?;",
+                                (new_key, old_key),
+                            )
+                    conn.execute(
+                        "UPDATE signals SET model = 'ATC-Thermometer' WHERE model IN ('ATC-BLE', 'ATC-Thermo-BLE');"
+                    )
+
                     # Auto-categorize existing devices that still have generic 'Sensor' or 'Unknown' category
                     existing_Rows = conn.execute(
                         "SELECT device_key, model, category, last_payload FROM devices;"
