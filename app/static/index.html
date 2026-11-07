@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.20</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.21</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1435,7 +1435,7 @@
             </span>
             <span id="modalPacketTime" class="text-[11px] font-mono text-slate-400"></span>
           </div>
-          <div id="modalKpiGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          <div id="modalKpiGrid" class="flex flex-wrap items-center gap-2">
             <!-- Populated via extractAndFormatMetrics() -->
           </div>
         </div>
@@ -2535,21 +2535,27 @@
         'uuid', 'major', 'minor', 'is_beacon_only'
       ].forEach((k) => consumed.add(k));
 
-      // Keep local_name, manufacturer_name, ble_service_name, mac_type & apple_type visible inside the Detail Modal KPI grid only
+      // Keep local_name, manufacturer_name, ble_service_name, mac_type & apple_type visible inside the Detail Modal chip bar
       if (p.local_name) {
-        addModalOnlyKpi('mdi-broadcast', 'indigo', 'BLE Advertised Name', String(p.local_name));
+        addModalOnlyKpi('mdi-broadcast', 'indigo', 'NAMN', String(p.local_name));
       }
       if (p.manufacturer_name) {
-        addModalOnlyKpi('mdi-domain', 'sky', 'BLE Tillverkare', String(p.manufacturer_name), p.manufacturer_id ? `ID: ${p.manufacturer_id}` : '');
+        addModalOnlyKpi('mdi-domain', 'sky', 'TILLVERKARE', String(p.manufacturer_name), p.manufacturer_id ? String(p.manufacturer_id) : '');
+      }
+      if (p.mac || p.mac_type) {
+        addModalOnlyKpi(
+          'mdi-identifier',
+          'neutral',
+          'MAC',
+          String(p.mac || '-'),
+          p.mac_type ? String(p.mac_type).replace(' (Roterande)', '').replace(' (Fast)', '') : ''
+        );
       }
       if (p.ble_service_name) {
-        addModalOnlyKpi('mdi-bluetooth-connect', 'teal', 'BLE Tjänst (UUID)', String(p.ble_service_name));
-      }
-      if (p.mac_type) {
-        addModalOnlyKpi('mdi-identifier', 'neutral', 'MAC-adresstyp', String(p.mac_type), p.mac ? `MAC: ${p.mac}` : '');
+        addModalOnlyKpi('mdi-bluetooth-connect', 'teal', 'TJÄNST', String(p.ble_service_name));
       }
       if (p.apple_type) {
-        addModalOnlyKpi('mdi-apple', 'purple', 'Apple Continuity', String(p.apple_type));
+        addModalOnlyKpi('mdi-apple', 'purple', 'CONTINUITY', String(p.apple_type));
       }
 
       // 0. BLE & Vehicle Telemetry (Tesla-Vehicle-BLE, Zeekr, Polestar, Volvo, BMW, iBeacon-BLE, Illuminance)
@@ -2597,7 +2603,7 @@
             );
           }
           if (rawTeslaId) {
-            addModalOnlyKpi('mdi-key-wireless', 'teal', 'Tesla BLE Beacon', rawTeslaId, p.ibeacon_uuid ? `UUID: ${p.ibeacon_uuid}` : '');
+            addModalOnlyKpi('mdi-key-wireless', 'teal', 'TESLA BEACON', rawTeslaId, p.ibeacon_uuid ? `UUID: ${p.ibeacon_uuid}` : '');
           }
         } else {
           addMetric(
@@ -2616,9 +2622,9 @@
         addMetric(
           'mdi-bullseye',
           badgeText,
-          'indigo',
-          'Apple iBeacon',
-          majMinText ? `Major/Minor: ${majMinText}` : 'iBeacon',
+          'purple',
+          'IBEACON',
+          majMinText ? majMinText : 'iBeacon',
           p.ibeacon_uuid ? `UUID: ${p.ibeacon_uuid}` : ''
         );
       }
@@ -4808,56 +4814,73 @@
     function renderModalTelemetryAndHistory(payload, sig, historyList) {
       const analyzed = extractAndFormatMetrics(payload, sig);
       const radio = extractRadioMetadata(sig, payload);
-      const kpiCardsHtml = analyzed.kpis.map((k) => `
-        <div class="p-2.5 rounded-xl border ${k.cls} flex flex-col justify-between">
-          <div class="flex items-center justify-between text-[11px] opacity-85">
-            <span class="font-semibold uppercase tracking-wider break-words [overflow-wrap:anywhere]">${escapeHtml(k.label)}</span>
-            <i class="mdi ${k.icon} text-base"></i>
-          </div>
-          <div class="mt-1">
-            <div class="text-sm sm:text-base font-bold font-mono leading-tight break-words [overflow-wrap:anywhere]">${escapeHtml(k.primary)}</div>
-            ${k.secondary ? `<div class="text-[11px] font-mono opacity-80 mt-0.5 break-words [overflow-wrap:anywhere]">${escapeHtml(k.secondary)}</div>` : ''}
-          </div>
-        </div>
-      `);
 
-      const radioParts = [radio.mod ? `Mod: ${radio.mod}` : '', radio.proto ? `Protokoll ${radio.proto}` : '', radio.mic].filter(Boolean);
-      kpiCardsHtml.push(`
-        <div class="p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-          <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-            <span class="font-semibold uppercase tracking-wider">Radio${radio.mod ? ' / ' + escapeHtml(radio.mod) : ''}</span>
-            <i class="mdi mdi-sine-wave text-base text-sky-500"></i>
-          </div>
-          <div class="mt-1">
-            <div class="text-sm sm:text-base font-bold font-mono text-slate-900 dark:text-white leading-tight">${escapeHtml(radio.dualFreqLabel)}</div>
-            <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(radioParts.join(' • ') || 'Standard RF')}</div>
-          </div>
+      const renderChip = (icon, cls, label, primary, secondary = '') => `
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs whitespace-nowrap shadow-2xs ${cls}">
+          <i class="mdi ${icon} text-base opacity-80"></i>
+          <span class="font-medium opacity-75 uppercase tracking-wider text-[10px]">${escapeHtml(label)}:</span>
+          <span class="font-bold text-xs font-mono">${escapeHtml(primary)}</span>
+          ${secondary ? `<span class="text-[11px] opacity-65 font-mono border-l pl-2 border-current/20">${escapeHtml(secondary)}</span>` : ''}
         </div>
-      `);
+      `;
 
-      if (payload.rssi !== undefined) {
+      const kpiCardsHtml = analyzed.kpis.map((k) =>
+        renderChip(k.icon, k.cls, k.label, k.primary, k.secondary)
+      );
+
+      const radioPrimary = radio.isBle
+        ? '2.4 GHz (2402 MHz)'
+        : (radio.freq1MHz && radio.freq2MHz
+          ? `${radio.freq1MHz.toFixed(2)} / ${radio.freq2MHz.toFixed(2)} MHz`
+          : (radio.freqMHz ? `${radio.freqMHz.toFixed(2)} MHz` : '-'));
+      const radioSecondary = [radio.mod, radio.proto, radio.mic].filter(Boolean).join(' ') || 'RF';
+      const skyChipCls = 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30';
+      kpiCardsHtml.push(
+        renderChip('mdi-sine-wave', skyChipCls, 'RADIO', radioPrimary, radioSecondary)
+      );
+
+      if (payload.rssi !== undefined && payload.rssi !== null) {
         const isBleSig = radio.isBle;
         const rssiNum = Number(payload.rssi);
-        const rssiVal = isBleSig ? `${rssiNum.toFixed(0)} dBm` : `${rssiNum.toFixed(1)} dB`;
-        const snrVal = payload.snr !== undefined && payload.snr !== null ? `${Number(payload.snr).toFixed(1)} dB SNR` : '';
-        const txPowerVal = payload.tx_power !== undefined && payload.tx_power !== null ? `TX Power: ${payload.tx_power} dBm` : '';
-        const subParts = [
-          snrVal,
-          payload.noise !== undefined && payload.noise !== null ? `Brus: ${Number(payload.noise).toFixed(1)} dB` : '',
-          txPowerVal
-        ].filter(Boolean);
-        kpiCardsHtml.push(`
-          <div class="p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 flex flex-col justify-between">
-            <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-              <span class="font-semibold uppercase tracking-wider">Signalstyrka</span>
-              <i class="mdi mdi-wifi-strength-4 text-base text-emerald-500"></i>
-            </div>
-            <div class="mt-1">
-              <div class="text-sm sm:text-base font-bold font-mono text-slate-900 dark:text-white leading-tight">${rssiVal} RSSI</div>
-              <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">${escapeHtml(subParts.join(' • ') || (isBleSig ? 'Bluetooth BLE 2.4 GHz' : 'RF Signal'))}</div>
-            </div>
-          </div>
-        `);
+        const rssiVal = isBleSig ? `${rssiNum.toFixed(0)} dBm RSSI` : `${rssiNum.toFixed(1)} dB RSSI`;
+        const snrVal = payload.snr !== undefined && payload.snr !== null ? `SNR: ${Number(payload.snr).toFixed(1)} dB` : '';
+        const noiseVal = payload.noise !== undefined && payload.noise !== null ? `Brus: ${Number(payload.noise).toFixed(1)} dB` : '';
+        const txPowerVal = payload.tx_power !== undefined && payload.tx_power !== null ? `TX: ${payload.tx_power} dBm` : '';
+        const subParts = [snrVal, noiseVal, txPowerVal].filter(Boolean);
+
+        let sigChipCls = 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30';
+        let sigIcon = 'mdi-wifi-strength-4';
+        if (isBleSig) {
+          if (rssiNum >= -68) {
+            sigIcon = 'mdi-wifi-strength-4';
+          } else if (rssiNum >= -84) {
+            sigIcon = 'mdi-wifi-strength-3';
+            sigChipCls = 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30';
+          } else if (rssiNum >= -96) {
+            sigIcon = 'mdi-wifi-strength-2';
+            sigChipCls = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30';
+          } else {
+            sigIcon = 'mdi-wifi-strength-1';
+            sigChipCls = 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40';
+          }
+        } else {
+          if (rssiNum >= -6) {
+            sigIcon = 'mdi-wifi-strength-4';
+          } else if (rssiNum >= -14) {
+            sigIcon = 'mdi-wifi-strength-3';
+            sigChipCls = 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30';
+          } else if (rssiNum >= -22) {
+            sigIcon = 'mdi-wifi-strength-2';
+            sigChipCls = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30';
+          } else {
+            sigIcon = 'mdi-wifi-strength-1';
+            sigChipCls = 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40';
+          }
+        }
+
+        kpiCardsHtml.push(
+          renderChip(sigIcon, sigChipCls, 'SIGNAL', rssiVal, subParts.join(' • '))
+        );
       }
 
       document.getElementById('modalKpiGrid').innerHTML = kpiCardsHtml.join('');
