@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.14</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.15</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -508,9 +508,9 @@
           <!-- Rendered by JS -->
         </div>
 
-        <!-- Signals Dense Table View (Fixed/Constrained Columns + Sticky Thead) -->
+        <!-- Signals Dense Table View (Multi-line Stacked Cells + Sticky Thead) -->
         <div id="signalsTableContainer" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
-          <table class="w-full table-fixed text-left border-collapse text-xs">
+          <table class="w-full text-left border-collapse text-xs">
             <thead class="sticky top-0 z-20 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-sm shadow-sm">
               <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider">
                 <th
@@ -527,7 +527,7 @@
                 <th
                   id="sigTh_name"
                   onclick="toggleSignalSort('name')"
-                  class="w-48 max-w-[200px] py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap truncate"
+                  class="min-w-[220px] w-64 py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap"
                   title="Klicka för att sortera alfabetiskt på Enhet / Alias"
                 >
                   <div class="inline-flex items-center gap-1.5">
@@ -561,7 +561,7 @@
                 <th
                   id="sigTh_id"
                   onclick="toggleSignalSort('id')"
-                  class="w-28 max-w-[120px] py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap truncate"
+                  class="w-32 py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap"
                   title="Klicka för att sortera på ID / Kanal"
                 >
                   <span class="inline-flex items-center gap-1">
@@ -584,7 +584,7 @@
                 <th
                   id="sigTh_rssi"
                   onclick="toggleSignalSort('rssi')"
-                  class="w-24 py-2 px-2.5 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap text-right"
+                  class="w-28 py-2 pr-3 pl-2 cursor-pointer select-none hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 transition-colors group whitespace-nowrap text-right"
                   title="Klicka för att sortera på RSSI / Signalstyrka"
                 >
                   <span class="inline-flex items-center justify-end gap-1">
@@ -592,7 +592,7 @@
                     <span id="sigSortIcon_rssi" class="inline-flex items-center"><i class="mdi mdi-unfold-more-horizontal opacity-40 group-hover:opacity-100"></i></span>
                   </span>
                 </th>
-                <th class="w-24 py-2 px-2.5 text-right whitespace-nowrap">Åtgärder</th>
+                <th class="w-24 py-2 pl-2 pr-2.5 text-right whitespace-nowrap">Åtgärder</th>
               </tr>
             </thead>
             <tbody
@@ -3749,17 +3749,41 @@
             const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, sig.payload || {});
             const titleTarget = existingEl.querySelector('[data-sig-title]');
             if (titleTarget) {
-              titleTarget.innerHTML = secondaryName
-                ? `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 truncate">(${escapeHtml(secondaryName)})</span>`
-                : `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span>`;
+              if (viewMode === 'table') {
+                titleTarget.textContent = primaryName;
+              } else {
+                titleTarget.innerHTML = secondaryName
+                  ? `<span class="font-bold text-slate-900 dark:text-white break-words">${escapeHtml(primaryName)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 break-words">(${escapeHtml(secondaryName)})</span>`
+                  : `<span class="font-bold text-slate-900 dark:text-white break-words">${escapeHtml(primaryName)}</span>`;
+              }
+            }
+            const subtitleTarget = existingEl.querySelector('[data-sig-subtitle]');
+            if (subtitleTarget) {
+              if (secondaryName) {
+                subtitleTarget.textContent = secondaryName;
+                subtitleTarget.classList.remove('hidden');
+              } else {
+                subtitleTarget.textContent = '';
+                subtitleTarget.classList.add('hidden');
+              }
             }
 
             const { badgesHtml } = extractAndFormatMetrics(sig.payload || {}, sig);
             const badgesTarget = existingEl.querySelector('[data-sig-badges]');
             if (badgesTarget) badgesTarget.innerHTML = badgesHtml;
 
+            const radio = extractRadioMetadata(sig, sig.payload || {});
+            const radioTarget = existingEl.querySelector('[data-sig-radio]');
+            if (radioTarget) {
+              radioTarget.innerHTML = renderTableRadioCellHtml(radio);
+            }
+
             const strengthTarget = existingEl.querySelector('[data-sig-strength]');
-            if (strengthTarget) strengthTarget.innerHTML = buildFooterSignalStrength(sig.rssi, sig.snr, (sig.payload || {}).mod, sig.freq ?? (sig.payload || {}).freq);
+            if (strengthTarget) {
+              strengthTarget.innerHTML = viewMode === 'table'
+                ? buildTableSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz)
+                : buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
+            }
 
             const hitsTarget = existingEl.querySelector('[data-sig-hits]');
             if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${sig.hit_count || 1}`;
@@ -3882,11 +3906,11 @@
       const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, p);
 
       const titleHtml = secondaryName
-        ? `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 truncate">(${escapeHtml(secondaryName)})</span>`
-        : `<span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span>`;
+        ? `<span class="font-bold text-slate-900 dark:text-white break-words">${escapeHtml(primaryName)}</span> <span class="text-[11px] font-normal text-slate-500 dark:text-slate-400 break-words">(${escapeHtml(secondaryName)})</span>`
+        : `<span class="font-bold text-slate-900 dark:text-white break-words">${escapeHtml(primaryName)}</span>`;
 
       const groupBadgeHtml = hasGroup
-        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25 truncate max-w-[130px]"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`
+        ? `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`
         : '';
 
       const channelPart = sig.channel !== null && sig.channel !== undefined && sig.channel !== ''
@@ -3925,10 +3949,10 @@
           class="cursor-pointer group bg-white dark:bg-slate-900 hover:bg-slate-50/90 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 hover:border-sky-500/50 rounded-xl p-2.5 transition duration-200 shadow-sm flex flex-col justify-between gap-2"
         >
           <!-- Row 1: Header -->
-          <div class="flex items-center justify-between gap-1.5">
-            <div class="flex items-center gap-1.5 min-w-0">
-              <i class="mdi ${catIcon} text-base shrink-0"></i>
-              <div data-sig-title class="text-xs truncate flex items-baseline gap-1 min-w-0">${titleHtml}</div>
+          <div class="flex items-start justify-between gap-1.5">
+            <div class="flex items-start gap-1.5 min-w-0">
+              <i class="mdi ${catIcon} text-base shrink-0 mt-0.5"></i>
+              <div data-sig-title class="text-xs flex flex-wrap items-baseline gap-1 min-w-0">${titleHtml}</div>
             </div>
             <div class="flex items-center gap-0.5 shrink-0">
               ${groupBadgeHtml}
@@ -3975,16 +3999,103 @@
       `;
     }
 
+    function renderTableRadioCellHtml(radio) {
+      const freqMain = radio.isBle
+        ? '2.4 GHz (BLE)'
+        : (radio.freqMHz ? `${radio.freqMHz.toFixed(2)} MHz` : (radio.mod || '-'));
+      const subParts = [];
+      if (!radio.isBle && radio.mod) subParts.push(radio.mod);
+      if (radio.proto) subParts.push(radio.proto);
+      const subLine = subParts.join(' • ');
+
+      return `
+        <div class="flex flex-col leading-tight">
+          <div class="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+            <i class="mdi ${radio.isBle ? 'mdi-bluetooth text-indigo-500' : 'mdi-sine-wave text-slate-400'}"></i>
+            <span>${escapeHtml(freqMain)}</span>
+          </div>
+          ${subLine ? `<div class="text-[11px] text-slate-400 dark:text-slate-500 pl-4 mt-0.5 whitespace-nowrap">${escapeHtml(subLine)}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function buildTableSignalStrength(rssi, snr, mod = '', freq = null) {
+      if (rssi === null || rssi === undefined) {
+        return `<span class="text-slate-400"><i class="mdi mdi-wifi-strength-outline mr-1"></i>RSSI -</span>`;
+      }
+      const val = Number(rssi);
+      const isBle =
+        String(mod || '').toUpperCase() === 'BLE' ||
+        (freq !== null && freq !== undefined && Number(freq) >= 2400) ||
+        ((snr === null || snr === undefined) && val <= -28);
+
+      let icon = 'mdi-wifi-strength-4';
+      let color = 'text-emerald-600 dark:text-emerald-400';
+
+      if (isBle) {
+        if (val >= -68) {
+          icon = 'mdi-wifi-strength-4';
+          color = 'text-emerald-600 dark:text-emerald-400';
+        } else if (val >= -84) {
+          icon = 'mdi-wifi-strength-3';
+          color = 'text-sky-600 dark:text-sky-400';
+        } else if (val >= -96) {
+          icon = 'mdi-wifi-strength-2';
+          color = 'text-amber-600 dark:text-amber-400';
+        } else {
+          icon = 'mdi-wifi-strength-1';
+          color = 'text-rose-500 dark:text-rose-400';
+        }
+        return `
+          <div class="flex flex-col items-end leading-tight">
+            <span class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
+              <i class="mdi ${icon} text-sm leading-none"></i>
+              <span>${val.toFixed(0)} dBm</span>
+            </span>
+          </div>
+        `;
+      }
+
+      if (val >= -6) {
+        icon = 'mdi-wifi-strength-4';
+        color = 'text-emerald-600 dark:text-emerald-400';
+      } else if (val >= -14) {
+        icon = 'mdi-wifi-strength-3';
+        color = 'text-sky-600 dark:text-sky-400';
+      } else if (val >= -22) {
+        icon = 'mdi-wifi-strength-2';
+        color = 'text-amber-600 dark:text-amber-400';
+      } else {
+        icon = 'mdi-wifi-strength-1';
+        color = 'text-rose-500 dark:text-rose-400';
+      }
+
+      const hasSnr = snr !== null && snr !== undefined && !Number.isNaN(Number(snr));
+      return `
+        <div class="flex flex-col items-end leading-tight">
+          <span class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
+            <i class="mdi ${icon} text-sm leading-none"></i>
+            <span>${val.toFixed(1)} dB</span>
+          </span>
+          ${hasSnr ? `<span class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 whitespace-nowrap">SNR: ${Number(snr).toFixed(1)} dB</span>` : ''}
+        </div>
+      `;
+    }
+
     function buildSignalTableRowHtml(sig, freshUntilMs = 0) {
       const p = sig.payload || {};
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
+      const devObj = devicesList.find((d) => d.device_key === devKey);
+      const hasAlias = Boolean(sig.alias && sig.alias.trim()) || Boolean(devObj && devObj.alias && devObj.alias.trim());
       const hasGroup = Boolean(sig.group_name && sig.group_name.trim());
+      const isNewDevice = !hasAlias && !hasGroup && (devObj ? Number(devObj.is_new ?? 1) === 1 : false);
       const catIcon = getCategoryIcon(sig.category);
       const exactTime = formatTimestamp(sig.timestamp);
       const timeInnerHtml = renderSignalTimeInnerHtml(sig.timestamp, freshUntilMs);
       const { badgesHtml } = extractAndFormatMetrics(p, sig);
       const radio = extractRadioMetadata(sig, p);
-      const footerSignalHtml = buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
+      const tableRadioHtml = renderTableRadioCellHtml(radio);
+      const tableSignalHtml = buildTableSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz);
       const hitCount = sig.hit_count || 1;
       const isHaActive = Number(sig.ha_discovery) === 1;
       const { primaryName, secondaryName } = resolveSignalDisplayNames(sig, p);
@@ -3997,36 +4108,37 @@
 
       return `
         <tr data-device-key="${escapeHtml(devKey)}" onclick="openDeviceModalByKey('${escapeHtml(devKey)}', ${Number(sig.id || 0)})" class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
-          <td data-sig-time class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
+          <td data-sig-time class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400 align-top" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
             ${timeInnerHtml}
           </td>
-          <td class="w-48 max-w-[200px] py-2 px-2.5 truncate" title="${escapeHtml(secondaryName ? primaryName + ' (' + secondaryName + ')' : primaryName)}">
-            <div class="flex items-center gap-1.5 min-w-0">
-              <i class="mdi ${catIcon} text-sm shrink-0"></i>
-              <span data-sig-title class="inline-flex items-baseline gap-1 min-w-0 truncate">
-                <span class="font-bold text-slate-900 dark:text-white truncate">${escapeHtml(primaryName)}</span>
-                ${secondaryName ? `<span class="text-[11px] text-slate-400 truncate">(${escapeHtml(secondaryName)})</span>` : ''}
-              </span>
-              ${hasGroup ? `<span class="shrink-0 px-1.5 py-0.2 rounded text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25 truncate max-w-[90px]"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</span>` : ''}
-              <span data-sig-hits class="shrink-0 ml-auto px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}</span>
+          <td class="min-w-[220px] w-64 py-2 px-2.5 align-top">
+            <div class="flex flex-col leading-snug">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <i class="mdi ${catIcon} text-sm shrink-0"></i>
+                <span data-sig-title class="font-semibold text-slate-800 dark:text-slate-100 break-words">${escapeHtml(primaryName)}</span>
+                <span data-sig-hits class="inline-flex items-center px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500 border border-slate-200/70 dark:border-slate-700/70"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i>${hitCount}</span>
+                ${isNewDevice ? '<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>' : ''}
+                ${hasGroup ? `<span class="px-1.5 py-0.2 rounded text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</span>` : ''}
+              </div>
+              <div data-sig-subtitle class="${secondaryName ? 'text-xs text-slate-400 dark:text-slate-500 pl-5 mt-0.5 break-words' : 'hidden text-xs text-slate-400 dark:text-slate-500 pl-5 mt-0.5 break-words'}">${secondaryName ? escapeHtml(secondaryName) : ''}</div>
             </div>
           </td>
-          <td class="w-24 py-2 px-2.5 whitespace-nowrap">
+          <td class="w-24 py-2 px-2.5 whitespace-nowrap align-top">
             <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${escapeHtml(sig.category || 'Sensor')}</span>
           </td>
-          <td class="w-28 max-w-[120px] py-2 px-2.5 font-mono text-[11px] truncate text-slate-600 dark:text-slate-300" title="${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ' / K' + escapeHtml(sig.channel) : ''}">
-            ${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ` <span class="text-slate-400">/ K${escapeHtml(sig.channel)}</span>` : ''}
+          <td class="w-32 py-2 px-2.5 font-mono text-[11px] break-all text-slate-600 dark:text-slate-300 align-top">
+            ${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ` <span class="text-slate-400 whitespace-nowrap">/ K${escapeHtml(sig.channel)}</span>` : ''}
           </td>
-          <td class="min-w-[200px] py-2 px-2.5">
+          <td class="min-w-[200px] py-2 px-2.5 align-top">
             <div data-sig-badges class="flex flex-wrap gap-1 items-center">${badgesHtml}</div>
           </td>
-          <td class="w-32 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap truncate text-slate-600 dark:text-slate-300" title="${escapeHtml(radio.freqLabel)}${radio.proto ? ' ' + escapeHtml(radio.proto) : ''}">
-            <i class="mdi ${radio.isBle ? 'mdi-bluetooth text-indigo-500' : 'mdi-sine-wave text-slate-400'} mr-0.5"></i>${escapeHtml(radio.freqLabel)} ${radio.proto ? `<span class="text-slate-400">${escapeHtml(radio.proto)}</span>` : ''}
+          <td data-sig-radio class="w-32 py-2 px-2.5 font-mono text-[11px] text-slate-600 dark:text-slate-300 align-top">
+            ${tableRadioHtml}
           </td>
-          <td data-sig-strength class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-right">
-            ${footerSignalHtml}
+          <td data-sig-strength class="w-28 py-2 pr-3 pl-2 font-mono text-[11px] text-right align-top">
+            ${tableSignalHtml}
           </td>
-          <td class="w-24 py-2 px-2.5 whitespace-nowrap text-right">
+          <td class="w-24 py-2 pl-2 pr-2.5 whitespace-nowrap text-right align-top">
             <div class="inline-flex items-center justify-end gap-1">
               <button onclick="quickEditDevice(event, '${escapeHtml(devKey)}')" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center" title="Redigera Alias">
                 <i class="mdi mdi-pencil-outline"></i>
