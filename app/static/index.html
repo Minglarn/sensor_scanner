@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.16</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.17</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -210,44 +210,44 @@
       <div class="px-3 sm:px-6 py-2">
         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
           
-          <!-- Left: Mobile Hamburger + Active View Title + Status Pills -->
+          <!-- Left: Mobile Hamburger + Active View Title + Divider + Unified Status Indicators -->
           <div class="flex items-center justify-between gap-2 flex-wrap">
-            <div class="flex items-center gap-2.5">
+            <div class="flex items-center gap-2 flex-wrap">
               <button
                 onclick="toggleMobileSidebar(true)"
-                class="lg:hidden w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200"
+                class="lg:hidden inline-flex items-center justify-center w-8 h-8 rounded-md bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200"
                 title="Öppna meny"
               >
-                <i class="mdi mdi-menu text-lg leading-none"></i>
+                <i class="mdi mdi-menu text-base leading-none"></i>
               </button>
 
-              <div class="flex items-center gap-2">
-                <i id="activeViewIcon" class="mdi mdi-access-point-network text-lg text-sky-500"></i>
-                <h2 id="activeViewTitle" class="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white">Signaler</h2>
+              <div class="inline-flex items-center gap-2 h-8">
+                <i id="activeViewIcon" class="mdi mdi-access-point-network text-base text-sky-500 leading-none"></i>
+                <h2 id="activeViewTitle" class="text-sm font-bold tracking-tight text-slate-900 dark:text-white whitespace-nowrap">Signaler</h2>
               </div>
 
-              <!-- Live Status Pills (WS, SDR, MQTT) -->
-              <div class="flex items-center gap-1.5 ml-1">
-                <div id="wsStatusBadge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400" title="Realtidsanslutning (WebSocket)">
-                  <span id="wsStatusDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
-                  <span id="wsStatusText" class="hidden md:inline">WS: Ansluter</span>
-                </div>
+              <div class="h-5 w-px bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
 
-                <div id="sdrStatusBadge" class="relative overflow-hidden flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-colors duration-200" title="Status och aktuell frekvens för rtl_433">
+              <!-- Unified Telemetry Status Indicators (SDR, BLE, MQTT) -->
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <div id="sdrStatusBadge" class="relative overflow-hidden inline-flex items-center gap-2 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap transition-colors duration-200" title="Status och aktuell frekvens för rtl_433">
                   <span id="sdrStatusDot" class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
-                  <span id="sdrStatusText" class="flex items-center gap-1 whitespace-nowrap">SDR: Initierar</span>
+                  <i class="mdi mdi-antenna text-slate-400 leading-none"></i>
+                  <span id="sdrStatusText" class="inline-flex items-center gap-1.5 whitespace-nowrap">Initierar</span>
                   <div id="sdrHopProgressWrap" class="hidden absolute bottom-0 left-0 right-0 h-[2px] bg-slate-200/40 dark:bg-slate-700/40">
                     <div id="sdrHopProgressBar" class="h-full bg-sky-500 transition-all duration-500" style="width: 100%"></div>
                   </div>
                 </div>
 
-                <button id="bleStatusBadge" type="button" onclick="toggleBLE()" class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:opacity-90 transition cursor-pointer" title="Klicka för att växla Bluetooth Low Energy (BLE 2.4 GHz) PÅ/AV">
-                  <i id="bleStatusIcon" class="mdi mdi-bluetooth text-xs leading-none"></i>
+                <button id="bleStatusBadge" type="button" onclick="toggleBLE()" class="inline-flex items-center gap-2 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition cursor-pointer" title="Klicka för att växla Bluetooth Low Energy (BLE 2.4 GHz) PÅ/AV">
+                  <span id="bleStatusDot" class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
+                  <i id="bleStatusIcon" class="mdi mdi-bluetooth text-sky-500 leading-none"></i>
                   <span id="bleStatusText" class="whitespace-nowrap">BLE: Initierar</span>
                 </button>
 
-                <div id="mqttStatusBadge" class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400" title="Status för MQTT-anslutning">
-                  <span id="mqttStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+                <div id="mqttStatusBadge" class="inline-flex items-center gap-2 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap" title="Status för MQTT-anslutning">
+                  <span id="mqttStatusDot" class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
+                  <i class="mdi mdi-swap-horizontal text-slate-400 leading-none"></i>
                   <span id="mqttStatusText" class="hidden sm:inline">MQTT: Frånkopplad</span>
                   <span class="sm:hidden">MQTT</span>
                 </div>
@@ -256,40 +256,67 @@
 
             <!-- Mobile-visible Pause & Theme Toggle -->
             <div class="flex lg:hidden items-center gap-1.5">
-              <button onclick="togglePause()" class="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border transition bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700">
+              <button onclick="togglePause()" class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium border transition bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80">
                 <i class="mdi mdi-pause text-sm leading-none"></i>
               </button>
-              <button onclick="toggleTheme()" class="flex items-center justify-center w-7 h-7 rounded-lg text-sm border transition bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700">
-                <i class="mdi mdi-weather-sunny leading-none"></i>
+              <button onclick="toggleTheme()" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md text-xs font-medium border transition bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80">
+                <i class="mdi mdi-weather-sunny text-sm leading-none"></i>
               </button>
             </div>
           </div>
 
-          <!-- Right: Quick Frequency Switcher + Pause + Theme Toggle -->
-          <div class="flex items-center justify-between lg:justify-end gap-2">
-            <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-950/90 p-1 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto">
-              <button onclick="switchFrequencyMode('433')" id="modeBtn_433" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
-                <i class="mdi mdi-sine-wave mr-0.5"></i>433.92 MHz
+          <!-- Right: GitHub Version / Update Button + Frequency Segment + Pause + Theme Toggle -->
+          <div class="flex items-center justify-between lg:justify-end gap-2 flex-wrap">
+            <!-- GitHub Version / Update Indicator -->
+            <div class="inline-flex items-center gap-1.5">
+              <button
+                id="versionCheckBtn"
+                type="button"
+                onclick="checkVersion(true)"
+                title="Klicka för att söka efter uppdateringar på GitHub"
+                class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition whitespace-nowrap"
+              >
+                <i id="versionCheckIcon" class="mdi mdi-source-branch text-slate-400 leading-none"></i>
+                <span id="versionCheckBtnText" class="font-mono">v·...</span>
               </button>
-              <button onclick="switchFrequencyMode('868')" id="modeBtn_868" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
-                <i class="mdi mdi-sine-wave mr-0.5"></i>868.3 MHz
+
+              <button
+                id="versionUpdateBtn"
+                type="button"
+                onclick="openUpdateModal()"
+                title="Ny version finns på GitHub – klicka för uppdateringsinstruktioner"
+                class="hidden inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/40 hover:bg-amber-500/25 transition whitespace-nowrap"
+              >
+                <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0"></span>
+                <i class="mdi mdi-cloud-download-outline leading-none"></i>
+                <span>Uppdatering finns!</span>
               </button>
-              <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
-                <i class="mdi mdi-swap-horizontal mr-0.5"></i>Dual Hop 433/868
+            </div>
+
+            <!-- Frequency Segment Switcher -->
+            <div class="inline-flex items-center h-8 p-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-x-auto">
+              <button onclick="switchFrequencyMode('433')" id="modeBtn_433" class="h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+                <i class="mdi mdi-sine-wave mr-0.5"></i>433.92
               </button>
-              <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" class="flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">
+              <button onclick="switchFrequencyMode('868')" id="modeBtn_868" class="h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+                <i class="mdi mdi-sine-wave mr-0.5"></i>868.3
+              </button>
+              <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" class="h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+                <i class="mdi mdi-swap-horizontal mr-0.5"></i>Dual Hop
+              </button>
+              <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" class="h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
                 <i class="mdi mdi-tune-variant mr-0.5"></i>Custom
               </button>
             </div>
 
             <div class="hidden lg:flex items-center gap-1.5">
-              <button id="pauseBtn" onclick="togglePause()" class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700" title="Pausa eller återuppta live-flödet">
+              <button id="pauseBtn" onclick="togglePause()" class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium border transition bg-slate-100/80 hover:bg-slate-200/70 dark:bg-slate-800/80 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80 whitespace-nowrap" title="Pausa eller återuppta live-flödet">
                 <i id="pauseIcon" class="mdi mdi-pause text-sm leading-none"></i>
                 <span id="pauseBtnText">Pausa</span>
               </button>
 
-              <button id="themeToggleBtn" onclick="toggleTheme()" class="flex items-center justify-center w-8 h-8 rounded-lg text-sm border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700" title="Växla mellan Ljust och Mörkt läge">
-                <i id="themeToggleIcon" class="mdi mdi-weather-sunny leading-none"></i>
+              <button id="themeToggleBtn" onclick="toggleTheme()" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md text-xs font-medium border transition bg-slate-100/80 hover:bg-slate-200/70 dark:bg-slate-800/80 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80" title="Växla mellan Ljust och Mörkt läge">
+                <i id="themeToggleIcon" class="mdi mdi-weather-sunny text-sm leading-none"></i>
               </button>
             </div>
           </div>
@@ -1479,6 +1506,81 @@
     </div>
   </div>
 
+  <!-- ===================================================================== -->
+  <!-- GITHUB UPDATE CHECKER MODAL                                           -->
+  <!-- ===================================================================== -->
+  <div id="updateModal" class="fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden text-xs">
+      <div class="px-4 py-3 bg-slate-50 dark:bg-slate-950/70 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <i id="updateModalHeaderIcon" class="mdi mdi-cloud-download-outline text-lg text-amber-500"></i>
+          <h3 id="updateModalHeaderTitle" class="text-sm font-bold text-slate-900 dark:text-white">Versionskontroll &amp; Uppdatering</h3>
+        </div>
+        <button onclick="closeUpdateModal()" class="w-7 h-7 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center">
+          <i class="mdi mdi-close text-base"></i>
+        </button>
+      </div>
+
+      <div class="p-4 space-y-3.5">
+        <div id="updateModalStatusBanner" class="px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium">
+          <i class="mdi mdi-information-outline text-base shrink-0"></i>
+          <span id="updateModalStatusText">En ny version av SensorScanner finns tillgänglig på GitHub (main).</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Nuvarande version i containern</div>
+            <div class="mt-1 flex items-center gap-1.5 font-mono text-sm font-bold text-slate-800 dark:text-slate-100">
+              <i class="mdi mdi-cube-outline text-slate-400"></i>
+              <span id="updateModalLocalSha">unknown</span>
+            </div>
+            <div id="updateModalBuildDate" class="mt-0.5 text-[11px] font-mono text-slate-400"></div>
+          </div>
+
+          <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Senaste på GitHub (main)</div>
+            <div class="mt-1 flex items-center gap-1.5 font-mono text-sm font-bold text-sky-600 dark:text-sky-400">
+              <i class="mdi mdi-github text-slate-500 dark:text-slate-300"></i>
+              <span id="updateModalRemoteSha">-</span>
+            </div>
+            <div id="updateModalCommitDate" class="mt-0.5 text-[11px] font-mono text-slate-400"></div>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Senaste commit-meddelande</div>
+          <div id="updateModalCommitMsg" class="font-mono text-xs text-slate-800 dark:text-slate-200 break-words">-</div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Snabbkommando för iridium</span>
+            <button type="button" onclick="copyUpdateCommand()" class="inline-flex items-center gap-1 text-sky-600 dark:text-sky-400 hover:underline font-semibold">
+              <i class="mdi mdi-content-copy"></i>
+              <span>Kopiera kommando</span>
+            </button>
+          </div>
+          <div class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-emerald-400 font-mono text-xs">
+            <code id="updateModalCmdText" class="select-all">docker compose pull &amp;&amp; docker compose up -d</code>
+            <button type="button" onclick="copyUpdateCommand()" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-sans font-medium shrink-0 transition">
+              <i class="mdi mdi-content-copy mr-0.5"></i>Kopiera
+            </button>
+          </div>
+        </div>
+
+        <div class="pt-2 flex items-center justify-between gap-2 border-t border-slate-200 dark:border-slate-800">
+          <button type="button" onclick="checkVersion(true)" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium transition">
+            <i id="updateModalRefreshIcon" class="mdi mdi-refresh text-sm leading-none"></i>
+            <span>Sök igen på GitHub</span>
+          </button>
+          <button type="button" onclick="closeUpdateModal()" class="px-4 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 text-white font-semibold transition">
+            Stäng
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST NOTIFICATION -->
   <div id="toastBox" class="fixed bottom-4 right-4 z-50 hidden px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 border border-slate-700 text-white text-xs font-medium shadow-xl"></div>
 
@@ -1561,6 +1663,14 @@
     let wsConnection = null;
     let wsConnected = false;
     let highlightedDeviceKey = null;
+    let gitVersionState = {
+      local_sha: 'unknown',
+      build_date: 'unknown',
+      remote_sha: '',
+      commit_message: '',
+      commit_date: '',
+      update_available: false
+    };
 
     // Keys that represent technical radio/envelope metadata rather than sensor measurements
     const TECHNICAL_METADATA_KEYS = new Set([
@@ -1592,11 +1702,17 @@
       renderSignalModelDropdownList();
       switchTab('signals', true);
       loadStatus();
+      checkVersion(false);
       loadModels();
       loadSignals();
       loadDevices();
       loadSettingsForm();
       connectWebSocket();
+
+      // Check GitHub for updates every 10 minutes
+      setInterval(() => {
+        checkVersion(false);
+      }, 600000);
 
       // Close custom multi-select dropdowns when clicking outside
       document.addEventListener('click', (e) => {
@@ -3070,6 +3186,9 @@
       if (status.version) {
         document.getElementById('appVersionBadge').textContent = `v${status.version}`;
       }
+      if (status.git_version) {
+        renderGitVersionBadge(status.git_version);
+      }
 
       const rtl = status.rtl || {};
       const ble = status.ble || {};
@@ -3136,23 +3255,27 @@
       const mqttText = document.getElementById('mqttStatusText');
       const mqttBadge = document.getElementById('mqttStatusBadge');
 
+      if (mqttBadge) {
+        mqttBadge.className = 'inline-flex items-center gap-2 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap';
+      }
       if (mqtt.connected) {
-        mqttDot.className = 'w-2 h-2 rounded-full bg-emerald-500';
-        mqttText.textContent = `MQTT: Ansluten (${mqtt.host})`;
-        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300';
+        if (mqttDot) mqttDot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0';
+        if (mqttText) mqttText.textContent = `MQTT: ${mqtt.host || 'Ansluten'}`;
+      } else if (mqtt.enabled) {
+        if (mqttDot) mqttDot.className = 'w-2 h-2 rounded-full bg-rose-500 shrink-0';
+        if (mqttText) mqttText.textContent = 'MQTT: Frånkopplad';
       } else {
-        mqttDot.className = 'w-2 h-2 rounded-full bg-slate-400';
-        mqttText.textContent = mqtt.enabled ? 'MQTT: Frånkopplad' : 'MQTT: Avstängd';
-        mqttBadge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400';
+        if (mqttDot) mqttDot.className = 'w-2 h-2 rounded-full bg-slate-400 shrink-0';
+        if (mqttText) mqttText.textContent = 'MQTT: Avstängd';
       }
 
       ['433', '868', 'hop', 'custom'].forEach((m) => {
         const btn = document.getElementById(`modeBtn_${m}`);
         if (!btn) return;
         if (rtl.mode === m) {
-          btn.className = 'flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition bg-sky-600 text-white shadow-sm';
+          btn.className = 'h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition bg-sky-600 text-white shadow-xs';
         } else {
-          btn.className = 'flex-1 sm:flex-initial whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-semibold transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800';
+          btn.className = 'h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700';
         }
       });
 
@@ -3233,11 +3356,12 @@
       const progBar = document.getElementById('sdrHopProgressBar');
       if (!sdrDot || !sdrText || !sdrBadge) return;
 
+      sdrBadge.className = 'relative overflow-hidden inline-flex items-center gap-2 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap transition-colors duration-200';
+
       if (!sdrIsRunning) {
         if (progWrap) progWrap.classList.add('hidden');
         sdrDot.className = 'w-2 h-2 rounded-full bg-rose-500 shrink-0';
         sdrText.innerHTML = `<span>SDR: ${sdrState === 'starting' ? 'Startar...' : 'Fel / Stoppad'}</span>`;
-        sdrBadge.className = 'relative overflow-hidden flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-700/60 text-rose-800 dark:text-rose-300 transition-colors duration-200';
         return;
       }
 
@@ -3245,9 +3369,8 @@
       if (!isHopMode) {
         if (progWrap) progWrap.classList.add('hidden');
         const fixedFreq = sdrMode === '868' ? '868.30 MHz' : (sdrMode === '433' ? '433.92 MHz' : sdrCurrentFreq);
-        sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse-subtle shrink-0';
-        sdrText.innerHTML = `<i class="mdi mdi-access-point text-xs leading-none"></i><span>SDR: Aktiv • <strong>${escapeHtml(fixedFreq)}</strong></span>`;
-        sdrBadge.className = 'relative overflow-hidden flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-300 transition-colors duration-200';
+        sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0';
+        sdrText.innerHTML = `<span>${escapeHtml(fixedFreq)}</span>`;
         return;
       }
 
@@ -3264,47 +3387,169 @@
         progBar.style.width = `${pctRemaining.toFixed(1)}%`;
         progBar.className = is868
           ? 'h-full bg-purple-500 dark:bg-purple-400 transition-all duration-500'
-          : 'h-full bg-sky-500 dark:bg-sky-400 transition-all duration-500';
+          : 'h-full bg-emerald-500 dark:bg-emerald-400 transition-all duration-500';
       }
 
       if (is868) {
-        sdrDot.className = 'w-2 h-2 rounded-full bg-purple-500 animate-pulse-subtle shrink-0';
-        sdrBadge.className = 'relative overflow-hidden flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-purple-50 dark:bg-purple-950/70 border border-purple-300 dark:border-purple-700/70 text-purple-800 dark:text-purple-200 transition-colors duration-200';
+        sdrDot.className = 'w-2 h-2 rounded-full bg-purple-500 shrink-0';
       } else {
-        sdrDot.className = 'w-2 h-2 rounded-full bg-sky-500 animate-pulse-subtle shrink-0';
-        sdrBadge.className = 'relative overflow-hidden flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-sky-50 dark:bg-sky-950/70 border border-sky-300 dark:border-sky-700/70 text-sky-800 dark:text-sky-200 transition-colors duration-200';
+        sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0';
       }
 
-      sdrText.innerHTML = `<i class="mdi mdi-sine-wave text-xs leading-none"></i><span>Lyssnar: <strong>${escapeHtml(sdrCurrentFreq)}</strong> <span class="text-[10px] opacity-80 font-mono">(skiftar om ${remainingSec}s)</span></span>`;
+      sdrText.innerHTML = `<span>${escapeHtml(sdrCurrentFreq)}</span><span class="text-[11px] text-slate-400 font-mono">(${remainingSec}s)</span>`;
     }
 
     function renderTopbarBleStatusBadge(ble = {}) {
       const badge = document.getElementById('bleStatusBadge');
+      const dot = document.getElementById('bleStatusDot');
       const icon = document.getElementById('bleStatusIcon');
       const text = document.getElementById('bleStatusText');
       if (!badge || !icon || !text) return;
 
+      badge.className = 'inline-flex items-center gap-2 h-8 px-2.5 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 whitespace-nowrap hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition cursor-pointer';
+
       if (!bleEnabled) {
-        icon.className = 'mdi mdi-bluetooth-off text-xs leading-none';
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-slate-400 shrink-0';
+        icon.className = 'mdi mdi-bluetooth text-slate-400 leading-none';
         text.textContent = 'BLE: Av';
-        badge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:opacity-90 transition cursor-pointer';
         return;
       }
 
       if (bleRunning) {
         const modeLabel = bleMode === 'all' ? 'Alla' : 'Smart';
-        icon.className = 'mdi mdi-bluetooth-audio text-xs leading-none animate-pulse-subtle';
-        text.innerHTML = `<span>BLE: Aktiv (${modeLabel}${bleDevicesCount > 0 ? ' • ' + bleDevicesCount : ''})</span>`;
-        badge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-300 dark:border-indigo-700/70 text-indigo-800 dark:text-indigo-200 hover:opacity-90 transition cursor-pointer';
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-sky-500 shrink-0';
+        icon.className = 'mdi mdi-bluetooth text-sky-500 leading-none';
+        text.textContent = `BLE: ${modeLabel}${bleDevicesCount > 0 ? ' (' + bleDevicesCount + ')' : ''}`;
         return;
       }
 
-      icon.className = 'mdi mdi-bluetooth-settings text-xs leading-none';
+      if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-500 shrink-0';
+      icon.className = 'mdi mdi-bluetooth text-amber-500 leading-none';
       text.textContent = bleState === 'unavailable' ? 'BLE: Saknar adapter' : 'BLE: Startar';
-      badge.className = 'flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-300 hover:opacity-90 transition cursor-pointer';
       if (ble.last_error) {
         badge.title = `BLE: ${ble.last_error} (Klicka för att växla PÅ/AV)`;
       }
+    }
+
+    function renderGitVersionBadge(gitVer = {}) {
+      if (!gitVer || typeof gitVer !== 'object') return;
+      gitVersionState = {
+        ...gitVersionState,
+        ...gitVer
+      };
+      const checkBtn = document.getElementById('versionCheckBtn');
+      const checkTxt = document.getElementById('versionCheckBtnText');
+      const updateBtn = document.getElementById('versionUpdateBtn');
+      const localSha = (gitVersionState.local_sha && gitVersionState.local_sha !== 'unknown')
+        ? gitVersionState.local_sha
+        : 'local';
+
+      if (checkTxt) {
+        checkTxt.textContent = `v·${localSha}`;
+      }
+
+      if (gitVersionState.update_available) {
+        if (checkBtn) checkBtn.classList.add('hidden');
+        if (updateBtn) updateBtn.classList.remove('hidden');
+      } else {
+        if (checkBtn) checkBtn.classList.remove('hidden');
+        if (updateBtn) updateBtn.classList.add('hidden');
+      }
+
+      const modal = document.getElementById('updateModal');
+      if (modal && !modal.classList.contains('hidden')) {
+        populateUpdateModalDom();
+      }
+    }
+
+    function populateUpdateModalDom() {
+      const localShaEl = document.getElementById('updateModalLocalSha');
+      const buildDateEl = document.getElementById('updateModalBuildDate');
+      const remoteShaEl = document.getElementById('updateModalRemoteSha');
+      const commitDateEl = document.getElementById('updateModalCommitDate');
+      const commitMsgEl = document.getElementById('updateModalCommitMsg');
+      const bannerEl = document.getElementById('updateModalStatusBanner');
+      const bannerTxt = document.getElementById('updateModalStatusText');
+      const hdrIcon = document.getElementById('updateModalHeaderIcon');
+
+      const localSha = gitVersionState.local_sha || 'unknown';
+      const remoteSha = gitVersionState.remote_sha || localSha;
+      if (localShaEl) localShaEl.textContent = localSha;
+      if (buildDateEl) {
+        buildDateEl.textContent = (gitVersionState.build_date && gitVersionState.build_date !== 'unknown')
+          ? formatTimestamp(gitVersionState.build_date)
+          : 'Lokal build';
+      }
+      if (remoteShaEl) remoteShaEl.textContent = remoteSha || '-';
+      if (commitDateEl) {
+        commitDateEl.textContent = gitVersionState.commit_date
+          ? formatTimestamp(gitVersionState.commit_date)
+          : '';
+      }
+      if (commitMsgEl) {
+        commitMsgEl.textContent = gitVersionState.commit_message || 'Ingen commit-information tillgänglig';
+      }
+
+      if (bannerEl && bannerTxt) {
+        if (gitVersionState.update_available) {
+          bannerEl.className = 'px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 flex items-center gap-2 font-medium';
+          bannerTxt.textContent = `Ny version finns på GitHub (${remoteSha})! Kör kommandot nedan på iridium för att uppdatera.`;
+          if (hdrIcon) hdrIcon.className = 'mdi mdi-cloud-download-outline text-lg text-amber-500';
+        } else {
+          bannerEl.className = 'px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 flex items-center gap-2 font-medium';
+          bannerTxt.textContent = `Containern kör senaste versionen på main (${localSha}).`;
+          if (hdrIcon) hdrIcon.className = 'mdi mdi-check-decagram-outline text-lg text-emerald-500';
+        }
+      }
+    }
+
+    async function checkVersion(force = false) {
+      const icon = document.getElementById('versionCheckIcon');
+      const modalIcon = document.getElementById('updateModalRefreshIcon');
+      if (force) {
+        if (icon) icon.className = 'mdi mdi-loading mdi-spin text-sky-500 leading-none';
+        if (modalIcon) modalIcon.className = 'mdi mdi-loading mdi-spin text-sm leading-none';
+      }
+      try {
+        const url = force ? '/api/version?force=true' : '/api/version';
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          renderGitVersionBadge(data);
+          if (force) {
+            if (data.update_available) {
+              openUpdateModal();
+            } else {
+              openUpdateModal();
+              showToast(`Senaste versionen körs redan (v·${data.local_sha || 'local'})`);
+            }
+          }
+        }
+      } catch (e) {
+        if (force) {
+          showToast('Kunde inte kontrollera version mot GitHub', true);
+        }
+      } finally {
+        if (icon) icon.className = 'mdi mdi-source-branch text-slate-400 leading-none';
+        if (modalIcon) modalIcon.className = 'mdi mdi-refresh text-sm leading-none';
+      }
+    }
+
+    function openUpdateModal() {
+      populateUpdateModalDom();
+      const modal = document.getElementById('updateModal');
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeUpdateModal() {
+      const modal = document.getElementById('updateModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function copyUpdateCommand() {
+      const cmd = 'docker compose pull && docker compose up -d';
+      navigator.clipboard.writeText(cmd);
+      showToast('Uppdateringskommando kopierat till urklipp');
     }
 
     async function toggleBLE() {
@@ -3440,12 +3685,12 @@
       if (isPaused) {
         icon.className = 'mdi mdi-play text-sm leading-none';
         txt.textContent = 'Återuppta';
-        btn.className = 'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40';
+        btn.className = 'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium border transition bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40 whitespace-nowrap';
         banner.classList.remove('hidden');
       } else {
         icon.className = 'mdi mdi-pause text-sm leading-none';
         txt.textContent = 'Pausa';
-        btn.className = 'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700';
+        btn.className = 'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium border transition bg-slate-100/80 hover:bg-slate-200/70 dark:bg-slate-800/80 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80 whitespace-nowrap';
         banner.classList.add('hidden');
         loadSignals();
       }

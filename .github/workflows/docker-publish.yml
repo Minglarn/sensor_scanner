@@ -44,6 +44,9 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.calver.outputs.calver_tag }}
             ${{ env.IMAGE_NAME }}:latest

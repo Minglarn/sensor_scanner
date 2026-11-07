@@ -1,7 +1,10 @@
 import asyncio
+import json
 import logging
 import os
+import subprocess
 import time
+import urllib.request
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set
 
@@ -58,6 +61,105 @@ ws_manager = ConnectionManager()
 db = Database()
 main_loop: Optional[asyncio.AbstractEventLoop] = None
 APP_STARTED_AT = time.time()
+
+
+def _resolve_local_git_commit() -> str:
+    env_sha = (os.getenv("GIT_COMMIT", "unknown") or "unknown").strip()
+    if env_sha and env_sha.lower() != "unknown":
+        return env_sha[:7]
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            stderr=subprocess.DEVNULL,
+            timeout=3.0,
+        )
+        sha = out.decode("utf-8", errors="ignore").strip()
+        if sha:
+            return sha[:7]
+    except Exception:
+        pass
+    return "unknown"
+
+
+LOCAL_GIT_COMMIT = _resolve_local_git_commit()
+LOCAL_BUILD_DATE = (os.getenv("BUILD_DATE", "unknown") or "unknown").strip()
+GITHUB_COMMITS_URL = "https://api.github.com/repos/Minglarn/sensor_scanner/commits/main"
+
+_version_cache: Dict[str, Any] = {
+    "local_sha": LOCAL_GIT_COMMIT,
+    "build_date": LOCAL_BUILD_DATE,
+    "remote_sha": LOCAL_GIT_COMMIT if LOCAL_GIT_COMMIT != "unknown" else "",
+    "commit_message": "",
+    "commit_date": "",
+    "update_available": False,
+    "checked_at": 0.0,
+    "error": "",
+}
+
+
+def _fetch_github_latest_sync() -> Dict[str, Any]:
+    import ssl
+
+    req = urllib.request.Request(
+        GITHUB_COMMITS_URL,
+        headers={
+            "User-Agent": "SensorScanner-Updater",
+            "Accept": "application/vnd.github.v3+json",
+        },
+    )
+    try:
+        resp_ctx = urllib.request.urlopen(req, timeout=8.0)
+    except Exception:
+        unverified = ssl._create_unverified_context()
+        resp_ctx = urllib.request.urlopen(req, timeout=8.0, context=unverified)
+    with resp_ctx as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        data = json.loads(raw)
+        remote_sha = str(data.get("sha") or "")[:7]
+        commit_obj = data.get("commit") or {}
+        raw_msg = str(commit_obj.get("message") or "")
+        commit_message = raw_msg.split("\n")[0].strip()
+        committer_obj = commit_obj.get("committer") or {}
+        commit_date = str(committer_obj.get("date") or "")
+        return {
+            "remote_sha": remote_sha,
+            "commit_message": commit_message,
+            "commit_date": commit_date,
+        }
+
+
+async def check_github_updates(force: bool = False) -> Dict[str, Any]:
+    now = time.time()
+    if not force and _version_cache["checked_at"] > 0 and (now - _version_cache["checked_at"]) < 600.0:
+        return dict(_version_cache)
+
+    try:
+        latest = await asyncio.to_thread(_fetch_github_latest_sync)
+        remote_sha = latest.get("remote_sha", "")
+        local_sha = _version_cache["local_sha"]
+        update_available = bool(
+            local_sha
+            and local_sha != "unknown"
+            and remote_sha
+            and remote_sha != local_sha
+        )
+        _version_cache.update(
+            {
+                "remote_sha": remote_sha,
+                "commit_message": latest.get("commit_message", ""),
+                "commit_date": latest.get("commit_date", ""),
+                "update_available": update_available,
+                "checked_at": now,
+                "error": "",
+            }
+        )
+    except Exception as exc:
+        logger.debug("GitHub version check failed: %s", exc)
+        _version_cache["checked_at"] = now
+        _version_cache["error"] = str(exc)
+
+    return dict(_version_cache)
 
 
 def _on_mqtt_status_threadsafe(mqtt_status: Dict[str, Any]) -> None:
@@ -143,6 +245,7 @@ def build_status_payload() -> Dict[str, Any]:
     return {
         "app_name": __app_name__,
         "version": __version__,
+        "git_version": dict(_version_cache),
         "app_uptime_seconds": int(max(0.0, time.time() - APP_STARTED_AT)),
         "rtl": rtl_st,
         "ble": ble_st,
@@ -165,6 +268,20 @@ async def retention_worker() -> None:
         await asyncio.sleep(86400)
 
 
+async def github_update_worker() -> None:
+    await asyncio.sleep(3)
+    while True:
+        try:
+            prev_avail = _version_cache.get("update_available")
+            prev_remote = _version_cache.get("remote_sha")
+            res = await check_github_updates(force=True)
+            if res.get("update_available") != prev_avail or res.get("remote_sha") != prev_remote:
+                await broadcast_full_status()
+        except Exception as exc:
+            logger.debug("Error in github_update_worker: %s", exc)
+        await asyncio.sleep(600)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global main_loop
@@ -175,11 +292,17 @@ async def lifespan(app: FastAPI):
     await rtl_manager.start()
     await ble_manager.start()
     retention_task = asyncio.create_task(retention_worker(), name="retention_worker")
+    update_task = asyncio.create_task(github_update_worker(), name="github_update_worker")
 
     try:
         yield
     finally:
+        update_task.cancel()
         retention_task.cancel()
+        try:
+            await update_task
+        except asyncio.CancelledError:
+            pass
         try:
             await retention_task
         except asyncio.CancelledError:
@@ -310,6 +433,17 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/api/status")
 async def api_get_status():
     return await asyncio.to_thread(build_status_payload)
+
+
+@app.get("/api/version")
+async def api_get_version(force: bool = Query(False)):
+    info = await check_github_updates(force=force)
+    if force:
+        await broadcast_full_status()
+    return {
+        "version": __version__,
+        **info,
+    }
 
 
 @app.post("/api/control")

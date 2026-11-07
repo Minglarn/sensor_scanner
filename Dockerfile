@@ -49,6 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     tzdata \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy compiled libraries and binaries from builder stage
@@ -70,6 +71,11 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY app /app/app
 
 RUN mkdir -p /app/data
+
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV BUILD_DATE=${BUILD_DATE}
 
 EXPOSE 8080
 
