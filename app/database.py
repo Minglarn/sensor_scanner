@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
@@ -11,6 +12,24 @@ logger = logging.getLogger("sensor_scanner.database")
 
 DB_PATH = os.environ.get("DB_PATH", "/app/data/sensor_scanner.db")
 TESLA_VERIFIED_ALIAS = "Min Tesla (VIN-verifierad)"
+
+KNOWN_IBEACON_UUIDS: Dict[str, str] = {
+    "E20A39F4-73F5-4BC4-1864-17D1AD07A962": "IoT / AirLocate Standard SDK Beacon",
+    "74278BDA-B644-4520-8F0C-720EAF059935": "Tesla / Estimote Default UUID",
+    "50765CB7-D9EA-4E21-99A4-FA879613A492": "Smart Home / Media Beacon",
+}
+
+PERSISTENT_HARDWARE_KEYS = (
+    "mac_vendor",
+    "ibeacon_profile",
+    "gatt_name",
+    "gatt_manufacturer",
+    "gatt_model",
+    "gatt_firmware",
+    "gatt_services",
+    "gatt_connectable",
+    "gatt_inspected_at",
+)
 
 
 def compute_tesla_ble_prefix(tesla_vin: Optional[str]) -> str:
@@ -462,6 +481,16 @@ class Database:
                         """
                     )
 
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS oui_cache (
+                            oui TEXT PRIMARY KEY,
+                            vendor TEXT NOT NULL,
+                            updated_at TEXT NOT NULL
+                        );
+                        """
+                    )
+
                     defaults = get_default_settings()
                     for k, v in defaults.items():
                         conn.execute(
@@ -544,6 +573,9 @@ class Database:
                     )
 
                     # Auto-categorize existing devices that still have generic category
+                    oui_rows = conn.execute("SELECT oui, vendor FROM oui_cache;").fetchall()
+                    oui_map: Dict[str, str] = {str(r["oui"]).upper(): str(r["vendor"]) for r in oui_rows if r["vendor"]}
+
                     existing_Rows = conn.execute(
                         "SELECT device_key, model, category, last_payload FROM devices;"
                     ).fetchall()
@@ -555,6 +587,24 @@ class Database:
                         enriched_pl = enrich_sparsnas_payload(dict(pl))
                         if r["model"] in ("Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE"):
                             enriched_pl["vehicle_status"] = "Digital Key • Inom räckvidd"
+                        if (
+                            r["model"] == "iBeacon-BLE"
+                            or enriched_pl.get("apple_type") == "iBeacon"
+                            or "ibeacon_uuid" in enriched_pl
+                        ):
+                            enriched_pl["manufacturer_name"] = "Apple iBeacon-spec (0x004C)"
+                            ib_uuid = str(enriched_pl.get("ibeacon_uuid") or "").strip().upper()
+                            if ib_uuid in KNOWN_IBEACON_UUIDS:
+                                enriched_pl["ibeacon_profile"] = KNOWN_IBEACON_UUIDS[ib_uuid]
+                        mac_val = str(enriched_pl.get("mac") or "").strip().upper()
+                        if (
+                            len(mac_val) >= 8
+                            and enriched_pl.get("mac_type") == "IEEE Public (Fast)"
+                            and not enriched_pl.get("mac_vendor")
+                        ):
+                            oui_prefix = mac_val[:8]
+                            if oui_prefix in oui_map:
+                                enriched_pl["mac_vendor"] = oui_map[oui_prefix]
                         if str(enriched_pl.get("mod") or "").upper() == "BLE" and enriched_pl.get("rssi") is not None and "distance_m" not in enriched_pl:
                             try:
                                 rssi_f = float(enriched_pl["rssi"])
@@ -770,6 +820,23 @@ class Database:
                             (device_key, model, device_id, auto_alias, inferred_cat, init_is_new, timestamp, timestamp, raw_json),
                         )
                     else:
+                        try:
+                            prev_pl = json.loads(existing_dev["last_payload"] or "{}")
+                        except Exception:
+                            prev_pl = {}
+                        if isinstance(prev_pl, dict):
+                            merged_changed = False
+                            for pk in PERSISTENT_HARDWARE_KEYS:
+                                if pk in prev_pl and prev_pl[pk] is not None and payload.get(pk) is None:
+                                    payload[pk] = prev_pl[pk]
+                                    merged_changed = True
+                            if prev_pl.get("gatt_inspected_at") and prev_pl.get("battery_pct") is not None and payload.get("battery_pct") is None:
+                                payload["battery_pct"] = prev_pl["battery_pct"]
+                                payload["battery_ok"] = 1 if int(prev_pl["battery_pct"]) > 15 else 0
+                                merged_changed = True
+                            if merged_changed:
+                                raw_json = json.dumps(payload, ensure_ascii=False)
+
                         cur_cat = normalize_category(existing_dev["category"], model)
                         updated_cat = inferred_cat if cur_cat == "Generic" and inferred_cat != "Generic" else cur_cat
                         next_hits = int(existing_dev["hit_count"] or 0) + 1
@@ -892,10 +959,26 @@ class Database:
             try:
                 with conn:
                     existing_dev = conn.execute(
-                        "SELECT device_key, first_seen, hit_count, is_new, alias, group_name FROM devices WHERE device_key = ?;", (device_key,)
+                        "SELECT device_key, first_seen, hit_count, is_new, alias, group_name, last_payload FROM devices WHERE device_key = ?;", (device_key,)
                     ).fetchone()
                     if existing_dev is None:
                         return False
+                    try:
+                        prev_pl = json.loads(existing_dev["last_payload"] or "{}")
+                    except Exception:
+                        prev_pl = {}
+                    if isinstance(prev_pl, dict):
+                        merged_changed = False
+                        for pk in PERSISTENT_HARDWARE_KEYS:
+                            if pk in prev_pl and prev_pl[pk] is not None and payload.get(pk) is None:
+                                payload[pk] = prev_pl[pk]
+                                merged_changed = True
+                        if prev_pl.get("gatt_inspected_at") and prev_pl.get("battery_pct") is not None and payload.get("battery_pct") is None:
+                            payload["battery_pct"] = prev_pl["battery_pct"]
+                            payload["battery_ok"] = 1 if int(prev_pl["battery_pct"]) > 15 else 0
+                            merged_changed = True
+                        if merged_changed:
+                            raw_json = json.dumps(payload, ensure_ascii=False)
                     next_hits = int(existing_dev["hit_count"] or 0) + 1
                     cur_is_new = int(existing_dev["is_new"] or 0)
                     has_alias = bool(existing_dev["alias"] and str(existing_dev["alias"]).strip())
@@ -1262,6 +1345,127 @@ class Database:
                 return row is not None
             finally:
                 conn.close()
+
+    def get_oui_cache(self) -> Dict[str, str]:
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                rows = conn.execute("SELECT oui, vendor FROM oui_cache;").fetchall()
+                return {str(r["oui"]).upper(): str(r["vendor"]) for r in rows if r["vendor"]}
+            finally:
+                conn.close()
+
+    def set_oui_vendor(self, oui: str, vendor: str) -> None:
+        oui_clean = str(oui or "").strip().upper()
+        vendor_clean = str(vendor or "").strip()
+        if len(oui_clean) < 8 or not vendor_clean:
+            return
+        now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    conn.execute(
+                        """
+                        INSERT INTO oui_cache (oui, vendor, updated_at)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(oui) DO UPDATE SET vendor = excluded.vendor, updated_at = excluded.updated_at;
+                        """,
+                        (oui_clean[:8], vendor_clean, now_iso),
+                    )
+            finally:
+                conn.close()
+
+    def merge_device_payload_by_mac(
+        self, mac_or_key: str, fields: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Merges discovered hardware/GATT/OUI fields into the last_payload of matching BLE device(s)
+        in SQLite (and their latest signal row) and returns the updated device records.
+        """
+        target = str(mac_or_key or "").strip()
+        if not target or not fields:
+            return []
+
+        hex_only = re.sub(r"[^0-9A-Fa-f]", "", target).upper()
+        mac_colon = (
+            ":".join(hex_only[i : i + 2] for i in range(0, 12, 2))
+            if len(hex_only) == 12
+            else target.upper()
+        )
+        oui_prefix = mac_colon[:8] if len(mac_colon) >= 8 and ":" in mac_colon else ""
+
+        updated_keys: List[str] = []
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                with conn:
+                    if len(target) == 8 and target.count(":") == 2:
+                        rows = conn.execute(
+                            "SELECT * FROM devices WHERE UPPER(last_payload) LIKE ?;",
+                            (f'%"{target.upper()}%',),
+                        ).fetchall()
+                    else:
+                        rows = conn.execute(
+                            """
+                            SELECT * FROM devices
+                            WHERE device_key = ?
+                               OR UPPER(device_id) = ?
+                               OR UPPER(last_payload) LIKE ?;
+                            """,
+                            (target, hex_only, f'%"{mac_colon}"%'),
+                        ).fetchall()
+
+                    for row in rows:
+                        dk = row["device_key"]
+                        try:
+                            pl = json.loads(row["last_payload"] or "{}")
+                        except Exception:
+                            pl = {}
+                        if not isinstance(pl, dict):
+                            pl = {}
+
+                        if len(target) == 8 and target.count(":") == 2:
+                            row_mac = str(pl.get("mac") or "").strip().upper()
+                            if not row_mac.startswith(oui_prefix):
+                                continue
+
+                        for k, v in fields.items():
+                            if v is not None:
+                                pl[k] = v
+
+                        new_json = json.dumps(pl, ensure_ascii=False)
+                        conn.execute(
+                            "UPDATE devices SET last_payload = ? WHERE device_key = ?;",
+                            (new_json, dk),
+                        )
+
+                        sig_row = conn.execute(
+                            """
+                            SELECT id, payload FROM signals
+                            WHERE model = ? AND device_id = ?
+                            ORDER BY id DESC LIMIT 1;
+                            """,
+                            (row["model"], row["device_id"]),
+                        ).fetchone()
+                        if sig_row:
+                            try:
+                                spl = json.loads(sig_row["payload"] or "{}")
+                            except Exception:
+                                spl = {}
+                            if isinstance(spl, dict):
+                                for k, v in fields.items():
+                                    if v is not None:
+                                        spl[k] = v
+                                conn.execute(
+                                    "UPDATE signals SET payload = ? WHERE id = ?;",
+                                    (json.dumps(spl, ensure_ascii=False), sig_row["id"]),
+                                )
+                        updated_keys.append(dk)
+            finally:
+                conn.close()
+
+        return [d for d in (self.get_device(k) for k in updated_keys) if d is not None]
 
     def get_summary_counts(self) -> Dict[str, int]:
         today_prefix = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")

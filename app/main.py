@@ -413,6 +413,18 @@ def on_ble_beacon_seen(payload: Dict[str, Any]) -> bool:
     return exists
 
 
+async def on_ble_oui_resolved(oui: str, vendor: str) -> None:
+    try:
+        await asyncio.to_thread(db.set_oui_vendor, oui, vendor)
+        updated_devs = await asyncio.to_thread(
+            db.merge_device_payload_by_mac, oui, {"mac_vendor": vendor}
+        )
+        if updated_devs:
+            await ws_manager.broadcast({"type": "devices_bulk_updated", "devices": updated_devs})
+    except Exception as exc:
+        logger.debug("Error persisting OUI vendor %s=%s: %s", oui, vendor, exc)
+
+
 ble_manager = BLEManager(
     get_settings_fn=db.get_settings,
     is_known_aliased_fn=db.is_device_known_and_named,
@@ -420,6 +432,8 @@ ble_manager = BLEManager(
     on_status_change_fn=on_ble_status_change,
     on_log_line_fn=on_rtl_stderr_line,
     on_beacon_seen_fn=on_ble_beacon_seen,
+    get_oui_cache_fn=db.get_oui_cache,
+    on_oui_resolved_fn=on_ble_oui_resolved,
 )
 
 
@@ -504,6 +518,31 @@ async def github_update_worker() -> None:
         await asyncio.sleep(600)
 
 
+async def oui_backfill_worker() -> None:
+    """
+    One-shot startup task that resolves IEEE OUI hardware vendors for any existing
+    BLE devices in SQLite with 'IEEE Public (Fast)' MAC addresses that lack mac_vendor.
+    """
+    await asyncio.sleep(2)
+    try:
+        devices = await asyncio.to_thread(db.get_devices, include_ignored=True)
+        unique_ouis: Set[str] = set()
+        for d in devices:
+            pl = d.get("last_payload") or {}
+            mac = str(pl.get("mac") or "").strip().upper()
+            if (
+                len(mac) >= 8
+                and pl.get("mac_type") == "IEEE Public (Fast)"
+                and not pl.get("mac_vendor")
+            ):
+                unique_ouis.add(mac[:8])
+        for oui in sorted(unique_ouis):
+            await ble_manager.resolve_oui_vendor(oui)
+            await asyncio.sleep(1.1)
+    except Exception as exc:
+        logger.debug("Error in oui_backfill_worker: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global main_loop
@@ -518,15 +557,17 @@ async def lifespan(app: FastAPI):
     expiry_task = asyncio.create_task(new_device_expiry_worker(), name="new_device_expiry_worker")
     presence_task = asyncio.create_task(ble_presence_timeout_worker(), name="ble_presence_timeout_worker")
     update_task = asyncio.create_task(github_update_worker(), name="github_update_worker")
+    oui_task = asyncio.create_task(oui_backfill_worker(), name="oui_backfill_worker")
 
     try:
         yield
     finally:
+        oui_task.cancel()
         update_task.cancel()
         presence_task.cancel()
         expiry_task.cancel()
         retention_task.cancel()
-        for t in (update_task, presence_task, expiry_task, retention_task):
+        for t in (oui_task, update_task, presence_task, expiry_task, retention_task):
             try:
                 await t
             except asyncio.CancelledError:
@@ -846,6 +887,43 @@ async def api_ha_discovery(device_key: str):
     if updated:
         await ws_manager.broadcast({"type": "device_updated", "device": updated})
     return result
+
+
+@app.post("/api/ble/inspect/{mac:path}")
+async def api_inspect_ble_device(mac: str):
+    res = await ble_manager.inspect_gatt_device(mac)
+    persist_fields: Dict[str, Any] = {
+        "gatt_connectable": res.get("connectable", False),
+        "gatt_inspected_at": res.get("gatt_inspected_at"),
+    }
+    for k in (
+        "gatt_name",
+        "gatt_manufacturer",
+        "gatt_model",
+        "gatt_firmware",
+        "battery_pct",
+        "battery_ok",
+        "gatt_services",
+        "mac_vendor",
+    ):
+        if res.get(k) is not None:
+            persist_fields[k] = res[k]
+
+    updated_devs = await asyncio.to_thread(
+        db.merge_device_payload_by_mac, res.get("mac") or mac, persist_fields
+    )
+    if not updated_devs and mac != res.get("mac"):
+        updated_devs = await asyncio.to_thread(
+            db.merge_device_payload_by_mac, mac, persist_fields
+        )
+
+    for d in updated_devs:
+        await ws_manager.broadcast({"type": "device_updated", "device": d})
+
+    return {
+        **res,
+        "device": updated_devs[0] if updated_devs else None,
+    }
 
 
 @app.delete("/api/devices/{device_key:path}")

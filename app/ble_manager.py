@@ -6,6 +6,8 @@ import os
 import re
 import struct
 import time
+import urllib.error
+import urllib.request
 from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Set, Tuple
@@ -13,12 +15,13 @@ from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Set, T
 logger = logging.getLogger("sensor_scanner.ble_manager")
 
 try:
-    from bleak import BleakScanner
+    from bleak import BleakClient, BleakScanner
     from bleak.backends.device import BLEDevice
     from bleak.backends.scanner import AdvertisementData
 
     BLEAK_AVAILABLE = True
 except Exception:
+    BleakClient = None  # type: ignore
     BleakScanner = None  # type: ignore
     BLEDevice = Any  # type: ignore
     AdvertisementData = Any  # type: ignore
@@ -103,6 +106,77 @@ TESLA_NODE_NAMES: Dict[str, str] = {
 
 TESLA_BEACON_RE = re.compile(r"^S[0-9a-fA-F]{15,17}[A-Za-z0-9]$")
 MAC_LIKE_NAME_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
+
+KNOWN_IBEACON_UUIDS: Dict[str, str] = {
+    "E20A39F4-73F5-4BC4-1864-17D1AD07A962": "IoT / AirLocate Standard SDK Beacon",
+    "74278BDA-B644-4520-8F0C-720EAF059935": "Tesla / Estimote Default UUID",
+    "50765CB7-D9EA-4E21-99A4-FA879613A492": "Smart Home / Media Beacon",
+}
+
+BUILTIN_OUI_VENDORS: Dict[str, str] = {
+    "A4:C1:38": "Telink Semiconductor (Xiaomi/ATC/Tuya)",
+    "54:EF:44": "Lumi United Technology (Aqara)",
+    "04:CF:8C": "Xiaomi Communications",
+    "28:6C:07": "Xiaomi Communications",
+    "78:11:DC": "Xiaomi Communications",
+    "58:2D:34": "Qingping / ClearGrass",
+    "24:62:AB": "Espressif Inc.",
+    "24:0A:C4": "Espressif Inc.",
+    "30:AE:A4": "Espressif Inc.",
+    "3C:71:BF": "Espressif Inc.",
+    "7C:9E:BD": "Espressif Inc.",
+    "84:CC:A8": "Espressif Inc.",
+    "94:B9:7E": "Espressif Inc.",
+    "A0:20:A6": "Espressif Inc.",
+    "AC:67:B2": "Espressif Inc.",
+    "BC:DD:C2": "Espressif Inc.",
+    "C4:4F:33": "Espressif Inc.",
+    "CC:50:E3": "Espressif Inc.",
+    "DC:4F:22": "Espressif Inc.",
+    "E8:DB:84": "Espressif Inc.",
+    "EC:FA:BC": "Espressif Inc.",
+    "F4:CF:A2": "Espressif Inc.",
+    "00:1E:C0": "Microchip Technology",
+    "D8:80:39": "Microchip Technology",
+    "00:0B:57": "Silicon Laboratories",
+    "60:A4:23": "Silicon Laboratories",
+    "84:2E:14": "Silicon Laboratories",
+    "90:FD:9F": "Silicon Laboratories",
+    "00:12:4B": "Texas Instruments",
+    "24:71:89": "Texas Instruments",
+    "54:6C:0E": "Texas Instruments",
+    "B0:B4:48": "Texas Instruments",
+    "F0:F8:F2": "Texas Instruments",
+    "D0:B5:C2": "Texas Instruments",
+    "C8:FD:19": "Plejd AB",
+    "E8:EB:1B": "Plejd AB",
+    "34:94:54": "Shelly / Allterco Robotics",
+    "E8:68:E7": "Shelly / Allterco Robotics",
+    "C4:D8:D5": "Ruuvi Innovations",
+    "EC:FE:7E": "BlueRadios / Estimote",
+    "00:07:80": "Bluegiga / Silicon Labs",
+    "38:8C:50": "LG Electronics",
+    "A8:23:FE": "LG Electronics",
+    "CC:2D:83": "LG Electronics",
+    "28:39:5E": "Samsung Electronics",
+    "64:1C:AE": "Samsung Electronics",
+    "8C:79:F5": "Samsung Electronics",
+    "D0:03:DF": "Samsung Electronics",
+    "F8:04:2E": "Samsung Electronics",
+    "54:2A:1B": "Sonos, Inc.",
+    "78:28:CA": "Sonos, Inc.",
+    "94:9F:3E": "Sonos, Inc.",
+    "00:17:88": "Signify (Philips Hue)",
+    "EC:B5:FA": "Signify (Philips Hue)",
+}
+
+GATT_IDENTITY_CHARS: Dict[str, str] = {
+    "00002a00-0000-1000-8000-00805f9b34fb": "gatt_name",
+    "00002a29-0000-1000-8000-00805f9b34fb": "gatt_manufacturer",
+    "00002a24-0000-1000-8000-00805f9b34fb": "gatt_model",
+    "00002a26-0000-1000-8000-00805f9b34fb": "gatt_firmware",
+    "00002a19-0000-1000-8000-00805f9b34fb": "battery_pct",
+}
 
 
 def compute_tesla_ble_prefix(tesla_vin: Optional[str]) -> str:
@@ -550,7 +624,46 @@ def parse_ibeacon_004c(data: bytes) -> Dict[str, Any]:
         out["major"] = int(major)
         out["minor"] = int(minor)
         out["tx_power"] = int(tx_cal)
+        if beacon_uuid in KNOWN_IBEACON_UUIDS:
+            out["ibeacon_profile"] = KNOWN_IBEACON_UUIDS[beacon_uuid]
     return out
+
+
+def _fetch_mac_vendor_sync(mac_or_oui: str) -> Optional[str]:
+    """
+    Queries api.macvendors.com (with fallback to api.maclookup.app) for the IEEE OUI vendor name.
+    """
+    clean_oui = str(mac_or_oui or "").strip().upper()[:8]
+    if len(clean_oui) < 8:
+        return None
+
+    headers = {
+        "User-Agent": "SensorScanner/1.0 (BLE IEEE OUI Resolver)",
+        "Accept": "text/plain, application/json",
+    }
+    try:
+        req = urllib.request.Request(f"https://api.macvendors.com/{clean_oui}", headers=headers)
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            if resp.status == 200:
+                txt = resp.read().decode("utf-8", errors="ignore").strip()
+                if txt and "errors" not in txt.lower() and "not found" not in txt.lower() and len(txt) < 120:
+                    return txt
+    except Exception:
+        pass
+
+    try:
+        req2 = urllib.request.Request(f"https://api.maclookup.app/v2/macs/{clean_oui}", headers=headers)
+        with urllib.request.urlopen(req2, timeout=4.0) as resp2:
+            if resp2.status == 200:
+                data = json.loads(resp2.read().decode("utf-8", errors="ignore"))
+                if isinstance(data, dict) and data.get("found") and data.get("company"):
+                    comp = str(data["company"]).strip()
+                    if comp:
+                        return comp
+    except Exception:
+        pass
+
+    return BUILTIN_OUI_VENDORS.get(clean_oui)
 
 
 class BLEManager:
@@ -562,6 +675,8 @@ class BLEManager:
         on_status_change_fn: Callable[[Dict[str, Any]], Awaitable[None]],
         on_log_line_fn: Callable[[str], Awaitable[None]],
         on_beacon_seen_fn: Optional[Callable[[Dict[str, Any]], bool]] = None,
+        get_oui_cache_fn: Optional[Callable[[], Dict[str, str]]] = None,
+        on_oui_resolved_fn: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ):
         self._get_settings = get_settings_fn
         self._is_known_aliased = is_known_aliased_fn
@@ -569,6 +684,8 @@ class BLEManager:
         self._on_status_change = on_status_change_fn
         self._on_log_line = on_log_line_fn
         self._on_beacon_seen = on_beacon_seen_fn
+        self._get_oui_cache = get_oui_cache_fn
+        self._on_oui_resolved = on_oui_resolved_fn
 
         self._task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
@@ -582,7 +699,176 @@ class BLEManager:
         self._beacon_touch_cache: Dict[str, float] = {}
         self._device_state_cache: Dict[str, Dict[str, Any]] = {}
         self._rssi_ema_cache: Dict[str, float] = {}
+        self._ble_device_objects: Dict[str, Any] = {}
+        self._oui_cache: Dict[str, str] = {}
+        self._oui_queried: Set[str] = set()
+        self._oui_lock = asyncio.Lock()
+        if self._get_oui_cache is not None:
+            try:
+                loaded = self._get_oui_cache()
+                if loaded:
+                    self._oui_cache.update({k.upper(): v for k, v in loaded.items() if v})
+                    self._oui_queried.update(self._oui_cache.keys())
+            except Exception:
+                pass
         self._log_tail: Deque[str] = deque(maxlen=100)
+
+    def get_cached_oui_vendor(self, mac: str) -> Optional[str]:
+        oui = str(mac or "").strip().upper()[:8]
+        if len(oui) < 8:
+            return None
+        if oui in self._oui_cache:
+            return self._oui_cache[oui]
+        return BUILTIN_OUI_VENDORS.get(oui)
+
+    async def resolve_oui_vendor(self, mac: str, force_retry: bool = False) -> Optional[str]:
+        oui = str(mac or "").strip().upper()[:8]
+        if len(oui) < 8 or oui.count(":") != 2:
+            return None
+        if not force_retry and oui in self._oui_cache:
+            return self._oui_cache[oui]
+        if not force_retry and oui in self._oui_queried:
+            return self._oui_cache.get(oui) or BUILTIN_OUI_VENDORS.get(oui)
+
+        self._oui_queried.add(oui)
+        async with self._oui_lock:
+            if not force_retry and oui in self._oui_cache:
+                return self._oui_cache[oui]
+            vendor = await asyncio.to_thread(_fetch_mac_vendor_sync, oui)
+            if vendor:
+                self._oui_cache[oui] = vendor
+                for m_key, st in self._device_state_cache.items():
+                    if m_key.startswith(oui):
+                        st["mac_vendor"] = vendor
+                if self._on_oui_resolved is not None:
+                    try:
+                        await self._on_oui_resolved(oui, vendor)
+                    except Exception as exc:
+                        logger.debug("OUI callback error for %s: %s", oui, exc)
+            return vendor
+
+    async def inspect_gatt_device(self, mac: str) -> Dict[str, Any]:
+        """
+        Actively connects to a BLE device over GATT (timeout=8.0s), enumerates all GATT services,
+        and reads standard Device Information / Generic Access / Battery characteristics.
+        """
+        raw_target = str(mac or "").strip()
+        if "_" in raw_target and ":" not in raw_target:
+            raw_target = raw_target.split("_")[-1]
+        clean_hex = re.sub(r"[^0-9A-Fa-f]", "", raw_target).upper()
+        if len(clean_hex) == 12:
+            mac_norm = ":".join(clean_hex[i : i + 2] for i in range(0, 12, 2))
+        else:
+            mac_norm = raw_target.upper()
+
+        now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        mac_type = analyze_mac_type(mac_norm)
+        mac_vendor: Optional[str] = None
+        if mac_type == "IEEE Public (Fast)":
+            mac_vendor = await self.resolve_oui_vendor(mac_norm, force_retry=True)
+
+        if not BLEAK_AVAILABLE or BleakClient is None:
+            return {
+                "ok": False,
+                "connectable": False,
+                "gatt_connectable": False,
+                "mac": mac_norm,
+                "mac_vendor": mac_vendor,
+                "gatt_services": [],
+                "gatt_inspected_at": now_iso,
+                "message": "Python-biblioteket 'bleak' är inte tillgängligt i miljön.",
+            }
+
+        await self._emit_log(f"GATT Djupinspektion startad mot {mac_norm} (timeout 8.0s)...")
+        target_device = self._ble_device_objects.get(mac_norm, mac_norm)
+
+        result: Dict[str, Any] = {
+            "ok": True,
+            "connectable": False,
+            "gatt_connectable": False,
+            "mac": mac_norm,
+            "gatt_services": [],
+            "gatt_inspected_at": now_iso,
+        }
+        if mac_vendor:
+            result["mac_vendor"] = mac_vendor
+
+        try:
+            async with BleakClient(target_device, timeout=8.0) as client:
+                result["connectable"] = True
+                result["gatt_connectable"] = True
+
+                gatt_services: List[Dict[str, str]] = []
+                for srv in client.services:
+                    s_uuid = str(srv.uuid)
+                    s_desc = str(getattr(srv, "description", "") or "").strip()
+                    short_u = s_uuid.split("-")[0][-4:].upper() if "-" in s_uuid else s_uuid.upper()
+                    if (not s_desc or s_desc.lower() in ("unknown", "vendor specific")) and short_u in BLE_SERVICE_UUIDS:
+                        s_desc = BLE_SERVICE_UUIDS[short_u]
+                    gatt_services.append({"uuid": s_uuid, "description": s_desc or "GATT Service"})
+
+                result["gatt_services"] = gatt_services
+
+                for char_uuid, field_name in GATT_IDENTITY_CHARS.items():
+                    try:
+                        raw_val = await client.read_gatt_char(char_uuid)
+                        if raw_val is not None and len(raw_val) > 0:
+                            if field_name == "battery_pct":
+                                bat_int = int(raw_val[0])
+                                if 0 <= bat_int <= 100:
+                                    result["battery_pct"] = bat_int
+                                    result["battery_ok"] = 1 if bat_int > 15 else 0
+                            else:
+                                txt = bytes(raw_val).decode("utf-8", errors="ignore").replace("\x00", "").strip()
+                                if txt:
+                                    result[field_name] = txt
+                    except Exception:
+                        pass
+
+                cached = self._device_state_cache.setdefault(mac_norm, {})
+                for k in (
+                    "gatt_name",
+                    "gatt_manufacturer",
+                    "gatt_model",
+                    "gatt_firmware",
+                    "battery_pct",
+                    "battery_ok",
+                    "gatt_services",
+                    "gatt_connectable",
+                    "gatt_inspected_at",
+                    "mac_vendor",
+                ):
+                    if k in result and result[k] is not None:
+                        cached[k] = result[k]
+
+                summary_parts = []
+                if result.get("gatt_name"):
+                    summary_parts.append(f"Namn='{result['gatt_name']}'")
+                if result.get("gatt_manufacturer"):
+                    summary_parts.append(f"Tillverkare='{result['gatt_manufacturer']}'")
+                if result.get("gatt_model"):
+                    summary_parts.append(f"Modell='{result['gatt_model']}'")
+                if result.get("gatt_firmware"):
+                    summary_parts.append(f"FW='{result['gatt_firmware']}'")
+                summary_parts.append(f"{len(gatt_services)} tjänster")
+                msg = f"GATT-anslutning lyckades ({', '.join(summary_parts)})"
+                result["message"] = msg
+                await self._emit_log(f"GATT {mac_norm}: {msg}")
+                return result
+
+        except Exception as exc:
+            non_conn_msg = "Enheten är i passivt beacon-läge (Non-Connectable) och accepterar inte GATT-anslutning"
+            result["connectable"] = False
+            result["gatt_connectable"] = False
+            result["message"] = non_conn_msg
+            result["error_detail"] = str(exc)
+            cached = self._device_state_cache.setdefault(mac_norm, {})
+            cached["gatt_connectable"] = False
+            cached["gatt_inspected_at"] = now_iso
+            if mac_vendor:
+                cached["mac_vendor"] = mac_vendor
+            await self._emit_log(f"GATT {mac_norm}: {non_conn_msg} ({exc})")
+            return result
 
     def reset_stats_and_cache(self) -> None:
         self._received_count = 0
@@ -761,6 +1047,7 @@ class BLEManager:
         if not mac:
             return
 
+        self._ble_device_objects[mac] = device
         mac_type = analyze_mac_type(mac)
 
         rssi = getattr(adv, "rssi", None)
@@ -957,7 +1244,7 @@ class BLEManager:
                 if not theengs_model:
                     theengs_model = "iBeacon-BLE"
 
-        # Merge cached sensor metrics for this MAC if a split advertisement (e.g. scan response) arrived
+        # Merge cached sensor metrics and GATT/OUI identity for this MAC if a split advertisement arrived
         sensor_cache_keys = (
             "temperature_C",
             "humidity",
@@ -969,13 +1256,31 @@ class BLEManager:
             "lux",
             "moisture",
             "sequence",
+            "mac_vendor",
+            "ibeacon_profile",
+            "gatt_name",
+            "gatt_manufacturer",
+            "gatt_model",
+            "gatt_firmware",
+            "gatt_services",
+            "gatt_connectable",
+            "gatt_inspected_at",
         )
         for sk in sensor_cache_keys:
             if sk in payload and payload[sk] is not None:
                 cached_state[sk] = payload[sk]
             elif sk in cached_state and cached_state[sk] is not None:
                 payload[sk] = cached_state[sk]
-                has_decoded_sensor = True
+                if sk in ("temperature_C", "humidity", "pressure_hPa", "battery_pct", "lux", "moisture"):
+                    has_decoded_sensor = True
+
+        if mac_type == "IEEE Public (Fast)":
+            oui_vendor = self.get_cached_oui_vendor(mac)
+            if oui_vendor:
+                payload["mac_vendor"] = oui_vendor
+                cached_state["mac_vendor"] = oui_vendor
+            if mac[:8] not in self._oui_queried:
+                asyncio.create_task(self.resolve_oui_vendor(mac))
 
         # -------------------------------------------------------------------
         # 2. Smart Identification of Specific BLE Device Types & Models
@@ -1102,6 +1407,12 @@ class BLEManager:
 
         payload["model"] = model
         payload["id"] = device_id
+
+        if model == "iBeacon-BLE" or apple_type == "iBeacon" or "ibeacon_uuid" in payload:
+            payload["manufacturer_name"] = "Apple iBeacon-spec (0x004C)"
+            ib_uuid = str(payload.get("ibeacon_uuid") or "").strip().upper()
+            if ib_uuid in KNOWN_IBEACON_UUIDS:
+                payload["ibeacon_profile"] = KNOWN_IBEACON_UUIDS[ib_uuid]
 
         # Calculate estimated distance (distance_m) with EMA RSSI smoothing and Log-Distance Path Loss (n = 2.4)
         dev_cache_key = f"{model}:{device_id}"

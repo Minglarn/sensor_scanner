@@ -172,7 +172,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.26</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.27</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1421,8 +1421,12 @@
                 <span class="text-slate-700 dark:text-slate-300">Ignorera / Svartlista enhet</span>
               </label>
             </div>
-            <div class="flex items-center gap-3 ml-auto">
+            <div class="flex flex-wrap items-center gap-2 ml-auto">
               <span id="modalActionStatus" class="text-emerald-600 dark:text-emerald-400 font-semibold"></span>
+              <button id="btn-gatt-inspect" type="button" onclick="inspectBleDevice()" class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 transition-colors cursor-pointer">
+                <i class="mdi mdi-radar text-sm"></i>
+                <span>Inspektera GATT / Hårdvara</span>
+              </button>
               <button id="modal-delete-btn" type="button" onclick="deleteDeviceFromModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer">
                 <i id="modal-delete-btn-icon" class="mdi mdi-trash-can-outline text-sm"></i>
                 <span id="modal-delete-btn-text">Radera från DB</span>
@@ -2535,13 +2539,26 @@
       return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
     }
 
+    const KNOWN_IBEACON_PROFILES = {
+      'E20A39F4-73F5-4BC4-1864-17D1AD07A962': 'IoT / AirLocate Standard SDK Beacon',
+      '74278BDA-B644-4520-8F0C-720EAF059935': 'Tesla / Estimote Default UUID',
+      '50765CB7-D9EA-4E21-99A4-FA879613A492': 'Smart Home / Media Beacon'
+    };
+
     function resolveSignalDisplayNames(sigOrDev, payload = null) {
       const obj = sigOrDev || {};
       const p = (payload && typeof payload === 'object') ? payload : (obj.payload || obj.last_payload || {});
       const rawAlias = obj.alias ? String(obj.alias).trim() : '';
       const rawModel = obj.model ? String(obj.model).trim() : (p.model ? String(p.model).trim() : 'Unknown');
-      const rawLocalName = p.local_name ? String(p.local_name).trim() : '';
-      const rawMfg = p.manufacturer_name ? String(p.manufacturer_name).trim() : '';
+      const rawLocalName = p.local_name ? String(p.local_name).trim() : (p.gatt_name ? String(p.gatt_name).trim() : '');
+      const isIbeacon = rawModel === 'iBeacon-BLE' || p.apple_type === 'iBeacon' || Boolean(p.ibeacon_uuid);
+      let rawMfg = p.manufacturer_name ? String(p.manufacturer_name).trim() : '';
+      if (isIbeacon && (!rawMfg || rawMfg === 'Apple')) {
+        rawMfg = 'Apple iBeacon-spec (0x004C)';
+      }
+      const hwSubtitle = p.gatt_manufacturer
+        ? [p.gatt_manufacturer, p.gatt_model].filter(Boolean).join(' ')
+        : (p.mac_vendor ? String(p.mac_vendor).trim() : rawMfg);
 
       // 1. User-defined alias always takes priority
       if (rawAlias) {
@@ -2551,7 +2568,7 @@
         };
       }
 
-      // 2. If no alias, check BLE local_name
+      // 2. If no alias, check BLE local_name / gatt_name
       if (rawLocalName) {
         if (rawLocalName === 'P mesh') {
           return {
@@ -2561,7 +2578,7 @@
         }
         let sub = rawModel;
         if (!sub || sub === rawLocalName || sub.startsWith('BLE-')) {
-          sub = rawMfg && rawMfg !== rawLocalName ? rawMfg : (sub && sub !== rawLocalName ? sub : '');
+          sub = hwSubtitle && hwSubtitle !== rawLocalName ? hwSubtitle : (sub && sub !== rawLocalName ? sub : '');
         }
         return {
           primaryName: rawLocalName,
@@ -2569,10 +2586,10 @@
         };
       }
 
-      // 3. Fallback to model (and manufacturer_name if different)
+      // 3. Fallback to model (and hardware/manufacturer subtitle if different)
       return {
         primaryName: rawModel,
-        secondaryName: (rawMfg && rawMfg !== rawModel) ? rawMfg : ''
+        secondaryName: (hwSubtitle && hwSubtitle !== rawModel) ? hwSubtitle : ''
       };
     }
 
@@ -2630,15 +2647,43 @@
         'calculated_power_W', 'local_name', 'manufacturer_name', 'manufacturer_id',
         'service_uuids', 'ble_service_name', 'mac_type', 'apple_type', 'tesla_node',
         'is_own_vehicle', 'tx_power', 'distance_m', 'measured_power_1m', 'beacon_hash', 'ibeacon_uuid',
+        'ibeacon_profile', 'mac_vendor', 'gatt_name', 'gatt_manufacturer', 'gatt_model',
+        'gatt_firmware', 'gatt_services', 'gatt_connectable', 'gatt_inspected_at',
         'uuid', 'major', 'minor', 'is_beacon_only'
       ].forEach((k) => consumed.add(k));
 
-      // Keep local_name, manufacturer_name, ble_service_name, mac_type & apple_type visible inside the Detail Modal chip bar
+      const modelStr = (sig && sig.model) ? String(sig.model) : (p.model ? String(p.model) : '');
+      const isTeslaModel = modelStr === 'Tesla-Vehicle-BLE' || Boolean(p.beacon_hash);
+      const isIbeaconModel = !isTeslaModel && (modelStr === 'iBeacon-BLE' || Boolean(p.ibeacon_uuid));
+
+      // Keep local_name, manufacturer_name, mac_vendor, GATT identity, ble_service_name, mac_type & apple_type visible inside the Detail Modal chip bar
       if (p.local_name) {
         addModalOnlyKpi('mdi-broadcast', 'indigo', 'NAMN', String(p.local_name));
       }
-      if (p.manufacturer_name) {
-        addModalOnlyKpi('mdi-domain', 'sky', 'TILLVERKARE', String(p.manufacturer_name), p.manufacturer_id ? String(p.manufacturer_id) : '');
+      if (p.gatt_name && p.gatt_name !== p.local_name) {
+        addModalOnlyKpi('mdi-tag-text-outline', 'sky', 'GATT NAMN', String(p.gatt_name));
+      }
+      if (p.gatt_manufacturer || p.gatt_model) {
+        const hwLabel = [p.gatt_manufacturer, p.gatt_model].filter(Boolean).join(' • ');
+        addModalOnlyKpi('mdi-memory', 'teal', 'HÅRDVARA / MODELL', hwLabel);
+      }
+      if (p.gatt_firmware) {
+        addModalOnlyKpi('mdi-chip', 'indigo', 'FIRMWARE', String(p.gatt_firmware));
+      }
+      if (p.mac_vendor) {
+        addModalOnlyKpi(
+          'mdi-chip',
+          'emerald',
+          'HÅRDVARU-MAC (OUI)',
+          String(p.mac_vendor),
+          p.mac ? String(p.mac).slice(0, 8) : ''
+        );
+      }
+      if (p.manufacturer_name || isIbeaconModel) {
+        const mfgDisplay = (isIbeaconModel && (!p.manufacturer_name || p.manufacturer_name === 'Apple'))
+          ? 'Apple iBeacon-spec (0x004C)'
+          : String(p.manufacturer_name);
+        addModalOnlyKpi('mdi-domain', 'sky', 'TILLVERKARE', mfgDisplay, p.manufacturer_id ? String(p.manufacturer_id) : '');
       }
       if (p.mac || p.mac_type) {
         addModalOnlyKpi(
@@ -2652,14 +2697,27 @@
       if (p.ble_service_name) {
         addModalOnlyKpi('mdi-bluetooth-connect', 'teal', 'TJÄNST', String(p.ble_service_name));
       }
+      if (Array.isArray(p.gatt_services) && p.gatt_services.length > 0) {
+        const srvSummary = p.gatt_services
+          .map((s) => {
+            const uShort = String(s.uuid || '').split('-')[0].replace(/^0000/, '').toUpperCase();
+            return s.description && s.description !== 'GATT Service'
+              ? `${s.description} (0x${uShort})`
+              : `0x${uShort}`;
+          })
+          .join(', ');
+        addModalOnlyKpi('mdi-layers-triple-outline', 'sky', 'GATT TJÄNSTER', `${p.gatt_services.length} st`, srvSummary);
+      } else if (p.gatt_connectable === false) {
+        addModalOnlyKpi('mdi-shield-lock-outline', 'amber', 'GATT STATUS', 'Non-Connectable Beacon', 'Passivt sändningsläge');
+      }
       if (p.apple_type) {
         addModalOnlyKpi('mdi-apple', 'purple', 'CONTINUITY', String(p.apple_type));
       }
-
-      // 0. BLE & Vehicle Telemetry (Tesla-Vehicle-BLE, Zeekr, Polestar, Volvo, BMW, iBeacon-BLE, Illuminance)
-      const modelStr = (sig && sig.model) ? String(sig.model) : (p.model ? String(p.model) : '');
-      const isTeslaModel = modelStr === 'Tesla-Vehicle-BLE' || Boolean(p.beacon_hash);
-      const isIbeaconModel = !isTeslaModel && (modelStr === 'iBeacon-BLE' || Boolean(p.ibeacon_uuid));
+      const ibUuidUpper = p.ibeacon_uuid ? String(p.ibeacon_uuid).trim().toUpperCase() : '';
+      const ibProfile = p.ibeacon_profile || (ibUuidUpper ? KNOWN_IBEACON_PROFILES[ibUuidUpper] : '');
+      if (ibProfile) {
+        addModalOnlyKpi('mdi-bullseye-arrow', 'purple', 'IBEACON-PROFIL', String(ibProfile));
+      }
 
       if (isTeslaModel || p.vehicle_status) {
         consumed.add('vehicle_status');
@@ -5077,10 +5135,72 @@
       }
     }
 
+    function resetGattInspectButton(show = false) {
+      const btn = document.getElementById('btn-gatt-inspect');
+      if (!btn) return;
+      btn.disabled = false;
+      btn.innerHTML = `
+        <i class="mdi mdi-radar text-sm"></i>
+        <span>Inspektera GATT / Hårdvara</span>
+      `;
+      if (show) {
+        btn.classList.remove('hidden');
+      } else {
+        btn.classList.add('hidden');
+      }
+    }
+
+    async function inspectBleDevice() {
+      if (!currentModalDeviceKey) return;
+      const btn = document.getElementById('btn-gatt-inspect');
+      const devObj = devicesList.find((d) => d.device_key === currentModalDeviceKey);
+      const macTarget = (currentModalPayload && currentModalPayload.mac)
+        ? String(currentModalPayload.mac)
+        : (devObj && devObj.device_id ? String(devObj.device_id) : currentModalDeviceKey);
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `
+          <i class="mdi mdi-loading mdi-spin text-sm"></i>
+          <span>Ansluter till enhet...</span>
+        `;
+      }
+
+      try {
+        const res = await fetch(`/api/ble/inspect/${encodeURIComponent(macTarget)}`, {
+          method: 'POST'
+        });
+        const data = await res.json();
+        resetGattInspectButton(true);
+
+        if (data && data.device) {
+          currentModalPayload = data.device.last_payload || currentModalPayload;
+          handleDeviceUpdated(data.device);
+        } else if (data && currentModalPayload) {
+          ['gatt_name', 'gatt_manufacturer', 'gatt_model', 'gatt_firmware', 'battery_pct', 'gatt_services', 'gatt_connectable', 'gatt_inspected_at', 'mac_vendor'].forEach((k) => {
+            if (data[k] !== undefined && data[k] !== null) {
+              currentModalPayload[k] = data[k];
+            }
+          });
+        }
+
+        renderModalTelemetryAndHistory(currentModalPayload, null, null);
+        if (data && data.connectable) {
+          showToast(data.message || 'GATT-inspektion slutförd');
+        } else {
+          showToast((data && data.message) || 'Enheten är i passivt beacon-läge (Non-Connectable)', false);
+        }
+      } catch (e) {
+        resetGattInspectButton(true);
+        showToast('Kunde inte utföra GATT-inspektion', true);
+      }
+    }
+
     async function openDeviceModalByKey(deviceKey, signalId = 0) {
       currentModalDeviceKey = deviceKey;
       document.getElementById('modalActionStatus').textContent = '';
       resetModalDeleteButton();
+      resetGattInspectButton(false);
 
       const matchingSig = signalId
         ? rawSignalsList.find((s) => Number(s.id) === Number(signalId))
@@ -5099,6 +5219,8 @@
         currentModalPayload = (matchingSig && matchingSig.payload) || dev.last_payload || {};
         const { primaryName, secondaryName } = resolveSignalDisplayNames(dev, currentModalPayload);
         const catMeta = getCategoryMeta(dev.category);
+        const radio = extractRadioMetadata(matchingSig || dev, currentModalPayload);
+        resetGattInspectButton(Boolean(radio.isBle || String(currentModalPayload.mod || '').toUpperCase() === 'BLE'));
 
         document.getElementById('modalCategoryIcon').className = `mdi ${catMeta.iconClass} text-lg`;
         document.getElementById('modalTitle').textContent = secondaryName ? `${primaryName} (${secondaryName})` : primaryName;
@@ -5147,6 +5269,34 @@
       const kpiCardsHtml = analyzed.kpis.map((k) =>
         renderChip(k.icon, k.cls, k.label, k.primary, k.secondary)
       );
+
+      // Sibling iBeacon UUID Detection across devicesList
+      if (payload && payload.ibeacon_uuid) {
+        const targetUuid = String(payload.ibeacon_uuid).trim().toUpperCase();
+        const curMac = String(payload.mac || '').trim().toUpperCase();
+        const siblings = devicesList.filter((d) => {
+          if (currentModalDeviceKey && d.device_key === currentModalDeviceKey) return false;
+          const dp = d.last_payload || {};
+          if (curMac && String(dp.mac || '').trim().toUpperCase() === curMac) return false;
+          return String(dp.ibeacon_uuid || '').trim().toUpperCase() === targetUuid;
+        });
+        if (siblings.length > 0) {
+          const sibNames = siblings
+            .slice(0, 4)
+            .map((s) => (s.alias && s.alias.trim()) ? s.alias.trim() : (s.last_payload?.mac || s.device_id))
+            .join(', ');
+          const purpleChipCls = 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30';
+          kpiCardsHtml.push(
+            renderChip(
+              'mdi-link-variant',
+              purpleChipCls,
+              'DELAR UUID MED',
+              `${siblings.length} andra enheter`,
+              sibNames ? [sibNames] : []
+            )
+          );
+        }
+      }
 
       const indigoChipCls = 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30';
       if (radio.protoNum) {
@@ -5501,6 +5651,13 @@
           badgeEl.className = `inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${catMeta.badgeClass}`;
           badgeEl.innerHTML = `<i class="mdi ${catMeta.icon} text-xs leading-none"></i><span>${escapeHtml(catMeta.label)}</span>`;
         }
+        if (dev.last_payload && typeof dev.last_payload === 'object') {
+          currentModalPayload = { ...(currentModalPayload || {}), ...dev.last_payload };
+          const { primaryName, secondaryName } = resolveSignalDisplayNames(dev, currentModalPayload);
+          const titleEl = document.getElementById('modalTitle');
+          if (titleEl) titleEl.textContent = secondaryName ? `${primaryName} (${secondaryName})` : primaryName;
+          renderModalTelemetryAndHistory(currentModalPayload, null, null);
+        }
       }
       updateExistingGroupsDatalist();
       updateNewDevicesNavBadge();
@@ -5511,6 +5668,13 @@
 
     function handleDevicesBulkUpdated(devs) {
       devs.forEach((d) => syncDeviceToCaches(d));
+      if (currentModalDeviceKey) {
+        const matchDev = devs.find((d) => d.device_key === currentModalDeviceKey);
+        if (matchDev && matchDev.last_payload) {
+          currentModalPayload = { ...(currentModalPayload || {}), ...matchDev.last_payload };
+          renderModalTelemetryAndHistory(currentModalPayload, null, null);
+        }
+      }
       updateExistingGroupsDatalist();
       updateNewDevicesNavBadge();
       renderCategoryFilterDropdowns();
