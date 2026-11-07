@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from app import __app_name__, __version__
 from app.ble_manager import BLEManager
-from app.database import Database
+from app.database import Database, extract_device_id, sanitize_key
 from app.mqtt_client import MQTTManager
 from app.rtl_manager import RTLManager
 
@@ -393,13 +393,33 @@ async def on_ble_status_change(ble_status: Dict[str, Any]) -> None:
     await broadcast_full_status()
 
 
+def on_ble_beacon_seen(payload: Dict[str, Any]) -> bool:
+    exists = db.touch_beacon_device(payload)
+    if exists:
+        try:
+            model = str(payload.get("model") or "Unknown").strip()
+            device_id = extract_device_id(payload)
+            dev_key = f"{sanitize_key(model)}_{sanitize_key(device_id)}"
+            dev_rec = db.get_device(dev_key)
+            if (
+                dev_rec
+                and int(dev_rec.get("ha_discovery") or 0) == 1
+                and int(dev_rec.get("mqtt_enabled", 1)) == 1
+                and int(dev_rec.get("ignored") or 0) == 0
+            ):
+                mqtt_manager.publish_signal(dev_rec, payload)
+        except Exception as exc:
+            logger.debug("Error forwarding beacon MQTT heartbeat: %s", exc)
+    return exists
+
+
 ble_manager = BLEManager(
     get_settings_fn=db.get_settings,
     is_known_aliased_fn=db.is_device_known_and_named,
     on_signal_fn=on_rtl_signal,
     on_status_change_fn=on_ble_status_change,
     on_log_line_fn=on_rtl_stderr_line,
-    on_beacon_seen_fn=db.touch_beacon_device,
+    on_beacon_seen_fn=on_ble_beacon_seen,
 )
 
 
@@ -445,6 +465,26 @@ async def new_device_expiry_worker() -> None:
         await asyncio.sleep(60)
 
 
+async def ble_presence_timeout_worker() -> None:
+    ha_synced_on_connect = False
+    while True:
+        try:
+            mqtt_st = mqtt_manager.get_status()
+            if mqtt_st.get("connected"):
+                if not ha_synced_on_connect:
+                    devices = await asyncio.to_thread(db.get_devices, include_ignored=False)
+                    for d in devices:
+                        if int(d.get("ha_discovery") or 0) == 1:
+                            await asyncio.to_thread(mqtt_manager.publish_ha_discovery, d)
+                    ha_synced_on_connect = True
+                await asyncio.to_thread(mqtt_manager.check_ble_presence_timeouts, 120.0)
+            else:
+                ha_synced_on_connect = False
+        except Exception as exc:
+            logger.debug("Error in ble_presence_timeout_worker: %s", exc)
+        await asyncio.sleep(30)
+
+
 async def github_update_worker() -> None:
     await asyncio.sleep(3)
     while True:
@@ -476,15 +516,17 @@ async def lifespan(app: FastAPI):
     await ble_manager.start()
     retention_task = asyncio.create_task(retention_worker(), name="retention_worker")
     expiry_task = asyncio.create_task(new_device_expiry_worker(), name="new_device_expiry_worker")
+    presence_task = asyncio.create_task(ble_presence_timeout_worker(), name="ble_presence_timeout_worker")
     update_task = asyncio.create_task(github_update_worker(), name="github_update_worker")
 
     try:
         yield
     finally:
         update_task.cancel()
+        presence_task.cancel()
         expiry_task.cancel()
         retention_task.cancel()
-        for t in (update_task, expiry_task, retention_task):
+        for t in (update_task, presence_task, expiry_task, retention_task):
             try:
                 await t
             except asyncio.CancelledError:

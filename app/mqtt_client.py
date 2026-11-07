@@ -2,6 +2,8 @@ import json
 import logging
 import re
 import threading
+import time
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import paho.mqtt.client as mqtt
@@ -291,6 +293,7 @@ class MQTTManager:
         self._last_error: str = ""
         self._published_count: int = 0
         self._status_callback = status_callback
+        self._ble_presence_state: Dict[str, Dict[str, Any]] = {}
 
     def configure_and_connect(self, settings: Dict[str, Any], reconnect_broker: bool = True) -> None:
         with self._lock:
@@ -413,22 +416,40 @@ class MQTTManager:
 
         model_seg = sanitize_topic_segment(device.get("model", "Unknown"))
         id_seg = sanitize_topic_segment(device.get("device_id", "unknown"))
+        safe_device_key = sanitize_topic_segment(device.get("device_key") or f"{model_seg}_{id_seg}")
         alias_raw = str(device.get("alias", "") or "").strip()
 
         enriched_payload = enrich_sparsnas_payload(dict(payload))
         if alias_raw:
             enriched_payload["alias"] = alias_raw
-        enriched_payload["device_key"] = device.get("device_key")
+        enriched_payload["device_key"] = device.get("device_key") or safe_device_key
 
         json_str = json.dumps(enriched_payload, ensure_ascii=False)
         base_topic = f"{self._prefix}/{model_seg}/{id_seg}"
+        state_topic = f"{self._prefix}/{safe_device_key}/state"
 
         try:
+            self._client.publish(state_topic, payload=json_str, qos=0, retain=False)
             self._client.publish(base_topic, payload=json_str, qos=0, retain=False)
-            is_ble = str(enriched_payload.get("mod") or "").upper() == "BLE" or float(enriched_payload.get("freq") or 0) >= 2400.0
+            is_ble = (
+                str(enriched_payload.get("mod") or "").upper() == "BLE"
+                or float(enriched_payload.get("freq") or 0) >= 2400.0
+                or "BLE" in str(device.get("model", ""))
+            )
             if is_ble:
                 ble_topic = f"{self._prefix}/BLE/{model_seg}/{id_seg}"
                 self._client.publish(ble_topic, payload=json_str, qos=0, retain=False)
+                if enriched_payload.get("rssi") is not None and (
+                    int(device.get("ha_discovery", 0)) == 1 or safe_device_key in self._ble_presence_state
+                ):
+                    with self._lock:
+                        self._ble_presence_state[safe_device_key] = {
+                            "last_seen_mono": time.monotonic(),
+                            "is_home": True,
+                            "state_topic": state_topic,
+                            "base_topic": base_topic,
+                            "device_key": device.get("device_key") or safe_device_key,
+                        }
             if alias_raw:
                 alias_seg = sanitize_topic_segment(alias_raw)
                 alias_topic = f"{self._prefix}/alias/{alias_seg}"
@@ -440,27 +461,60 @@ class MQTTManager:
             self._last_error = str(exc)
             return False
 
+    def check_ble_presence_timeouts(self, timeout_seconds: float = 120.0) -> int:
+        if not self._enabled or not self._connected or self._client is None:
+            return 0
+
+        now_mono = time.monotonic()
+        expired_entries: List[Dict[str, Any]] = []
+        with self._lock:
+            for safe_key, info in self._ble_presence_state.items():
+                if info.get("is_home") and (now_mono - float(info.get("last_seen_mono", 0.0))) > timeout_seconds:
+                    info["is_home"] = False
+                    expired_entries.append(dict(info))
+
+        count = 0
+        for entry in expired_entries:
+            away_payload = json.dumps(
+                {
+                    "status": "not_home",
+                    "presence": "OFF",
+                    "device_key": entry.get("device_key"),
+                },
+                ensure_ascii=False,
+            )
+            try:
+                if entry.get("state_topic"):
+                    self._client.publish(entry["state_topic"], payload=away_payload, qos=0, retain=False)
+                if entry.get("base_topic"):
+                    self._client.publish(entry["base_topic"], payload=away_payload, qos=0, retain=False)
+                count += 1
+            except Exception as exc:
+                logger.debug("Failed to publish BLE presence away payload: %s", exc)
+        return count
+
     def publish_ha_discovery(self, device: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Publishes Home Assistant MQTT Auto-Discovery configurations for all detected metrics
-        in the device's last_payload.
-        Topic format: <ha_discovery_prefix>/sensor/sensor_scanner_<device_key>_<metric>/config
+        Publishes Home Assistant MQTT Auto-Discovery configurations for a device:
+        - binary_sensor (device_class: presence, off_delay: 120) for Vehicle / iBeacon / BLE Beacon
+        - device_tracker (source_type: bluetooth_le) for Vehicle
+        - sensor entities for telemetry metrics (with expire_after: 120 on BLE distance_m and rssi)
         """
         if not self._ha_discovery_enabled:
             return {
                 "ok": False,
-                "error": "Home Assistant Auto-Discovery är avstängt under System & Logg.",
+                "error": "Home Assistant Auto-Discovery är avstängt under Inställningar.",
                 "published_topics": [],
             }
 
         if not self._enabled or not self._connected or self._client is None:
             return {
                 "ok": False,
-                "error": "MQTT är inte ansluten. Kontrollera MQTT-inställningarna under System & Logg.",
+                "error": "MQTT är inte ansluten. Kontrollera MQTT-inställningarna.",
                 "published_topics": [],
             }
 
-        device_key = sanitize_topic_segment(device.get("device_key", "unknown"))
+        safe_device_key = sanitize_topic_segment(device.get("device_key", "unknown"))
         model = str(device.get("model", "Unknown"))
         device_id = str(device.get("device_id", "unknown"))
         alias = str(device.get("alias", "") or "").strip()
@@ -468,7 +522,8 @@ class MQTTManager:
 
         model_seg = sanitize_topic_segment(model)
         id_seg = sanitize_topic_segment(device_id)
-        state_topic = f"{self._prefix}/{model_seg}/{id_seg}"
+        base_topic = f"{self._prefix}/{model_seg}/{id_seg}"
+        state_topic = f"{self._prefix}/{safe_device_key}/state"
 
         payload = device.get("last_payload") or {}
         if isinstance(payload, str):
@@ -478,34 +533,137 @@ class MQTTManager:
                 payload = {}
         payload = enrich_sparsnas_payload(dict(payload))
 
+        category = str(device.get("category") or payload.get("category") or "Sensor").strip()
+        is_vehicle = category == "Vehicle" or model.endswith("-Vehicle-BLE")
+        is_ibeacon = (
+            str(payload.get("apple_type") or "") == "iBeacon"
+            or model == "iBeacon-BLE"
+            or bool(payload.get("ibeacon_uuid"))
+        )
+        is_beacon_only = bool(payload.get("is_beacon_only"))
+        is_ble = (
+            str(payload.get("mod") or "").upper() == "BLE"
+            or float(payload.get("freq") or 0) >= 2400.0
+            or "BLE" in model
+            or is_vehicle
+            or is_ibeacon
+        )
+        needs_presence = is_vehicle or is_ibeacon or is_beacon_only
+
+        manufacturer = str(
+            payload.get("manufacturer_name")
+            or ("Tesla" if model == "Tesla-Vehicle-BLE" else ("BLE / SensorScanner" if is_ble else "rtl_433 / SensorScanner"))
+        )
         ha_device_block = {
-            "identifiers": [f"sensor_scanner_{device_key}"],
+            "identifiers": [f"sensor_scanner_{safe_device_key}"],
             "name": display_name,
             "model": model,
-            "manufacturer": "rtl_433 / SensorScanner",
+            "manufacturer": manufacturer,
             "sw_version": __version__,
         }
 
         published_topics: List[str] = []
 
+        # Remove any legacy vehicle_status text sensor topic
+        for legacy_vs_topic in (
+            f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_vehicle_status/config",
+            f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/vehicle_status/config",
+        ):
+            try:
+                self._client.publish(legacy_vs_topic, payload="", qos=1, retain=True)
+            except Exception:
+                pass
+
+        attr_template = (
+            "{{ {"
+            "'beacon_hash': value_json.beacon_hash | default(''), "
+            "'tesla_node': value_json.tesla_node | default(''), "
+            "'mac': value_json.mac | default(''), "
+            "'mac_type': value_json.mac_type | default(''), "
+            "'ibeacon_uuid': value_json.ibeacon_uuid | default(''), "
+            "'major': value_json.major | default(''), "
+            "'minor': value_json.minor | default(''), "
+            "'distance_m': value_json.distance_m | default('')"
+            "} | tojson }}"
+        )
+
+        # 1. binary_sensor for Presence (device_class: "presence", off_delay: 120)
+        if needs_presence:
+            presence_topic = f"{self._ha_discovery_prefix}/binary_sensor/{safe_device_key}/presence/config"
+            presence_config: Dict[str, Any] = {
+                "name": "Närvaro",
+                "unique_id": f"{safe_device_key}_presence",
+                "state_topic": state_topic,
+                "value_template": "{{ 'ON' if value_json.rssi is defined else 'OFF' }}",
+                "payload_on": "ON",
+                "payload_off": "OFF",
+                "device_class": "presence",
+                "off_delay": 120,
+                "icon": "mdi:car-connected" if is_vehicle else "mdi:bluetooth-connect",
+                "json_attributes_topic": state_topic,
+                "json_attributes_template": attr_template,
+                "device": ha_device_block,
+            }
+            self._client.publish(
+                presence_topic,
+                payload=json.dumps(presence_config, ensure_ascii=False),
+                qos=1,
+                retain=True,
+            )
+            published_topics.append(presence_topic)
+
+        # 2. device_tracker for Vehicles (source_type: "bluetooth_le")
+        if is_vehicle:
+            tracker_topic = f"{self._ha_discovery_prefix}/device_tracker/{safe_device_key}/config"
+            tracker_config: Dict[str, Any] = {
+                "name": "Tracker",
+                "unique_id": f"{safe_device_key}_tracker",
+                "state_topic": state_topic,
+                "value_template": "{{ 'home' if value_json.rssi is defined else 'not_home' }}",
+                "payload_home": "home",
+                "payload_not_home": "not_home",
+                "source_type": "bluetooth_le",
+                "icon": "mdi:car-estate",
+                "json_attributes_topic": state_topic,
+                "json_attributes_template": attr_template,
+                "device": ha_device_block,
+            }
+            self._client.publish(
+                tracker_topic,
+                payload=json.dumps(tracker_config, ensure_ascii=False),
+                qos=1,
+                retain=True,
+            )
+            published_topics.append(tracker_topic)
+
+        # 3. Telemetry sensor entities (with expire_after: 120 on BLE distance_m and rssi)
         for json_key, metric_slug, suffix, unit, dev_class, state_class, val_tpl in HA_METRIC_SPECS:
             if json_key not in payload or payload[json_key] is None:
                 continue
 
-            unique_id = f"sensor_scanner_{device_key}_{metric_slug}"
+            unique_id = f"sensor_scanner_{safe_device_key}_{metric_slug}"
             config_topic = f"{self._ha_discovery_prefix}/sensor/{unique_id}/config"
+
+            eff_unit = "dBm" if (is_ble and json_key == "rssi") else unit
+            eff_tpl = val_tpl
+            if is_ble and json_key == "rssi":
+                eff_tpl = "{{ value_json.rssi | int if value_json.rssi is defined else None }}"
+            elif is_ble and json_key == "distance_m":
+                eff_tpl = "{{ value_json.distance_m | float | round(1) if value_json.distance_m is defined else None }}"
 
             config_payload: Dict[str, Any] = {
                 "name": f"{display_name} {suffix}",
                 "unique_id": unique_id,
                 "state_topic": state_topic,
-                "value_template": val_tpl,
-                "unit_of_measurement": unit,
+                "value_template": eff_tpl,
+                "unit_of_measurement": eff_unit,
                 "state_class": state_class,
                 "device": ha_device_block,
             }
             if dev_class:
                 config_payload["device_class"] = dev_class
+            if is_ble and json_key in ("distance_m", "rssi"):
+                config_payload["expire_after"] = 120
 
             self._client.publish(
                 config_topic,
@@ -515,11 +673,58 @@ class MQTTManager:
             )
             published_topics.append(config_topic)
 
-        self.publish_signal(device, payload)
+        if is_ble:
+            recently_seen = True
+            last_seen_str = str(device.get("last_seen") or "").strip()
+            if last_seen_str:
+                try:
+                    dt_seen = datetime.fromisoformat(last_seen_str.replace("Z", "+00:00"))
+                    if dt_seen.tzinfo is None:
+                        dt_seen = dt_seen.replace(tzinfo=timezone.utc)
+                    age_sec = (datetime.now(timezone.utc) - dt_seen).total_seconds()
+                    if age_sec > 120.0:
+                        recently_seen = False
+                except Exception:
+                    recently_seen = True
+
+            if recently_seen:
+                with self._lock:
+                    self._ble_presence_state[safe_device_key] = {
+                        "last_seen_mono": time.monotonic(),
+                        "is_home": True,
+                        "state_topic": state_topic,
+                        "base_topic": base_topic,
+                        "device_key": device.get("device_key") or safe_device_key,
+                    }
+                self.publish_signal(device, payload)
+            else:
+                with self._lock:
+                    self._ble_presence_state[safe_device_key] = {
+                        "last_seen_mono": 0.0,
+                        "is_home": False,
+                        "state_topic": state_topic,
+                        "base_topic": base_topic,
+                        "device_key": device.get("device_key") or safe_device_key,
+                    }
+                away_payload = json.dumps(
+                    {
+                        "status": "not_home",
+                        "presence": "OFF",
+                        "device_key": device.get("device_key") or safe_device_key,
+                    },
+                    ensure_ascii=False,
+                )
+                try:
+                    self._client.publish(state_topic, payload=away_payload, qos=0, retain=False)
+                    self._client.publish(base_topic, payload=away_payload, qos=0, retain=False)
+                except Exception:
+                    pass
+        else:
+            self.publish_signal(device, payload)
 
         return {
             "ok": True,
-            "device_key": device_key,
+            "device_key": safe_device_key,
             "published_count": len(published_topics),
             "published_topics": published_topics,
         }
@@ -532,11 +737,26 @@ class MQTTManager:
         if not self._enabled or not self._connected or self._client is None:
             return {"ok": False, "cleared_topics": []}
 
-        device_key = sanitize_topic_segment(device.get("device_key", "unknown"))
+        safe_device_key = sanitize_topic_segment(device.get("device_key", "unknown"))
+        with self._lock:
+            self._ble_presence_state.pop(safe_device_key, None)
+
         cleared_topics: List[str] = []
+        extra_topics = [
+            f"{self._ha_discovery_prefix}/binary_sensor/{safe_device_key}/presence/config",
+            f"{self._ha_discovery_prefix}/device_tracker/{safe_device_key}/config",
+            f"{self._ha_discovery_prefix}/sensor/sensor_scanner_{safe_device_key}_vehicle_status/config",
+            f"{self._ha_discovery_prefix}/sensor/{safe_device_key}/vehicle_status/config",
+        ]
+        for topic in extra_topics:
+            try:
+                self._client.publish(topic, payload="", qos=1, retain=True)
+                cleared_topics.append(topic)
+            except Exception as exc:
+                logger.debug("Failed to clear discovery topic %s: %s", topic, exc)
 
         for _, metric_slug, _, _, _, _, _ in HA_METRIC_SPECS:
-            unique_id = f"sensor_scanner_{device_key}_{metric_slug}"
+            unique_id = f"sensor_scanner_{safe_device_key}_{metric_slug}"
             config_topic = f"{self._ha_discovery_prefix}/sensor/{unique_id}/config"
             try:
                 self._client.publish(config_topic, payload="", qos=1, retain=True)
@@ -546,7 +766,7 @@ class MQTTManager:
 
         return {
             "ok": True,
-            "device_key": device_key,
+            "device_key": safe_device_key,
             "cleared_count": len(cleared_topics),
             "cleared_topics": cleared_topics,
         }
