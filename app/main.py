@@ -673,6 +673,10 @@ class DbMaintenanceRequest(BaseModel):
     action: str
 
 
+class PlejdMeshToggleRequest(BaseModel):
+    expand: bool = True
+
+
 class SettingsUpdateRequest(BaseModel):
     device_index: Optional[str] = None
     mode: Optional[str] = None
@@ -997,6 +1001,23 @@ async def api_inspect_ble_device(mac: str):
         **res,
         "device": updated_devs[0] if updated_devs else None,
     }
+
+
+@app.post("/api/ble/mesh/{mesh_id}/toggle-expand")
+async def api_toggle_plejd_mesh_expand(mesh_id: str, req: PlejdMeshToggleRequest):
+    result = await asyncio.to_thread(db.toggle_plejd_mesh_expand, mesh_id, req.expand)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Kunde inte ändra Plejd Mesh-läge."))
+
+    ble_manager.evict_plejd_mesh_cache(mesh_id)
+    deleted_keys = result.get("deleted_keys") or []
+    if deleted_keys:
+        await ws_manager.broadcast({"type": "devices_pruned", "device_keys": deleted_keys})
+    updated_devs = result.get("devices") or []
+    if updated_devs:
+        await ws_manager.broadcast({"type": "devices_bulk_updated", "devices": updated_devs})
+    await broadcast_full_status()
+    return result
 
 
 @app.delete("/api/devices/{device_key:path}")

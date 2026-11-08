@@ -13,6 +13,8 @@ from app.ble_manager import (
     VOLVO_VEHICLE_MODELS,
     analyze_mac_type,
     compute_ble_device_id,
+    decode_plejd_mfg_hex,
+    parse_expanded_plejd_meshes,
 )
 
 logger = logging.getLogger("sensor_scanner.database")
@@ -35,6 +37,10 @@ PERSISTENT_HARDWARE_KEYS = (
     "previous_mac",
     "mac_rotations",
     "merged_mac_count",
+    "plejd_mesh_id",
+    "plejd_model",
+    "plejd_nodes",
+    "plejd_node_count",
     "gatt_name",
     "gatt_appearance",
     "gatt_manufacturer",
@@ -97,6 +103,7 @@ def get_default_settings() -> Dict[str, str]:
         "prune_ephemeral_hours": os.environ.get("PRUNE_EPHEMERAL_HOURS", "24") or "24",
         "prune_stale_days": os.environ.get("PRUNE_STALE_DAYS", "7") or "7",
         "max_signals_per_device": os.environ.get("MAX_SIGNALS_PER_DEVICE", "100") or "100",
+        "expanded_plejd_meshes": "[]",
     }
 
 
@@ -700,10 +707,18 @@ class Database:
             conn = self._get_conn()
             try:
                 with conn:
+                    exp_row = conn.execute(
+                        "SELECT value FROM settings WHERE key = 'expanded_plejd_meshes';"
+                    ).fetchone()
+                    expanded_plejd_meshes = parse_expanded_plejd_meshes(
+                        exp_row["value"] if exp_row else "[]"
+                    )
+
                     rows = conn.execute(
                         "SELECT * FROM devices ORDER BY last_seen DESC;"
                     ).fetchall()
                     fp_groups: Dict[Tuple[str, str], List[Tuple[Dict[str, Any], Dict[str, Any], Optional[str]]]] = {}
+                    plejd_mesh_groups: Dict[str, List[Tuple[Dict[str, Any], Dict[str, Any]]]] = {}
 
                     for r in rows:
                         d = dict(r)
@@ -715,7 +730,7 @@ class Database:
                             continue
 
                         mod_str = str(d.get("model") or "")
-                        is_ble = str(pl.get("mod") or "").upper() == "BLE" or "BLE" in mod_str
+                        is_ble = str(pl.get("mod") or "").upper() == "BLE" or "BLE" in mod_str or mod_str == "Plejd-Mesh"
                         if not is_ble:
                             continue
 
@@ -727,6 +742,52 @@ class Database:
                             pl["vehicle_status"] = "Digital Key • Inom räckvidd"
                             pl["is_beacon_only"] = False
                             d["category"] = "Vehicle"
+
+                        # Generic Plejd Mesh protocol decoding & cluster grouping
+                        mfg_dict = pl.get("manufacturer_data") if isinstance(pl.get("manufacturer_data"), dict) else {}
+                        is_plejd_row = (
+                            mod_str == "Plejd-Mesh"
+                            or ln_upper == "P MESH"
+                            or "0x0377" in mfg_dict
+                            or "0x09A3" in mfg_dict
+                            or str(pl.get("manufacturer_id") or "").upper() in ("0X0377", "0X09A3")
+                        )
+                        if is_plejd_row:
+                            mod_str = "Plejd-Mesh"
+                            pl["model"] = "Plejd-Mesh"
+                            pl["category"] = "Switch"
+                            pl["manufacturer_name"] = "Plejd"
+                            d["category"] = "Switch"
+                            plejd_hex = (
+                                mfg_dict.get("0x0377")
+                                or mfg_dict.get("0x09A3")
+                                or (next(iter(mfg_dict.values())) if mfg_dict else "")
+                            )
+                            dec_prod, dec_mesh = decode_plejd_mfg_hex(plejd_hex)
+                            mesh_id_val = str(dec_mesh or pl.get("plejd_mesh_id") or "").strip().upper()
+                            prod_val = str(dec_prod or pl.get("plejd_model") or "").strip()
+                            if mesh_id_val:
+                                pl["plejd_mesh_id"] = mesh_id_val
+                                pl["is_beacon_only"] = False
+                            if prod_val:
+                                pl["plejd_model"] = prod_val
+
+                            has_own_alias = bool(d.get("alias") and str(d["alias"]).strip())
+                            is_ignored = int(d.get("ignored") or 0) == 1
+                            is_cluster_row = str(d.get("device_id") or "").upper() == f"MESH_{mesh_id_val}"
+                            if mesh_id_val and mesh_id_val not in expanded_plejd_meshes and not is_ignored and (not has_own_alias or is_cluster_row):
+                                plejd_mesh_groups.setdefault(mesh_id_val, []).append((d, pl))
+                                continue
+                            else:
+                                if mesh_id_val in expanded_plejd_meshes or has_own_alias:
+                                    pl.pop("plejd_nodes", None)
+                                    pl.pop("plejd_node_count", None)
+                                if json.dumps(pl, ensure_ascii=False) != d.get("last_payload") or d.get("model") != "Plejd-Mesh":
+                                    conn.execute(
+                                        "UPDATE devices SET model = 'Plejd-Mesh', category = 'Switch', last_payload = ? WHERE device_key = ?;",
+                                        (json.dumps(pl, ensure_ascii=False), d["device_key"]),
+                                    )
+                                continue
 
                         has_sensor_measurements = any(pl.get(k) is not None for k in telemetry_keys)
                         mac_val = str(pl.get("mac") or d.get("device_id") or "").strip().upper()
@@ -889,11 +950,276 @@ class Database:
                                         (mod_str, oid),
                                     )
 
+                    # Consolidate unaliased Plejd Mesh nodes per mesh_id into Plejd-Mesh_MESH_{mesh_id}
+                    for mesh_id_val, p_items in plejd_mesh_groups.items():
+                        cluster_id = f"MESH_{mesh_id_val}"
+                        cluster_key = f"Plejd-Mesh_{cluster_id}"
+                        existing_cluster = conn.execute(
+                            "SELECT * FROM devices WHERE device_key = ?;", (cluster_key,)
+                        ).fetchone()
+
+                        newest_d, newest_pl = p_items[0]
+                        total_hits = sum(int(item[0].get("hit_count") or 1) for item in p_items)
+                        first_seen_cands = [str(item[0]["first_seen"]) for item in p_items if item[0].get("first_seen")]
+                        min_first_seen = min(first_seen_cands) if first_seen_cands else newest_d.get("first_seen")
+                        max_last_seen = newest_d.get("last_seen")
+
+                        merged_nodes: Dict[str, Dict[str, Any]] = {}
+                        # Merge in chronological order (oldest to newest) so newest rssi/last_seen wins per MAC
+                        for item_d, item_pl in reversed(p_items):
+                            existing_nodes = item_pl.get("plejd_nodes")
+                            if isinstance(existing_nodes, dict):
+                                for n_mac, n_info in existing_nodes.items():
+                                    if isinstance(n_info, dict) and n_mac:
+                                        merged_nodes[str(n_mac).upper()] = dict(n_info)
+                            node_mac = str(item_pl.get("mac") or "").strip().upper()
+                            if not node_mac:
+                                raw_did = str(item_d.get("device_id") or "").strip().upper()
+                                if len(raw_did) == 12 and not raw_did.startswith("MESH_"):
+                                    node_mac = ":".join(raw_did[i : i + 2] for i in range(0, 12, 2))
+                            if node_mac and not node_mac.startswith("MESH_"):
+                                merged_nodes[node_mac] = {
+                                    "model": item_pl.get("plejd_model") or "Plejd",
+                                    "rssi": item_pl.get("rssi"),
+                                    "last_seen": item_d.get("last_seen") or item_pl.get("time"),
+                                }
+
+                        newest_pl["id"] = cluster_id
+                        newest_pl["model"] = "Plejd-Mesh"
+                        newest_pl["category"] = "Switch"
+                        newest_pl["manufacturer_name"] = "Plejd"
+                        newest_pl["plejd_mesh_id"] = mesh_id_val
+                        newest_pl["plejd_nodes"] = merged_nodes
+                        newest_pl["plejd_node_count"] = len(merged_nodes)
+                        newest_pl["is_beacon_only"] = False
+
+                        if len(p_items) == 1 and p_items[0][0]["device_key"] == cluster_key:
+                            if json.dumps(newest_pl, ensure_ascii=False) != p_items[0][0].get("last_payload"):
+                                conn.execute(
+                                    "UPDATE devices SET category = 'Switch', last_payload = ? WHERE device_key = ?;",
+                                    (json.dumps(newest_pl, ensure_ascii=False), cluster_key),
+                                )
+                            continue
+
+                        merged_alias = str(existing_cluster["alias"] if existing_cluster else newest_d.get("alias") or "")
+                        merged_group = str(existing_cluster["group_name"] if existing_cluster else newest_d.get("group_name") or "")
+                        merged_mqtt = int(existing_cluster["mqtt_enabled"] if existing_cluster else newest_d.get("mqtt_enabled", 1))
+                        merged_ha = int(existing_cluster["ha_discovery"] if existing_cluster else newest_d.get("ha_discovery", 0))
+                        merged_ignored = int(existing_cluster["ignored"] if existing_cluster else newest_d.get("ignored", 0))
+                        if existing_cluster and existing_cluster["device_key"] not in [x[0]["device_key"] for x in p_items]:
+                            total_hits += int(existing_cluster["hit_count"] or 0)
+                        merged_is_new = 0 if (total_hits > 5 or merged_alias or merged_group or _is_older_than_15_min(min_first_seen)) else 1
+                        new_pl_json = json.dumps(newest_pl, ensure_ascii=False)
+
+                        old_keys = [x[0]["device_key"] for x in p_items if x[0]["device_key"] != cluster_key]
+                        old_ids = [str(x[0]["device_id"]) for x in p_items if str(x[0]["device_id"]) != cluster_id]
+
+                        conn.execute(
+                            """
+                            INSERT INTO devices (
+                                device_key, model, device_id, alias, group_name, category,
+                                mqtt_enabled, ha_discovery, ignored, is_new, first_seen, last_seen, hit_count, last_payload
+                            ) VALUES (?, 'Plejd-Mesh', ?, ?, ?, 'Switch', ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(device_key) DO UPDATE SET
+                                model = 'Plejd-Mesh',
+                                device_id = excluded.device_id,
+                                category = 'Switch',
+                                first_seen = excluded.first_seen,
+                                last_seen = excluded.last_seen,
+                                hit_count = excluded.hit_count,
+                                is_new = excluded.is_new,
+                                last_payload = excluded.last_payload;
+                            """,
+                            (
+                                cluster_key,
+                                cluster_id,
+                                merged_alias,
+                                merged_group,
+                                merged_mqtt,
+                                merged_ha,
+                                merged_ignored,
+                                merged_is_new,
+                                min_first_seen,
+                                max_last_seen,
+                                total_hits,
+                                new_pl_json,
+                            ),
+                        )
+
+                        for ok in old_keys:
+                            conn.execute("DELETE FROM devices WHERE device_key = ?;", (ok,))
+                            merged_clones_count += 1
+
+                        for oid in old_ids:
+                            conn.execute(
+                                "DELETE FROM signals WHERE model = 'Plejd-Mesh' AND device_id = ?;",
+                                (oid,),
+                            )
+
                 if merged_clones_count > 0:
                     logger.info("Consolidated %d duplicate BLE fingerprint clones in SQLite.", merged_clones_count)
                 return merged_clones_count
             finally:
                 conn.close()
+
+    def toggle_plejd_mesh_expand(self, mesh_id: str, expand: bool) -> Dict[str, Any]:
+        """
+        Toggles whether a specific Plejd Mesh network (mesh_id) is expanded into
+        individual per-MAC device cards (expand=True) or collapsed into a single
+        cluster card Plejd-Mesh_MESH_{mesh_id} (expand=False).
+        """
+        mesh_id_clean = re.sub(r"[^0-9A-Fa-f]", "", str(mesh_id or "")).upper()
+        if not mesh_id_clean:
+            return {"ok": False, "error": "Ogiltigt Mesh-ID."}
+
+        now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        cur_settings = self.get_settings()
+        expanded_set = parse_expanded_plejd_meshes(cur_settings.get("expanded_plejd_meshes", "[]"))
+
+        if expand:
+            expanded_set.add(mesh_id_clean)
+        else:
+            expanded_set.discard(mesh_id_clean)
+
+        self.update_settings({"expanded_plejd_meshes": json.dumps(sorted(expanded_set))})
+
+        cluster_id = f"MESH_{mesh_id_clean}"
+        cluster_key = f"Plejd-Mesh_{cluster_id}"
+        created_or_updated_keys: List[str] = []
+        deleted_keys: List[str] = []
+
+        if expand:
+            with self._lock:
+                conn = self._get_conn()
+                try:
+                    with conn:
+                        cluster_row = conn.execute(
+                            "SELECT * FROM devices WHERE device_key = ?;", (cluster_key,)
+                        ).fetchone()
+                        if cluster_row:
+                            c_dict = dict(cluster_row)
+                            try:
+                                c_pl = json.loads(c_dict.get("last_payload") or "{}")
+                                if not isinstance(c_pl, dict):
+                                    c_pl = {}
+                            except Exception:
+                                c_pl = {}
+
+                            nodes_map = c_pl.get("plejd_nodes") if isinstance(c_pl.get("plejd_nodes"), dict) else {}
+                            if not nodes_map and c_pl.get("mac"):
+                                nodes_map = {
+                                    str(c_pl["mac"]).upper(): {
+                                        "model": c_pl.get("plejd_model") or "Plejd",
+                                        "rssi": c_pl.get("rssi"),
+                                        "last_seen": c_dict.get("last_seen") or now_iso,
+                                    }
+                                }
+
+                            base_group = str(c_dict.get("group_name") or "")
+                            for n_mac, n_info in nodes_map.items():
+                                mac_clean = re.sub(r"[^0-9A-Fa-f]", "", str(n_mac or "")).upper()
+                                if not mac_clean or mac_clean.startswith("MESH"):
+                                    continue
+                                mac_colon = (
+                                    ":".join(mac_clean[i : i + 2] for i in range(0, 12, 2))
+                                    if len(mac_clean) == 12
+                                    else str(n_mac).upper()
+                                )
+                                node_key = f"Plejd-Mesh_{mac_clean}"
+                                info_dict = n_info if isinstance(n_info, dict) else {}
+                                node_model_name = str(info_dict.get("model") or c_pl.get("plejd_model") or "Plejd")
+                                node_rssi = info_dict.get("rssi") if info_dict.get("rssi") is not None else c_pl.get("rssi")
+                                node_seen = str(info_dict.get("last_seen") or c_dict.get("last_seen") or now_iso)
+
+                                node_pl = dict(c_pl)
+                                node_pl.pop("plejd_nodes", None)
+                                node_pl.pop("plejd_node_count", None)
+                                node_pl["mod"] = "BLE"
+                                node_pl["freq"] = 2402.0
+                                node_pl["mac"] = mac_colon
+                                node_pl["id"] = mac_clean
+                                node_pl["model"] = "Plejd-Mesh"
+                                node_pl["category"] = "Switch"
+                                node_pl["manufacturer_name"] = "Plejd"
+                                node_pl["plejd_mesh_id"] = mesh_id_clean
+                                node_pl["plejd_model"] = node_model_name
+                                node_pl["rssi"] = node_rssi
+                                node_pl["time"] = node_seen
+                                node_pl["is_beacon_only"] = False
+                                node_pl_json = json.dumps(node_pl, ensure_ascii=False)
+
+                                conn.execute(
+                                    """
+                                    INSERT INTO devices (
+                                        device_key, model, device_id, alias, group_name, category,
+                                        mqtt_enabled, ha_discovery, ignored, is_new, first_seen, last_seen, hit_count, last_payload
+                                    ) VALUES (?, 'Plejd-Mesh', ?, '', ?, 'Switch', 1, 0, 0, 0, ?, ?, 1, ?)
+                                    ON CONFLICT(device_key) DO UPDATE SET
+                                        last_seen = excluded.last_seen,
+                                        last_payload = excluded.last_payload;
+                                    """,
+                                    (
+                                        node_key,
+                                        mac_clean,
+                                        base_group,
+                                        c_dict.get("first_seen") or node_seen,
+                                        node_seen,
+                                        node_pl_json,
+                                    ),
+                                )
+                                conn.execute(
+                                    """
+                                    INSERT INTO signals (
+                                        timestamp, model, device_id, channel, freq,
+                                        rssi, snr, noise, battery_ok, temperature_c, humidity, payload
+                                    ) VALUES (?, 'Plejd-Mesh', ?, NULL, 2402.0, ?, NULL, NULL, NULL, NULL, NULL, ?);
+                                    """,
+                                    (node_seen, mac_clean, node_rssi, node_pl_json),
+                                )
+                                created_or_updated_keys.append(node_key)
+
+                            conn.execute("DELETE FROM devices WHERE device_key = ?;", (cluster_key,))
+                            conn.execute(
+                                "DELETE FROM signals WHERE model = 'Plejd-Mesh' AND device_id = ?;",
+                                (cluster_id,),
+                            )
+                            deleted_keys.append(cluster_key)
+                finally:
+                    conn.close()
+        else:
+            # Find unaliased individual Plejd nodes for this mesh_id before consolidating
+            with self._lock:
+                conn = self._get_conn()
+                try:
+                    rows = conn.execute(
+                        "SELECT device_key, alias, last_payload FROM devices WHERE model = 'Plejd-Mesh' AND device_key != ?;",
+                        (cluster_key,),
+                    ).fetchall()
+                    for r in rows:
+                        if r["alias"] and str(r["alias"]).strip():
+                            continue
+                        try:
+                            pl = json.loads(r["last_payload"] or "{}")
+                        except Exception:
+                            pl = {}
+                        if isinstance(pl, dict) and str(pl.get("plejd_mesh_id") or "").strip().upper() == mesh_id_clean:
+                            deleted_keys.append(str(r["device_key"]))
+                finally:
+                    conn.close()
+
+            self.consolidate_identical_ble_fingerprints()
+            created_or_updated_keys.append(cluster_key)
+
+        updated_devices = [
+            d for d in (self.get_device(k) for k in created_or_updated_keys) if d is not None
+        ]
+        return {
+            "ok": True,
+            "mesh_id": mesh_id_clean,
+            "expanded": bool(expand),
+            "devices": updated_devices,
+            "deleted_keys": deleted_keys,
+        }
 
     def apply_tesla_vin_matching(self, tesla_vin: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -1087,6 +1413,12 @@ class Database:
                                 if pk in prev_pl and prev_pl[pk] is not None and payload.get(pk) is None:
                                     payload[pk] = prev_pl[pk]
                                     merged_changed = True
+                            if isinstance(prev_pl.get("plejd_nodes"), dict) and isinstance(payload.get("plejd_nodes"), dict):
+                                combined_nodes = dict(prev_pl["plejd_nodes"])
+                                combined_nodes.update(payload["plejd_nodes"])
+                                payload["plejd_nodes"] = combined_nodes
+                                payload["plejd_node_count"] = len(combined_nodes)
+                                merged_changed = True
                             if prev_pl.get("gatt_inspected_at") and prev_pl.get("battery_pct") is not None and payload.get("battery_pct") is None:
                                 payload["battery_pct"] = prev_pl["battery_pct"]
                                 payload["battery_ok"] = 1 if int(prev_pl["battery_pct"]) > 15 else 0
@@ -1230,6 +1562,12 @@ class Database:
                             if pk in prev_pl and prev_pl[pk] is not None and payload.get(pk) is None:
                                 payload[pk] = prev_pl[pk]
                                 merged_changed = True
+                        if isinstance(prev_pl.get("plejd_nodes"), dict) and isinstance(payload.get("plejd_nodes"), dict):
+                            combined_nodes = dict(prev_pl["plejd_nodes"])
+                            combined_nodes.update(payload["plejd_nodes"])
+                            payload["plejd_nodes"] = combined_nodes
+                            payload["plejd_node_count"] = len(combined_nodes)
+                            merged_changed = True
                         if prev_pl.get("gatt_inspected_at") and prev_pl.get("battery_pct") is not None and payload.get("battery_pct") is None:
                             payload["battery_pct"] = prev_pl["battery_pct"]
                             payload["battery_ok"] = 1 if int(prev_pl["battery_pct"]) > 15 else 0

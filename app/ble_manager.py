@@ -57,6 +57,7 @@ BLE_COMPANY_IDS: Dict[int, str] = {
     0x02E5: "Espressif",
     0x02FF: "Silicon Labs",
     0x0310: "Sensi / Emerson",
+    0x0377: "Plejd",
     0x038F: "Xiaomi",
     0x0499: "Ruuvi Innovations",
     0x058E: "Meta",
@@ -271,6 +272,61 @@ FIXED_MAC_SENSOR_MODELS = {
 
 VOLVO_VEHICLE_MODELS = {"ES90", "EX30", "EX90", "EX40", "EC40", "EX60"}
 
+PLEJD_PRODUCTS: Dict[int, str] = {
+    0x01: "DIM-01",
+    0x02: "DIM-02",
+    0x03: "CTR-01",
+    0x04: "GWY-01",
+    0x05: "LED-10",
+    0x06: "WPH-01",
+    0x07: "REL-01",
+    0x0A: "WRT-01",
+    0x0B: "SPR-01",
+    0x0F: "LED-10",
+    0x11: "REL-02",
+    0x14: "DAL-01",
+    0x18: "DIM-01-2P",
+    0x24: "DIM/REL",
+}
+
+
+def decode_plejd_mfg_hex(mfg_hex: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Generically decodes a Plejd BLE manufacturer_data hex string (>= 28 hex chars / 14 bytes).
+    Returns (plejd_model, plejd_mesh_id) or (None, None).
+    """
+    h = re.sub(r"[^0-9A-Fa-f]", "", str(mfg_hex or "")).upper()
+    if len(h) < 28:
+        return None, None
+    try:
+        prod_byte = int(h[6:8], 16)
+        prod_name = PLEJD_PRODUCTS.get(prod_byte, f"Nod 0x{prod_byte:02X}")
+        mesh_id = h[22:28].upper()
+        return prod_name, mesh_id
+    except Exception:
+        return None, None
+
+
+def parse_expanded_plejd_meshes(raw_setting: Any) -> Set[str]:
+    """
+    Parses the 'expanded_plejd_meshes' setting from SQLite into a set of uppercase mesh IDs.
+    """
+    if not raw_setting:
+        return set()
+    if isinstance(raw_setting, (list, tuple, set)):
+        return {str(x).strip().upper() for x in raw_setting if str(x).strip()}
+    s = str(raw_setting).strip()
+    if not s:
+        return set()
+    try:
+        arr = json.loads(s)
+        if isinstance(arr, list):
+            return {str(x).strip().upper() for x in arr if str(x).strip()}
+    except Exception:
+        pass
+    return {x.strip().upper() for x in s.split(",") if x.strip()}
+
+
 SENSOR_NAME_WITH_MAC_SUFFIX_RE = re.compile(
     r"^(ATC_|LYWSD|GVH|IHOMENT_|GOVEE_|LUMI|MIJIA|CGD1|CGG1|QINGPING|RUUVI|BTHOME)",
     re.IGNORECASE,
@@ -338,6 +394,12 @@ def compute_ble_device_id(
     # Case A1: Tesla Vehicles (unique S<16-hex><endpoint> local_name)
     if mod == "Tesla-Vehicle-BLE" or (ln and TESLA_BEACON_RE.match(ln)):
         return (ln if ln else mac_clean), None
+
+    ib_dict = ibeacon_info if isinstance(ibeacon_info, dict) else {}
+
+    # Case A1b: Clustered Plejd Mesh network (when plejd_node_count is present on the cluster payload)
+    if mod == "Plejd-Mesh" and ib_dict.get("plejd_mesh_id") and ib_dict.get("plejd_node_count") is not None:
+        return f"MESH_{str(ib_dict['plejd_mesh_id']).strip().upper()}", None
 
     srv_dict = service_data if isinstance(service_data, dict) else {}
     has_rotating_service = any(
@@ -897,6 +959,7 @@ class BLEManager:
         self._debounce_cache: Dict[str, Tuple[float, str]] = {}
         self._beacon_touch_cache: Dict[str, float] = {}
         self._device_state_cache: Dict[str, Dict[str, Any]] = {}
+        self._plejd_meshes_cache: Dict[str, Dict[str, Dict[str, Any]]] = {}
         self._rssi_ema_cache: Dict[str, float] = {}
         self._ble_device_objects: Dict[str, Any] = {}
         self._oui_cache: Dict[str, str] = {}
@@ -1208,7 +1271,13 @@ class BLEManager:
         self._debounce_cache.clear()
         self._beacon_touch_cache.clear()
         self._device_state_cache.clear()
+        self._plejd_meshes_cache.clear()
         self._rssi_ema_cache.clear()
+
+    def evict_plejd_mesh_cache(self, mesh_id: str) -> None:
+        m_clean = str(mesh_id or "").strip().upper()
+        self._plejd_meshes_cache.pop(m_clean, None)
+        self.evict_device("Plejd-Mesh", f"MESH_{m_clean}")
 
     def evict_device(self, model: str, device_id: str) -> None:
         dev_cache_key = f"{model}:{device_id}"
@@ -1709,10 +1778,48 @@ class BLEManager:
             else:
                 payload["category"] = "Switch"
 
-        # G. Plejd / Bluetooth Mesh (local_name == "P mesh" or Company ID 0x09A3)
-        elif local_name.lower() == "p mesh" or 0x09A3 in mfg_data:
+        # G. Plejd / Bluetooth Mesh (Company ID 0x0377 / 0x09A3 or local_name == "P mesh")
+        elif (
+            local_name.lower() == "p mesh"
+            or 0x0377 in mfg_data
+            or 0x09A3 in mfg_data
+            or payload.get("manufacturer_id") in ("0x0377", "0x09A3")
+        ):
             model = "Plejd-Mesh"
             payload["category"] = "Switch"
+            payload["manufacturer_name"] = "Plejd"
+            plejd_mfg_hex = (
+                mfg_hex_map.get("0x0377")
+                or mfg_hex_map.get("0x09A3")
+                or (next(iter(mfg_hex_map.values())) if mfg_hex_map else "")
+            )
+            plejd_prod_name, mesh_id = decode_plejd_mfg_hex(plejd_mfg_hex)
+            if plejd_prod_name and mesh_id:
+                payload["plejd_mesh_id"] = mesh_id
+                payload["plejd_model"] = plejd_prod_name
+                expanded_meshes = parse_expanded_plejd_meshes(settings.get("expanded_plejd_meshes", "[]"))
+                mac_clean_node = mac.replace(":", "").upper()
+                node_has_alias = False
+                try:
+                    node_has_alias = self._is_known_aliased(mac_clean_node)
+                except Exception:
+                    node_has_alias = False
+
+                if mesh_id not in expanded_meshes and not node_has_alias:
+                    device_id = f"MESH_{mesh_id}"
+                    mesh_nodes = self._plejd_meshes_cache.setdefault(mesh_id, {})
+                    mesh_nodes[mac] = {
+                        "model": plejd_prod_name,
+                        "rssi": rssi,
+                        "last_seen": now_iso,
+                    }
+                    payload["plejd_nodes"] = dict(mesh_nodes)
+                    payload["plejd_node_count"] = len(payload["plejd_nodes"])
+                else:
+                    device_id = mac_clean_node
+                    payload.pop("plejd_nodes", None)
+                    payload.pop("plejd_node_count", None)
+                has_decoded_sensor = True
 
         # H. Xiaomi / Aqara / BTHome / Qingping / RuuviTag
         elif theengs_model:
@@ -1763,8 +1870,9 @@ class BLEManager:
         has_sensor_measurements = any(payload.get(k) is not None for k in telemetry_keys)
         has_real_telemetry = (
             has_sensor_measurements
-            or model in ("Tesla-Vehicle-BLE", "Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE")
+            or model in ("Tesla-Vehicle-BLE", "Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE", "Plejd-Mesh")
             or bool(payload.get("vehicle_status"))
+            or bool(payload.get("plejd_mesh_id"))
         )
         is_beacon_only = not has_real_telemetry
         payload["is_beacon_only"] = is_beacon_only
@@ -1901,6 +2009,8 @@ class BLEManager:
                 "motion",
                 "button",
                 "vehicle_status",
+                "plejd_node_count",
+                "plejd_model",
             )
             if k in payload
         ]

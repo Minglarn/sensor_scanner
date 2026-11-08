@@ -245,7 +245,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.43</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.44</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1702,6 +1702,11 @@
           </div>
         </div>
 
+        <!-- 2A. PLEJD BLE MESH-NÄTVERK (SYNS NÄR ENHETEN TILLHÖR ETT PLEJD MESH) -->
+        <div id="modalPlejdMeshSection" class="hidden bg-slate-50/90 dark:bg-slate-950/80 border border-indigo-500/30 dark:border-indigo-500/30 rounded-xl p-3.5 space-y-3">
+          <!-- Populated via renderModalPlejdMeshSection() -->
+        </div>
+
         <!-- 2B. GATT-PROFIL & KARAKTERISTIKER (SYNS NÄR GATT-INSPEKTION HAR KÖRTS) -->
         <div id="modalGattProfileSection" class="hidden bg-slate-50/90 dark:bg-slate-950/80 border border-sky-500/30 dark:border-sky-500/30 rounded-xl p-3.5 space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
@@ -2085,6 +2090,7 @@
       'service_uuids', 'ble_service_name', 'apple_type', 'tx_power', 'distance_m',
       'beacon_hash', 'tesla_node', 'is_own_vehicle', 'vehicle_status',
       'ibeacon_uuid', 'ibeacon_profile', 'mac_vendor', 'fingerprint_source', 'previous_mac', 'mac_rotations', 'merged_mac_count',
+      'plejd_mesh_id', 'plejd_model', 'plejd_nodes', 'plejd_node_count',
       'gatt_name', 'gatt_appearance',
       'gatt_manufacturer', 'gatt_model', 'gatt_serial', 'gatt_firmware', 'gatt_hardware',
       'gatt_software', 'gatt_services', 'services_count', 'chars_count',
@@ -3186,8 +3192,9 @@
       // 2. If no alias, check BLE local_name / gatt_name (e.g. "Fridge" -> Row 2: "Samsung • BLE-Fridge")
       if (rawLocalName) {
         if (rawLocalName === 'P mesh') {
+          const isExpandedPlejdNode = Boolean(p.plejd_model && (p.plejd_node_count === undefined || p.plejd_node_count === null));
           return {
-            primaryName: 'Plejd-Mesh',
+            primaryName: isExpandedPlejdNode ? `Plejd ${p.plejd_model}` : 'Plejd-Mesh',
             secondaryName: (displayVendor && displayVendor !== 'Plejd-Mesh') ? vendorAndModelSub : ''
           };
         }
@@ -3260,6 +3267,7 @@
         'calculated_power_W', 'local_name', 'manufacturer_name', 'manufacturer_id',
         'service_uuids', 'ble_service_name', 'mac_type', 'apple_type', 'tesla_node',
         'fingerprint_source', 'previous_mac', 'mac_rotations', 'merged_mac_count',
+        'plejd_mesh_id', 'plejd_model', 'plejd_nodes', 'plejd_node_count',
         'is_own_vehicle', 'tx_power', 'distance_m', 'measured_power_1m', 'beacon_hash', 'ibeacon_uuid',
         'ibeacon_profile', 'mac_vendor', 'gatt_name', 'gatt_appearance', 'gatt_manufacturer',
         'gatt_model', 'gatt_serial', 'gatt_firmware', 'gatt_hardware', 'gatt_software',
@@ -3354,6 +3362,47 @@
       const ibProfile = p.ibeacon_profile || (ibUuidUpper ? KNOWN_IBEACON_PROFILES[ibUuidUpper] : '');
       if (ibProfile) {
         addModalOnlyKpi('mdi-bullseye-arrow', 'purple', 'IBEACON-PROFIL', String(ibProfile));
+      }
+
+      if (p.plejd_mesh_id) {
+        const meshIdStr = String(p.plejd_mesh_id);
+        const nodeCnt = p.plejd_node_count !== undefined && p.plejd_node_count !== null ? Number(p.plejd_node_count) : null;
+        if (nodeCnt !== null && !Number.isNaN(nodeCnt)) {
+          addMetric(
+            'mdi-hub-outline',
+            `Mesh #${meshIdStr} • ${nodeCnt} noder`,
+            'indigo',
+            'PLEJD MESH',
+            `Mesh #${meshIdStr}`,
+            `${nodeCnt} noder`
+          );
+          if (p.plejd_model) {
+            addMetric(
+              'mdi-toggle-switch-outline',
+              `Senaste: ${p.plejd_model}`,
+              'teal',
+              'SENASTE NOD',
+              String(p.plejd_model)
+            );
+          }
+        } else {
+          if (p.plejd_model) {
+            addMetric(
+              'mdi-toggle-switch-outline',
+              String(p.plejd_model),
+              'teal',
+              'PLEJD MODELL',
+              String(p.plejd_model)
+            );
+          }
+          addMetric(
+            'mdi-hub-outline',
+            `Mesh #${meshIdStr}`,
+            'indigo',
+            'PLEJD MESH',
+            `Mesh #${meshIdStr}`
+          );
+        }
       }
 
       if (isTeslaModel || p.vehicle_status) {
@@ -6767,6 +6816,7 @@
       }
 
       document.getElementById('modalKpiGrid').innerHTML = kpiCardsHtml.join('');
+      renderModalPlejdMeshSection(payload);
       renderModalGattProfile(payload);
 
       if (Array.isArray(historyList)) {
@@ -6775,6 +6825,139 @@
       }
 
       document.getElementById('modalRawJson').innerHTML = syntaxHighlightJson(payload);
+    }
+
+    function renderModalPlejdMeshSection(payload) {
+      const sec = document.getElementById('modalPlejdMeshSection');
+      if (!sec) return;
+      if (!payload || !payload.plejd_mesh_id) {
+        sec.classList.add('hidden');
+        sec.innerHTML = '';
+        return;
+      }
+
+      const meshId = String(payload.plejd_mesh_id).trim().toUpperCase();
+      const nodesMap = (payload.plejd_nodes && typeof payload.plejd_nodes === 'object') ? payload.plejd_nodes : null;
+      const nodeEntries = nodesMap ? Object.entries(nodesMap) : [];
+      const isCluster = (payload.plejd_node_count !== undefined && payload.plejd_node_count !== null) || String(payload.id || '').toUpperCase().startsWith('MESH_');
+      const nodeCount = nodeEntries.length > 0 ? nodeEntries.length : (Number(payload.plejd_node_count) || 1);
+
+      const actionBtnHtml = isCluster
+        ? `
+          <button
+            type="button"
+            onclick="togglePlejdMeshExpand('${escapeHtml(meshId)}', true)"
+            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-2xs transition cursor-pointer"
+          >
+            <i class="mdi mdi-ungroup"></i>
+            <span>Dela upp i individuella enheter (${nodeCount} st)</span>
+          </button>
+        `
+        : `
+          <button
+            type="button"
+            onclick="togglePlejdMeshExpand('${escapeHtml(meshId)}', false)"
+            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 shadow-2xs transition cursor-pointer"
+          >
+            <i class="mdi mdi-group"></i>
+            <span>Slå ihop Mesh #${escapeHtml(meshId)} till 1 kort</span>
+          </button>
+        `;
+
+      nodeEntries.sort((a, b) => {
+        const tsA = String((a[1] && a[1].last_seen) || '');
+        const tsB = String((b[1] && b[1].last_seen) || '');
+        return tsB.localeCompare(tsA);
+      });
+
+      const nodesTableHtml = (isCluster && nodeEntries.length > 0)
+        ? `
+          <div class="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[10px] uppercase tracking-wider">
+                  <th class="py-1.5 px-3 font-semibold">MAC-adress</th>
+                  <th class="py-1.5 px-3 font-semibold">Plejd-modell</th>
+                  <th class="py-1.5 px-3 font-semibold">Senaste RSSI</th>
+                  <th class="py-1.5 px-3 font-semibold">Senast sedd</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/80 font-mono text-[11px]">
+                ${nodeEntries.map(([nMac, nInfo]) => {
+                  const inf = (nInfo && typeof nInfo === 'object') ? nInfo : {};
+                  const modName = inf.model ? String(inf.model) : 'Plejd';
+                  const rssiStr = (inf.rssi !== undefined && inf.rssi !== null) ? `${inf.rssi} dBm` : '-';
+                  const seenStr = inf.last_seen ? `${formatRelativeAge(inf.last_seen)} (${formatTimestamp(inf.last_seen)})` : '-';
+                  return `
+                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <td class="py-1.5 px-3 font-bold text-slate-800 dark:text-slate-100">${escapeHtml(nMac)}</td>
+                      <td class="py-1.5 px-3">
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30 font-sans font-semibold text-[11px]">
+                          <i class="mdi mdi-toggle-switch-outline text-xs"></i>${escapeHtml(modName)}
+                        </span>
+                      </td>
+                      <td class="py-1.5 px-3 text-slate-600 dark:text-slate-300">${escapeHtml(rssiStr)}</td>
+                      <td class="py-1.5 px-3 text-slate-500 dark:text-slate-400 font-sans text-[11px]">${escapeHtml(seenStr)}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `
+        : '';
+
+      sec.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-2 ${nodesTableHtml ? 'border-b border-slate-200 dark:border-slate-800 pb-2' : ''}">
+          <div class="flex items-center gap-2">
+            <i class="mdi mdi-hub-outline text-base text-indigo-500"></i>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">PLEJD BLE MESH-NÄTVERK (#${escapeHtml(meshId)})</span>
+            <span class="px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 text-[10px] font-mono font-semibold">
+              ${isCluster ? `${nodeCount} noder i kluster` : 'Individuell nod (Expanderat läge)'}
+            </span>
+          </div>
+          ${actionBtnHtml}
+        </div>
+        ${nodesTableHtml}
+      `;
+      sec.classList.remove('hidden');
+    }
+
+    async function togglePlejdMeshExpand(meshId, expand) {
+      if (!meshId) return;
+      try {
+        const res = await fetch(`/api/ble/mesh/${encodeURIComponent(meshId)}/toggle-expand`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expand: Boolean(expand) })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showToast('Kunde inte ändra Plejd Mesh', data.detail || data.error || 'Ett fel uppstod.', 'error');
+          return;
+        }
+        await Promise.all([loadSignals(), loadDevices()]);
+        if (expand) {
+          closeModal();
+          showToast(
+            'Plejd Mesh uppdelat',
+            `Mesh #${meshId} har delats upp i ${(data.devices || []).length} individuella Plejd-enheter.`,
+            'success',
+            4000
+          );
+        } else {
+          const clusterKey = `Plejd-Mesh_MESH_${String(meshId).toUpperCase()}`;
+          showToast(
+            'Plejd Mesh sammanslaget',
+            `Alla icke-namngivna noder i Mesh #${meshId} har slagits ihop till 1 samlat kluster-kort.`,
+            'success',
+            4000
+          );
+          openDeviceModalByKey(clusterKey, 0);
+        }
+      } catch (err) {
+        showToast('Nätverksfel', 'Kunde inte kommunicera med servern.', 'error');
+      }
     }
 
     const KNOWN_GATT_SERVICE_DESCRIPTIONS = {
