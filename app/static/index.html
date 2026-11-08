@@ -245,7 +245,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.42</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.43</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1725,7 +1725,7 @@
               <span>Rå JSON-payload</span>
             </span>
             <div class="flex items-center gap-3">
-              <button type="button" onclick="event.stopPropagation(); copyModalJson();" class="text-sky-600 dark:text-sky-400 hover:underline font-normal normal-case">
+              <button id="btnCopyModalJson" type="button" onclick="copyModalJson(event);" class="text-sky-600 dark:text-sky-400 hover:underline font-normal normal-case">
                 <i class="mdi mdi-content-copy mr-0.5"></i>Kopiera JSON
               </button>
               <i class="mdi mdi-chevron-down text-base transition-transform group-open:rotate-180"></i>
@@ -2084,7 +2084,7 @@
       'manufacturer_data', 'manufacturer_id', 'manufacturer_name', 'service_data',
       'service_uuids', 'ble_service_name', 'apple_type', 'tx_power', 'distance_m',
       'beacon_hash', 'tesla_node', 'is_own_vehicle', 'vehicle_status',
-      'ibeacon_uuid', 'ibeacon_profile', 'mac_vendor', 'fingerprint_source', 'previous_mac', 'mac_rotations',
+      'ibeacon_uuid', 'ibeacon_profile', 'mac_vendor', 'fingerprint_source', 'previous_mac', 'mac_rotations', 'merged_mac_count',
       'gatt_name', 'gatt_appearance',
       'gatt_manufacturer', 'gatt_model', 'gatt_serial', 'gatt_firmware', 'gatt_hardware',
       'gatt_software', 'gatt_services', 'services_count', 'chars_count',
@@ -3259,7 +3259,7 @@
         'effect', 'pulses', 'pulse_count', 'pulses_per_kwh', 'pulses_per_kWh', 'sequence', 'mode',
         'calculated_power_W', 'local_name', 'manufacturer_name', 'manufacturer_id',
         'service_uuids', 'ble_service_name', 'mac_type', 'apple_type', 'tesla_node',
-        'fingerprint_source', 'previous_mac', 'mac_rotations',
+        'fingerprint_source', 'previous_mac', 'mac_rotations', 'merged_mac_count',
         'is_own_vehicle', 'tx_power', 'distance_m', 'measured_power_1m', 'beacon_hash', 'ibeacon_uuid',
         'ibeacon_profile', 'mac_vendor', 'gatt_name', 'gatt_appearance', 'gatt_manufacturer',
         'gatt_model', 'gatt_serial', 'gatt_firmware', 'gatt_hardware', 'gatt_software',
@@ -3316,10 +3316,14 @@
         );
       }
       if (p.fingerprint_source) {
-        const rotSub = p.previous_mac
-          ? `Föreg. MAC: ${p.previous_mac}${p.mac_rotations ? ` (${p.mac_rotations}x)` : ''}`
-          : '';
-        addModalOnlyKpi('mdi-fingerprint', 'sky', 'FINGERPRINT', String(p.fingerprint_source), rotSub);
+        const rotParts = [];
+        if (p.previous_mac) {
+          rotParts.push(`Föreg. MAC: ${p.previous_mac}${p.mac_rotations ? ` (${p.mac_rotations}x)` : ''}`);
+        }
+        if (p.merged_mac_count && Number(p.merged_mac_count) > 1) {
+          rotParts.push(`${p.merged_mac_count} MAC sammanslagna`);
+        }
+        addModalOnlyKpi('mdi-fingerprint', 'sky', 'FINGERPRINT', String(p.fingerprint_source), rotParts.join(' | '));
       }
       if (p.ble_service_name) {
         addModalOnlyKpi('mdi-bluetooth-connect', 'teal', 'TJÄNST', String(p.ble_service_name));
@@ -7056,10 +7060,52 @@
       }
     }
 
-    function copyModalJson() {
-      if (!currentModalPayload) return;
-      navigator.clipboard.writeText(JSON.stringify(currentModalPayload, null, 2));
-      showToast('JSON kopierad', 'Rådata-payload har kopierats till urklipp.', 'info', 3000);
+    async function copyTextToClipboard(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand('copy');
+        return true;
+      } finally {
+        document.body.removeChild(ta);
+      }
+    }
+
+    async function copyModalJson(event) {
+      if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+      const rawJsonText = currentModalPayload
+        ? JSON.stringify(currentModalPayload, null, 2)
+        : (document.getElementById('modalRawJson')?.innerText || '');
+      if (!rawJsonText) return;
+      try {
+        await copyTextToClipboard(rawJsonText);
+        const btn = document.getElementById('btnCopyModalJson');
+        if (btn) {
+          const origHtml = '<i class="mdi mdi-content-copy mr-0.5"></i>Kopiera JSON';
+          btn.innerHTML = '<i class="mdi mdi-check-bold mr-0.5"></i>Kopierad!';
+          btn.classList.add('text-emerald-600', 'dark:text-emerald-400', 'font-semibold');
+          setTimeout(() => {
+            btn.innerHTML = origHtml;
+            btn.classList.remove('text-emerald-600', 'dark:text-emerald-400', 'font-semibold');
+          }, 2000);
+        }
+        showToast('JSON kopierad', 'Rå JSON-payload har kopierats till urklipp.', 'success', 3000);
+      } catch (err) {
+        showToast('Kunde inte kopiera JSON', 'Kunde inte kopiera till urklipp.', 'error', 3000);
+      }
     }
 
     // -----------------------------------------------------------------------

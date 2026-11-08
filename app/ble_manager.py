@@ -269,6 +269,13 @@ FIXED_MAC_SENSOR_MODELS = {
     "Shelly-BLE",
 }
 
+VOLVO_VEHICLE_MODELS = {"ES90", "EX30", "EX90", "EX40", "EC40", "EX60"}
+
+SENSOR_NAME_WITH_MAC_SUFFIX_RE = re.compile(
+    r"^(ATC_|LYWSD|GVH|IHOMENT_|GOVEE_|LUMI|MIJIA|CGD1|CGG1|QINGPING|RUUVI|BTHOME)",
+    re.IGNORECASE,
+)
+
 
 def analyze_mac_type(
     mac: str,
@@ -312,6 +319,8 @@ def compute_ble_device_id(
     ibeacon_info: Optional[Dict[str, Any]],
     is_sensor: bool,
     model: Optional[str] = None,
+    manufacturer_id: Optional[str] = None,
+    service_uuids: Optional[List[str]] = None,
 ) -> Tuple[str, Optional[str]]:
     """
     Computes a deterministic BLE device_id and optional fingerprint_source.
@@ -319,17 +328,16 @@ def compute_ble_device_id(
     - Case B: Passive BLE devices with static service_data (>= 8 hex chars / 4 bytes, e.g. 0000fea0 on HT-A9) -> FP<10-char SHA1>.
     - Case C: iBeacons with rotating MAC -> IB<10-char SHA1>.
     - Case D: Rotating MAC with local_name + manufacturer_data (>= 12 hex chars / 6 bytes) -> FP<10-char SHA1>.
-    - Case E: All other devices -> MAC without colons (never merge solely by local_name).
+    - Case E: Naked rotating MAC beacon with non-empty local_name (e.g. ES90, ACER, SteelSeries) -> FP<10-char SHA1>.
+    - Case F: All other devices -> MAC without colons.
     """
     mac_clean = re.sub(r"[^0-9A-Fa-f]", "", str(mac or "")).upper()
     ln = str(local_name or "").strip()
     mod = str(model or "").strip()
 
-    # Case A1: Tesla / Zeekr / Polestar / Volvo / BMW Vehicles
+    # Case A1: Tesla Vehicles (unique S<16-hex><endpoint> local_name)
     if mod == "Tesla-Vehicle-BLE" or (ln and TESLA_BEACON_RE.match(ln)):
         return (ln if ln else mac_clean), None
-    if mod in ("Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE") and ln:
-        return ln, None
 
     srv_dict = service_data if isinstance(service_data, dict) else {}
     has_rotating_service = any(
@@ -383,7 +391,16 @@ def compute_ble_device_id(
                 fp = hashlib.sha1(f"MFG:{ln}:{mfg_id_str}:{mfg_hex}".encode("utf-8")).hexdigest()[:10].upper()
                 return f"FP{fp}", f"Manufacturer Data ({mfg_id_str})"
 
-    # Case E: All other devices -> MAC without colons (never merge solely by local_name!)
+    # Case E: Naked rotating MAC beacon with non-empty local_name (e.g. ES90, ACER, SteelSeries Arctis Nova 5)
+    if len(ln) >= 2 and not SENSOR_NAME_WITH_MAC_SUFFIX_RE.match(ln):
+        mfg_id_val = str(manufacturer_id or ib_dict.get("manufacturer_id") or "").strip().upper()
+        srv_uuids_raw = service_uuids if service_uuids is not None else ib_dict.get("service_uuids")
+        srv_uuids_sorted = ",".join(sorted(str(u).strip().lower() for u in (srv_uuids_raw or []) if u))
+        sig_base = f"NAMED_ROTATING:{mod}:{ln.upper()}:{mfg_id_val}:{srv_uuids_sorted}"
+        fp = hashlib.sha1(sig_base.encode("utf-8")).hexdigest()[:10].upper()
+        return f"FP{fp}", f"Roterande MAC ({ln})"
+
+    # Case F: All other devices -> MAC without colons
     return (mac_clean or "UNKNOWN"), None
 
 
@@ -1644,8 +1661,11 @@ class BLEManager:
                 device_id = local_name
             has_decoded_sensor = True
 
-        # C. Polestar / Volvo / BMW Vehicles
-        elif any(name_upper.startswith(p) for p in ("POLESTAR", "VOLVO", "VCC", "BMW")):
+        # C. Polestar / Volvo / BMW Vehicles (including Volvo ES90, EX30, EX90, EX40, EC40, EX60)
+        elif (
+            any(name_upper.startswith(p) for p in ("POLESTAR", "VOLVO", "VCC", "BMW"))
+            or name_upper in VOLVO_VEHICLE_MODELS
+        ):
             if name_upper.startswith("POLESTAR"):
                 brand = "Polestar"
             elif name_upper.startswith("BMW"):
@@ -1740,8 +1760,9 @@ class BLEManager:
             "button",
             "state",
         )
+        has_sensor_measurements = any(payload.get(k) is not None for k in telemetry_keys)
         has_real_telemetry = (
-            any(payload.get(k) is not None for k in telemetry_keys)
+            has_sensor_measurements
             or model in ("Tesla-Vehicle-BLE", "Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE")
             or bool(payload.get("vehicle_status"))
         )
@@ -1752,7 +1773,7 @@ class BLEManager:
         mac_type = analyze_mac_type(
             mac,
             mac_vendor=oui_vendor,
-            is_sensor=has_real_telemetry or (model in FIXED_MAC_SENSOR_MODELS),
+            is_sensor=has_sensor_measurements or (model in FIXED_MAC_SENSOR_MODELS),
             service_data=payload.get("service_data"),
         )
         payload["mac_type"] = mac_type
@@ -1773,7 +1794,7 @@ class BLEManager:
             service_data=payload.get("service_data"),
             manufacturer_data=payload.get("manufacturer_data"),
             ibeacon_info=payload,
-            is_sensor=has_real_telemetry,
+            is_sensor=has_sensor_measurements,
             model=model,
         )
         if computed_id:

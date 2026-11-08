@@ -8,7 +8,12 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.ble_manager import FIXED_MAC_SENSOR_MODELS, analyze_mac_type, compute_ble_device_id
+from app.ble_manager import (
+    FIXED_MAC_SENSOR_MODELS,
+    VOLVO_VEHICLE_MODELS,
+    analyze_mac_type,
+    compute_ble_device_id,
+)
 
 logger = logging.getLogger("sensor_scanner.database")
 
@@ -29,6 +34,7 @@ PERSISTENT_HARDWARE_KEYS = (
     "fingerprint_source",
     "previous_mac",
     "mac_rotations",
+    "merged_mac_count",
     "gatt_name",
     "gatt_appearance",
     "gatt_manufacturer",
@@ -713,16 +719,21 @@ class Database:
                         if not is_ble:
                             continue
 
-                        has_real_telemetry = (
-                            any(pl.get(k) is not None for k in telemetry_keys)
-                            or mod_str in ("Tesla-Vehicle-BLE", "Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE")
-                            or bool(pl.get("vehicle_status"))
-                        )
+                        ln_upper = str(pl.get("local_name") or "").strip().upper()
+                        if ln_upper in VOLVO_VEHICLE_MODELS:
+                            mod_str = "Volvo-Vehicle-BLE"
+                            pl["model"] = "Volvo-Vehicle-BLE"
+                            pl["category"] = "Vehicle"
+                            pl["vehicle_status"] = "Digital Key • Inom räckvidd"
+                            pl["is_beacon_only"] = False
+                            d["category"] = "Vehicle"
+
+                        has_sensor_measurements = any(pl.get(k) is not None for k in telemetry_keys)
                         mac_val = str(pl.get("mac") or d.get("device_id") or "").strip().upper()
                         new_mac_type = analyze_mac_type(
                             mac_val,
                             mac_vendor=pl.get("mac_vendor"),
-                            is_sensor=has_real_telemetry or (mod_str in FIXED_MAC_SENSOR_MODELS),
+                            is_sensor=has_sensor_measurements or (mod_str in FIXED_MAC_SENSOR_MODELS),
                             service_data=pl.get("service_data"),
                         )
                         if new_mac_type != "IEEE Public (Fast)":
@@ -735,7 +746,7 @@ class Database:
                             or int(d.get("ha_discovery") or 0) == 1
                             or int(d.get("ignored") or 0) == 1
                         )
-                        if is_protected or has_real_telemetry:
+                        if is_protected or has_sensor_measurements:
                             continue
 
                         computed_id, fp_source = compute_ble_device_id(
@@ -745,7 +756,7 @@ class Database:
                             service_data=pl.get("service_data"),
                             manufacturer_data=pl.get("manufacturer_data"),
                             ibeacon_info=pl,
-                            is_sensor=has_real_telemetry,
+                            is_sensor=has_sensor_measurements,
                             model=mod_str,
                         )
                         if computed_id and (computed_id.startswith("FP") or computed_id.startswith("IB")):
@@ -760,14 +771,20 @@ class Database:
                         target_key = f"{sanitize_key(mod_str)}_{sanitize_key(fp_id)}"
                         if len(group_items) == 1 and group_items[0][0]["device_key"] == target_key:
                             d0, pl0, fp_src0 = group_items[0]
-                            if fp_src0 and pl0.get("fingerprint_source") != fp_src0:
-                                pl0["fingerprint_source"] = fp_src0
+                            if (
+                                (fp_src0 and pl0.get("fingerprint_source") != fp_src0)
+                                or pl0.get("model") != mod_str
+                                or d0.get("model") != mod_str
+                            ):
+                                if fp_src0:
+                                    pl0["fingerprint_source"] = fp_src0
                                 pl0["id"] = fp_id
+                                pl0["model"] = mod_str
                                 pl0["mac_type"] = "Random Private (Roterande)"
                                 pl0.pop("mac_vendor", None)
                                 conn.execute(
-                                    "UPDATE devices SET last_payload = ? WHERE device_key = ?;",
-                                    (json.dumps(pl0, ensure_ascii=False), target_key),
+                                    "UPDATE devices SET model = ?, category = ?, last_payload = ? WHERE device_key = ?;",
+                                    (mod_str, d0.get("category") or "Generic", json.dumps(pl0, ensure_ascii=False), target_key),
                                 )
                             continue
 
@@ -789,17 +806,24 @@ class Database:
                                 unique_macs.append(m)
 
                         newest_pl["id"] = fp_id
+                        newest_pl["model"] = mod_str
                         if fp_src:
                             newest_pl["fingerprint_source"] = fp_src
                         newest_pl["mac_type"] = "Random Private (Roterande)"
                         newest_pl.pop("mac_vendor", None)
-                        if len(unique_macs) > 1:
-                            newest_pl["previous_mac"] = unique_macs[1]
+                        if len(unique_macs) > 1 or len(group_items) > 1:
+                            if len(unique_macs) > 1:
+                                newest_pl["previous_mac"] = unique_macs[1]
                             newest_pl["mac_rotations"] = max(len(unique_macs) - 1, int(newest_pl.get("mac_rotations") or 0))
+                            newest_pl["merged_mac_count"] = max(len(unique_macs), len(group_items), int(newest_pl.get("merged_mac_count") or 0))
 
                         merged_alias = str(existing_target["alias"] if existing_target else newest_d.get("alias") or "")
                         merged_group = str(existing_target["group_name"] if existing_target else newest_d.get("group_name") or "")
-                        merged_cat = str(existing_target["category"] if existing_target else newest_d.get("category") or "Generic")
+                        merged_cat = str(
+                            existing_target["category"]
+                            if (existing_target and existing_target["category"] and existing_target["category"] != "Generic")
+                            else (newest_d.get("category") or "Generic")
+                        )
                         merged_mqtt = int(existing_target["mqtt_enabled"] if existing_target else newest_d.get("mqtt_enabled", 1))
                         merged_ha = int(existing_target["ha_discovery"] if existing_target else newest_d.get("ha_discovery", 0))
                         merged_ignored = int(existing_target["ignored"] if existing_target else newest_d.get("ignored", 0))
@@ -809,7 +833,11 @@ class Database:
                         new_pl_json = json.dumps(newest_pl, ensure_ascii=False)
 
                         old_keys = [x[0]["device_key"] for x in group_items if x[0]["device_key"] != target_key]
-                        old_ids = [x[0]["device_id"] for x in group_items if x[0]["device_id"] != fp_id]
+                        old_model_ids = {
+                            (str(x[0].get("model") or mod_str), str(x[0].get("device_id") or ""))
+                            for x in group_items
+                            if x[0].get("device_id") != fp_id or x[0].get("model") != mod_str
+                        }
 
                         conn.execute(
                             """
@@ -818,7 +846,9 @@ class Database:
                                 mqtt_enabled, ha_discovery, ignored, is_new, first_seen, last_seen, hit_count, last_payload
                             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ON CONFLICT(device_key) DO UPDATE SET
+                                model = excluded.model,
                                 device_id = excluded.device_id,
+                                category = excluded.category,
                                 first_seen = excluded.first_seen,
                                 last_seen = excluded.last_seen,
                                 hit_count = excluded.hit_count,
@@ -847,11 +877,17 @@ class Database:
                             conn.execute("DELETE FROM devices WHERE device_key = ?;", (ok,))
                             merged_clones_count += 1
 
-                        for oid in old_ids:
-                            conn.execute(
-                                "DELETE FROM signals WHERE model = ? AND device_id = ?;",
-                                (mod_str, oid),
-                            )
+                        for old_m, oid in old_model_ids:
+                            if oid:
+                                conn.execute(
+                                    "DELETE FROM signals WHERE model = ? AND device_id = ?;",
+                                    (old_m, oid),
+                                )
+                                if old_m != mod_str:
+                                    conn.execute(
+                                        "DELETE FROM signals WHERE model = ? AND device_id = ?;",
+                                        (mod_str, oid),
+                                    )
 
                 if merged_clones_count > 0:
                     logger.info("Consolidated %d duplicate BLE fingerprint clones in SQLite.", merged_clones_count)
