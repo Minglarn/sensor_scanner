@@ -292,17 +292,18 @@ PLEJD_PRODUCTS: Dict[int, str] = {
 
 def decode_plejd_mfg_hex(mfg_hex: str) -> Tuple[Optional[str], Optional[str]]:
     """
-    Generically decodes a Plejd BLE manufacturer_data hex string (>= 28 hex chars / 14 bytes).
-    Returns (plejd_model, plejd_mesh_id) or (None, None).
+    Generically decodes a Plejd BLE manufacturer_data hex string (0x0377 / 0x09A3).
+    Note: Bytes 11-13 (h[22:28]) are Plejd's encrypted mesh sequence/time counter,
+    NOT a static mesh ID. Unnamed Plejd nodes are therefore grouped under 'CLUSTER'.
+    Returns (plejd_model, "CLUSTER") or (None, None).
     """
     h = re.sub(r"[^0-9A-Fa-f]", "", str(mfg_hex or "")).upper()
-    if len(h) < 28:
+    if len(h) < 8:
         return None, None
     try:
         prod_byte = int(h[6:8], 16)
         prod_name = PLEJD_PRODUCTS.get(prod_byte, f"Nod 0x{prod_byte:02X}")
-        mesh_id = h[22:28].upper()
-        return prod_name, mesh_id
+        return prod_name, "CLUSTER"
     except Exception:
         return None, None
 
@@ -397,9 +398,9 @@ def compute_ble_device_id(
 
     ib_dict = ibeacon_info if isinstance(ibeacon_info, dict) else {}
 
-    # Case A1b: Clustered Plejd Mesh network (when plejd_node_count is present on the cluster payload)
-    if mod == "Plejd-Mesh" and ib_dict.get("plejd_mesh_id") and ib_dict.get("plejd_node_count") is not None:
-        return f"MESH_{str(ib_dict['plejd_mesh_id']).strip().upper()}", None
+    # Case A1b: Clustered Plejd Mesh network (all unnamed Plejd pucks consolidated under CLUSTER)
+    if mod == "Plejd-Mesh" and (ib_dict.get("id") == "CLUSTER" or ib_dict.get("plejd_node_count") is not None):
+        return "CLUSTER", None
 
     srv_dict = service_data if isinstance(service_data, dict) else {}
     has_rotating_service = any(
@@ -960,6 +961,8 @@ class BLEManager:
         self._beacon_touch_cache: Dict[str, float] = {}
         self._device_state_cache: Dict[str, Dict[str, Any]] = {}
         self._plejd_meshes_cache: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        self._plejd_cluster_nodes: Dict[str, Dict[str, Any]] = {}
+        self._plejd_model_by_mac: Dict[str, str] = {}
         self._rssi_ema_cache: Dict[str, float] = {}
         self._ble_device_objects: Dict[str, Any] = {}
         self._oui_cache: Dict[str, str] = {}
@@ -1272,11 +1275,66 @@ class BLEManager:
         self._beacon_touch_cache.clear()
         self._device_state_cache.clear()
         self._plejd_meshes_cache.clear()
+        self._plejd_cluster_nodes.clear()
         self._rssi_ema_cache.clear()
+
+    def seed_plejd_cache(
+        self,
+        cluster_nodes: Optional[Dict[str, Dict[str, Any]]] = None,
+        model_by_mac: Optional[Dict[str, str]] = None,
+    ) -> None:
+        if isinstance(model_by_mac, dict):
+            for m_k, m_val in model_by_mac.items():
+                mc = re.sub(r"[^0-9A-Fa-f]", "", str(m_k or "")).upper()
+                if len(mc) == 12 and m_val:
+                    self._plejd_model_by_mac[mc] = str(m_val)
+                    mac_colon = ":".join(mc[i : i + 2] for i in range(0, 12, 2))
+                    st = self._device_state_cache.setdefault(mac_colon, {})
+                    st["is_plejd"] = True
+                    st["plejd_model"] = str(m_val)
+        if isinstance(cluster_nodes, dict):
+            for mac_k, info in cluster_nodes.items():
+                if not isinstance(info, dict):
+                    continue
+                mc = re.sub(r"[^0-9A-Fa-f]", "", str(info.get("mac_clean") or mac_k or "")).upper()
+                if len(mc) != 12:
+                    continue
+                mac_colon = ":".join(mc[i : i + 2] for i in range(0, 12, 2))
+                mod_name = str(info.get("model") or self._plejd_model_by_mac.get(mc) or "Plejd Nod")
+                self._plejd_model_by_mac[mc] = mod_name
+                st = self._device_state_cache.setdefault(mac_colon, {})
+                st["is_plejd"] = True
+                st["plejd_model"] = mod_name
+                self._plejd_cluster_nodes[mac_colon] = {
+                    "mac": mac_colon,
+                    "mac_clean": mc,
+                    "model": mod_name,
+                    "rssi": info.get("rssi"),
+                    "distance_m": info.get("distance_m"),
+                    "last_seen": info.get("last_seen"),
+                }
+
+    def promote_plejd_node(self, mac: str, plejd_model: str = "") -> None:
+        mc = re.sub(r"[^0-9A-Fa-f]", "", str(mac or "")).upper()
+        if len(mc) == 12:
+            mac_colon = ":".join(mc[i : i + 2] for i in range(0, 12, 2))
+            self._plejd_cluster_nodes.pop(mac_colon, None)
+            if plejd_model:
+                self._plejd_model_by_mac[mc] = str(plejd_model)
+            st = self._device_state_cache.setdefault(mac_colon, {})
+            st["is_plejd"] = True
+            if plejd_model:
+                st["plejd_model"] = str(plejd_model)
+            self._debounce_cache.pop(f"Plejd-Mesh:{mc}", None)
+            self._beacon_touch_cache.pop(f"Plejd-Mesh:{mc}", None)
+        self._debounce_cache.pop("Plejd-Mesh:CLUSTER", None)
+        self._beacon_touch_cache.pop("Plejd-Mesh:CLUSTER", None)
 
     def evict_plejd_mesh_cache(self, mesh_id: str) -> None:
         m_clean = str(mesh_id or "").strip().upper()
         self._plejd_meshes_cache.pop(m_clean, None)
+        self._plejd_cluster_nodes.clear()
+        self.evict_device("Plejd-Mesh", "CLUSTER")
         self.evict_device("Plejd-Mesh", f"MESH_{m_clean}")
 
     def evict_device(self, model: str, device_id: str) -> None:
@@ -1285,9 +1343,12 @@ class BLEManager:
         self._debounce_cache.pop(dev_cache_key, None)
         self._beacon_touch_cache.pop(dev_cache_key, None)
         self._rssi_ema_cache.pop(dev_cache_key, None)
+        if model == "Plejd-Mesh" and device_id == "CLUSTER":
+            self._plejd_cluster_nodes.clear()
         if len(device_id) == 12:
             mac_fmt = ":".join(device_id[i : i + 2] for i in range(0, 12, 2)).upper()
             self._device_state_cache.pop(mac_fmt, None)
+            self._plejd_cluster_nodes.pop(mac_fmt, None)
 
     def get_status(self) -> Dict[str, Any]:
         settings = self._get_settings()
@@ -1778,48 +1839,82 @@ class BLEManager:
             else:
                 payload["category"] = "Switch"
 
-        # G. Plejd / Bluetooth Mesh (Company ID 0x0377 / 0x09A3 or local_name == "P mesh")
+        # G. Plejd / Bluetooth Mesh (Company ID 0x0377 / 0x09A3, local_name == "P mesh", or UUID 31ba0001-...)
         elif (
             local_name.lower() == "p mesh"
             or 0x0377 in mfg_data
             or 0x09A3 in mfg_data
             or payload.get("manufacturer_id") in ("0x0377", "0x09A3")
+            or any("31ba0001" in u for u in uuids_lower)
+            or payload.get("ble_service_name") == "Plejd BLE Mesh"
+            or cached_state.get("is_plejd") is True
+            or mac.replace(":", "").upper() in self._plejd_model_by_mac
         ):
             model = "Plejd-Mesh"
             payload["category"] = "Switch"
             payload["manufacturer_name"] = "Plejd"
+            cached_state["is_plejd"] = True
+            mac_clean_node = mac.replace(":", "").upper()
             plejd_mfg_hex = (
                 mfg_hex_map.get("0x0377")
                 or mfg_hex_map.get("0x09A3")
                 or (next(iter(mfg_hex_map.values())) if mfg_hex_map else "")
             )
-            plejd_prod_name, mesh_id = decode_plejd_mfg_hex(plejd_mfg_hex)
-            if plejd_prod_name and mesh_id:
-                payload["plejd_mesh_id"] = mesh_id
-                payload["plejd_model"] = plejd_prod_name
-                expanded_meshes = parse_expanded_plejd_meshes(settings.get("expanded_plejd_meshes", "[]"))
-                mac_clean_node = mac.replace(":", "").upper()
-                node_has_alias = False
-                try:
-                    node_has_alias = self._is_known_aliased(mac_clean_node)
-                except Exception:
-                    node_has_alias = False
+            decoded_prod_name, _ = decode_plejd_mfg_hex(plejd_mfg_hex)
+            if decoded_prod_name:
+                self._plejd_model_by_mac[mac_clean_node] = decoded_prod_name
+                cached_state["plejd_model"] = decoded_prod_name
+            plejd_prod_name = (
+                decoded_prod_name
+                or self._plejd_model_by_mac.get(mac_clean_node)
+                or cached_state.get("plejd_model")
+                or "Plejd Nod"
+            )
+            self._plejd_model_by_mac[mac_clean_node] = plejd_prod_name
+            payload["plejd_model"] = plejd_prod_name
 
-                if mesh_id not in expanded_meshes and not node_has_alias:
-                    device_id = f"MESH_{mesh_id}"
-                    mesh_nodes = self._plejd_meshes_cache.setdefault(mesh_id, {})
-                    mesh_nodes[mac] = {
-                        "model": plejd_prod_name,
-                        "rssi": rssi,
-                        "last_seen": now_iso,
-                    }
-                    payload["plejd_nodes"] = dict(mesh_nodes)
-                    payload["plejd_node_count"] = len(payload["plejd_nodes"])
-                else:
-                    device_id = mac_clean_node
-                    payload.pop("plejd_nodes", None)
-                    payload.pop("plejd_node_count", None)
-                has_decoded_sensor = True
+            # Compute EMA smoothed RSSI and distance_m per physical Plejd puck
+            node_distance_m: Optional[float] = None
+            node_smoothed_rssi: Optional[int] = rssi
+            if rssi is not None:
+                try:
+                    cur_node_rssi = float(rssi)
+                    node_ema_key = f"Plejd-Node:{mac_clean_node}"
+                    prev_node_ema = self._rssi_ema_cache.get(node_ema_key)
+                    sm_node_rssi = (0.4 * cur_node_rssi + 0.6 * prev_node_ema) if prev_node_ema is not None else cur_node_rssi
+                    self._rssi_ema_cache[node_ema_key] = sm_node_rssi
+                    node_smoothed_rssi = int(round(sm_node_rssi))
+                    node_distance_m = round(10.0 ** ((-59.0 - sm_node_rssi) / (10.0 * 2.4)), 1)
+                except (ValueError, TypeError):
+                    pass
+
+            node_has_alias = False
+            try:
+                node_has_alias = self._is_known_aliased(mac_clean_node)
+            except Exception:
+                node_has_alias = False
+
+            if node_has_alias:
+                # Named individual Plejd puck gets its own card (Plejd-Mesh_{mac_clean_node})
+                device_id = mac_clean_node
+                self._plejd_cluster_nodes.pop(mac, None)
+                payload.pop("plejd_nodes", None)
+                payload.pop("plejd_node_count", None)
+            else:
+                # All unnamed Plejd pucks are consolidated into 1 single shared cluster card: Plejd-Mesh_CLUSTER
+                device_id = "CLUSTER"
+                self._plejd_cluster_nodes[mac] = {
+                    "mac": mac,
+                    "mac_clean": mac_clean_node,
+                    "model": plejd_prod_name,
+                    "rssi": node_smoothed_rssi if node_smoothed_rssi is not None else rssi,
+                    "distance_m": node_distance_m,
+                    "last_seen": now_iso,
+                }
+                payload["plejd_nodes"] = dict(self._plejd_cluster_nodes)
+                payload["plejd_node_count"] = len(payload["plejd_nodes"])
+            payload["id"] = device_id
+            has_decoded_sensor = True
 
         # H. Xiaomi / Aqara / BTHome / Qingping / RuuviTag
         elif theengs_model:
@@ -1905,7 +2000,7 @@ class BLEManager:
             is_sensor=has_sensor_measurements,
             model=model,
         )
-        if computed_id:
+        if computed_id and not (model == "Plejd-Mesh" and device_id == "CLUSTER"):
             device_id = computed_id
         if fp_source:
             payload["fingerprint_source"] = fp_source
@@ -1935,7 +2030,18 @@ class BLEManager:
 
         # Calculate estimated distance (distance_m) with EMA RSSI smoothing and Log-Distance Path Loss (n = 2.4)
         dev_cache_key = f"{model}:{device_id}"
-        if rssi is not None:
+        if model == "Plejd-Mesh" and device_id == "CLUSTER" and self._plejd_cluster_nodes:
+            # For the consolidated Plejd cluster card, report the strongest (closest) node's RSSI & distance
+            best_node = max(
+                self._plejd_cluster_nodes.values(),
+                key=lambda n: float(n.get("rssi")) if n.get("rssi") is not None else -999.0,
+            )
+            if best_node.get("rssi") is not None:
+                payload["rssi"] = int(round(float(best_node["rssi"])))
+            if best_node.get("distance_m") is not None:
+                payload["distance_m"] = float(best_node["distance_m"])
+                payload["measured_power_1m"] = -59
+        elif rssi is not None:
             try:
                 cur_rssi = float(rssi)
                 prev_smoothed = self._rssi_ema_cache.get(dev_cache_key)
@@ -1994,24 +2100,39 @@ class BLEManager:
         # -------------------------------------------------------------------
         now_mono = time.monotonic()
         dev_cache_key = f"{model}:{device_id}"
+        metric_keys_for_sig = (
+            "temperature_C",
+            "humidity",
+            "pressure_hPa",
+            "battery_pct",
+            "voltage_V",
+            "lux",
+            "moisture",
+            "state",
+            "contact_open",
+            "motion",
+            "button",
+            "vehicle_status",
+            "plejd_node_count",
+        ) if (model == "Plejd-Mesh" and device_id == "CLUSTER") else (
+            "temperature_C",
+            "humidity",
+            "pressure_hPa",
+            "battery_pct",
+            "voltage_V",
+            "lux",
+            "moisture",
+            "state",
+            "contact_open",
+            "motion",
+            "button",
+            "vehicle_status",
+            "plejd_node_count",
+            "plejd_model",
+        )
         metric_sig_parts = [
             f"{k}={payload.get(k)}"
-            for k in (
-                "temperature_C",
-                "humidity",
-                "pressure_hPa",
-                "battery_pct",
-                "voltage_V",
-                "lux",
-                "moisture",
-                "state",
-                "contact_open",
-                "motion",
-                "button",
-                "vehicle_status",
-                "plejd_node_count",
-                "plejd_model",
-            )
+            for k in metric_keys_for_sig
             if k in payload
         ]
         metric_sig = "|".join(metric_sig_parts) if metric_sig_parts else (local_name or "beacon")

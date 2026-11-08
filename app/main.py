@@ -625,6 +625,11 @@ async def lifespan(app: FastAPI):
     main_loop = asyncio.get_running_loop()
 
     await asyncio.to_thread(db.expire_new_devices)
+    try:
+        c_nodes, m_by_mac = await asyncio.to_thread(db.get_plejd_cache_seed)
+        ble_manager.seed_plejd_cache(c_nodes, m_by_mac)
+    except Exception as exc:
+        logger.debug("Error seeding Plejd cache: %s", exc)
     settings = db.get_settings()
     mqtt_manager.configure_and_connect(settings)
     await rtl_manager.start()
@@ -710,6 +715,12 @@ class DbMaintenanceRequest(BaseModel):
 
 class PlejdMeshToggleRequest(BaseModel):
     expand: bool = True
+
+
+class PlejdPromoteNodeRequest(BaseModel):
+    mac: str
+    alias: str
+    plejd_model: Optional[str] = ""
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -1054,6 +1065,28 @@ async def api_inspect_ble_device(mac: str):
         **res,
         "device": updated_devs[0] if updated_devs else None,
     }
+
+
+@app.post("/api/plejd/promote-node")
+async def api_promote_plejd_node(req: PlejdPromoteNodeRequest):
+    result = await asyncio.to_thread(
+        db.promote_plejd_node,
+        req.mac,
+        req.alias,
+        req.plejd_model or "",
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Kunde inte spara Plejd-enheten."))
+
+    ble_manager.promote_plejd_node(req.mac, result.get("plejd_model") or "")
+    promoted_dev = result.get("promoted_device")
+    cluster_dev = result.get("cluster_device")
+    if promoted_dev:
+        await ws_manager.broadcast({"type": "device_updated", "device": promoted_dev})
+    if cluster_dev:
+        await ws_manager.broadcast({"type": "device_updated", "device": cluster_dev})
+    await broadcast_full_status()
+    return result
 
 
 @app.post("/api/ble/mesh/{mesh_id}/toggle-expand")

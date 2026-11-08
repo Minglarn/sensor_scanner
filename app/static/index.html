@@ -241,7 +241,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.46</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.47</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -3252,12 +3252,15 @@
       }
 
       // 2. If no alias, check BLE local_name / gatt_name (e.g. "Fridge" -> Row 2: "Samsung • BLE-Fridge")
-      if (rawLocalName) {
-        if (rawLocalName === 'P mesh') {
-          const isExpandedPlejdNode = Boolean(p.plejd_model && (p.plejd_node_count === undefined || p.plejd_node_count === null));
+      if (rawLocalName || rawModel === 'Plejd-Mesh') {
+        if (rawLocalName === 'P mesh' || rawModel === 'Plejd-Mesh') {
+          const devIdUpper = String(obj.device_id || p.id || '').trim().toUpperCase();
+          const isClusterPlejd = devIdUpper === 'CLUSTER' || (p.plejd_node_count !== undefined && p.plejd_node_count !== null);
           return {
-            primaryName: isExpandedPlejdNode ? `Plejd ${p.plejd_model}` : 'Plejd-Mesh',
-            secondaryName: (displayVendor && displayVendor !== 'Plejd-Mesh') ? vendorAndModelSub : ''
+            primaryName: isClusterPlejd
+              ? 'Plejd-Mesh (Kluster)'
+              : (p.plejd_model ? `Plejd ${p.plejd_model}` : 'Plejd-Mesh'),
+            secondaryName: (displayVendor && displayVendor !== 'Plejd-Mesh') ? vendorAndModelSub : 'Plejd • Plejd-Mesh'
           };
         }
         return {
@@ -3426,43 +3429,40 @@
         addModalOnlyKpi('mdi-bullseye-arrow', 'purple', 'IBEACON-PROFIL', String(ibProfile));
       }
 
-      if (p.plejd_mesh_id) {
-        const meshIdStr = String(p.plejd_mesh_id);
-        const nodeCnt = p.plejd_node_count !== undefined && p.plejd_node_count !== null ? Number(p.plejd_node_count) : null;
-        if (nodeCnt !== null && !Number.isNaN(nodeCnt)) {
+      if (modelStr === 'Plejd-Mesh' || p.plejd_nodes || p.plejd_model || p.plejd_mesh_id) {
+        const nodesObj = (p.plejd_nodes && typeof p.plejd_nodes === 'object') ? p.plejd_nodes : null;
+        const nodeCnt = nodesObj
+          ? Object.keys(nodesObj).length
+          : (p.plejd_node_count !== undefined && p.plejd_node_count !== null ? Number(p.plejd_node_count) : null);
+        const devIdUpper = String((sig && sig.device_id) || p.id || '').trim().toUpperCase();
+        const isClusterCard = devIdUpper === 'CLUSTER' || devIdUpper.startsWith('MESH_') || (nodeCnt !== null && !Number.isNaN(nodeCnt));
+        if (isClusterCard) {
+          const cntVal = nodeCnt !== null && !Number.isNaN(nodeCnt) ? nodeCnt : 0;
           addMetric(
             'mdi-hub-outline',
-            `Mesh #${meshIdStr} • ${nodeCnt} noder`,
+            `Plejd BLE Mesh • ${cntVal} noder`,
             'indigo',
-            'PLEJD MESH',
-            `Mesh #${meshIdStr}`,
-            `${nodeCnt} noder`
+            'PLEJD KLUSTER',
+            `${cntVal} upptäckta noder`,
+            'Oidentifierade puckar'
           );
           if (p.plejd_model) {
             addMetric(
               'mdi-toggle-switch-outline',
-              `Senaste: ${p.plejd_model}`,
+              `Starkaste: ${p.plejd_model}`,
               'teal',
-              'SENASTE NOD',
+              'STARKASTE NOD',
               String(p.plejd_model)
             );
           }
-        } else {
-          if (p.plejd_model) {
-            addMetric(
-              'mdi-toggle-switch-outline',
-              String(p.plejd_model),
-              'teal',
-              'PLEJD MODELL',
-              String(p.plejd_model)
-            );
-          }
+        } else if (p.plejd_model) {
           addMetric(
-            'mdi-hub-outline',
-            `Mesh #${meshIdStr}`,
-            'indigo',
-            'PLEJD MESH',
-            `Mesh #${meshIdStr}`
+            'mdi-toggle-switch-outline',
+            String(p.plejd_model),
+            'teal',
+            'PLEJD MODELL',
+            String(p.plejd_model),
+            'Egen Plejd-enhet'
           );
         }
       }
@@ -6941,74 +6941,115 @@
     function renderModalPlejdMeshSection(payload) {
       const sec = document.getElementById('modalPlejdMeshSection');
       if (!sec) return;
-      if (!payload || !payload.plejd_mesh_id) {
+      const nodesMap = (payload && payload.plejd_nodes && typeof payload.plejd_nodes === 'object') ? payload.plejd_nodes : null;
+      const nodeEntries = nodesMap ? Object.entries(nodesMap) : [];
+      const devIdStr = String((payload && payload.id) || '').trim().toUpperCase();
+      const isCluster =
+        String(currentModalDeviceKey || '') === 'Plejd-Mesh_CLUSTER' ||
+        devIdStr === 'CLUSTER' ||
+        devIdStr.startsWith('MESH_') ||
+        nodeEntries.length > 0;
+
+      if (!payload || (!isCluster && !payload.plejd_model)) {
         sec.classList.add('hidden');
         sec.innerHTML = '';
         return;
       }
 
-      const meshId = String(payload.plejd_mesh_id).trim().toUpperCase();
-      const nodesMap = (payload.plejd_nodes && typeof payload.plejd_nodes === 'object') ? payload.plejd_nodes : null;
-      const nodeEntries = nodesMap ? Object.entries(nodesMap) : [];
-      const isCluster = (payload.plejd_node_count !== undefined && payload.plejd_node_count !== null) || String(payload.id || '').toUpperCase().startsWith('MESH_');
-      const nodeCount = nodeEntries.length > 0 ? nodeEntries.length : (Number(payload.plejd_node_count) || 1);
-
-      const actionBtnHtml = isCluster
-        ? `
-          <button
-            type="button"
-            onclick="togglePlejdMeshExpand('${escapeHtml(meshId)}', true)"
-            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-2xs transition cursor-pointer"
-          >
-            <i class="mdi mdi-ungroup"></i>
-            <span>Dela upp i individuella enheter (${nodeCount} st)</span>
-          </button>
-        `
-        : `
-          <button
-            type="button"
-            onclick="togglePlejdMeshExpand('${escapeHtml(meshId)}', false)"
-            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 shadow-2xs transition cursor-pointer"
-          >
-            <i class="mdi mdi-group"></i>
-            <span>Slå ihop Mesh #${escapeHtml(meshId)} till 1 kort</span>
-          </button>
+      if (!isCluster) {
+        // Individual named Plejd puck
+        sec.innerHTML = `
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <i class="mdi mdi-toggle-switch-outline text-base text-teal-500"></i>
+              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">DEDIKERAD PLEJD-ENHET (${escapeHtml(payload.plejd_model || 'Plejd')})</span>
+              <span class="px-2 py-0.5 rounded-md bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30 text-[10px] font-mono font-semibold">
+                MAC: ${escapeHtml(payload.mac || devIdStr)}
+              </span>
+            </div>
+            <span class="text-[11px] text-slate-500 dark:text-slate-400">
+              Utbruten ur Plejd-Mesh_CLUSTER som eget kort
+            </span>
+          </div>
         `;
+        sec.classList.remove('hidden');
+        return;
+      }
 
+      // Sort discovered Plejd nodes by strongest RSSI first (closest physical pucks at the top)
       nodeEntries.sort((a, b) => {
-        const tsA = String((a[1] && a[1].last_seen) || '');
-        const tsB = String((b[1] && b[1].last_seen) || '');
-        return tsB.localeCompare(tsA);
+        const rssiA = (a[1] && a[1].rssi !== undefined && a[1].rssi !== null) ? Number(a[1].rssi) : -999;
+        const rssiB = (b[1] && b[1].rssi !== undefined && b[1].rssi !== null) ? Number(b[1].rssi) : -999;
+        if (rssiB !== rssiA) return rssiB - rssiA;
+        return String(a[0] || '').localeCompare(String(b[0] || ''));
       });
 
-      const nodesTableHtml = (isCluster && nodeEntries.length > 0)
+      const nodeCount = nodeEntries.length > 0 ? nodeEntries.length : (Number(payload.plejd_node_count) || 0);
+
+      const nodesTableHtml = nodeEntries.length > 0
         ? `
           <div class="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900">
             <table class="w-full text-left border-collapse text-xs">
               <thead>
                 <tr class="bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[10px] uppercase tracking-wider">
-                  <th class="py-1.5 px-3 font-semibold">MAC-adress</th>
-                  <th class="py-1.5 px-3 font-semibold">Plejd-modell</th>
-                  <th class="py-1.5 px-3 font-semibold">Senaste RSSI</th>
-                  <th class="py-1.5 px-3 font-semibold">Senast sedd</th>
+                  <th class="py-2 px-3 font-semibold">MAC-adress</th>
+                  <th class="py-2 px-3 font-semibold">Modell</th>
+                  <th class="py-2 px-3 font-semibold">Signal &amp; Avstånd</th>
+                  <th class="py-2 px-3 font-semibold">Senast sedd</th>
+                  <th class="py-2 px-3 font-semibold">Bryt ut som eget kort</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/80 font-mono text-[11px]">
-                ${nodeEntries.map(([nMac, nInfo]) => {
+                ${nodeEntries.map(([nMac, nInfo], idx) => {
                   const inf = (nInfo && typeof nInfo === 'object') ? nInfo : {};
-                  const modName = inf.model ? String(inf.model) : 'Plejd';
-                  const rssiStr = (inf.rssi !== undefined && inf.rssi !== null) ? `${inf.rssi} dBm` : '-';
-                  const seenStr = inf.last_seen ? `${formatRelativeAge(inf.last_seen)} (${formatTimestamp(inf.last_seen)})` : '-';
+                  const modName = inf.model ? String(inf.model) : 'Plejd Nod';
+                  const hasRssi = inf.rssi !== undefined && inf.rssi !== null && !Number.isNaN(Number(inf.rssi));
+                  const rssiNum = hasRssi ? Number(inf.rssi) : null;
+                  let distM = (inf.distance_m !== undefined && inf.distance_m !== null && !Number.isNaN(Number(inf.distance_m)))
+                    ? Number(inf.distance_m)
+                    : null;
+                  if (distM === null && rssiNum !== null) {
+                    distM = Math.round(Math.pow(10, (-59.0 - rssiNum) / 24.0) * 10) / 10;
+                  }
+                  const distText = distM !== null ? ` (~${distM.toFixed(1)} m)` : '';
+                  const sigAndDistStr = rssiNum !== null ? `${rssiNum} dBm${distText}` : '-';
+                  let sigColorCls = 'text-slate-600 dark:text-slate-300';
+                  if (rssiNum !== null) {
+                    if (rssiNum >= -75) sigColorCls = 'text-emerald-600 dark:text-emerald-400 font-semibold';
+                    else if (rssiNum >= -88) sigColorCls = 'text-sky-600 dark:text-sky-400 font-semibold';
+                    else sigColorCls = 'text-amber-600 dark:text-amber-400';
+                  }
+                  const seenStr = inf.last_seen ? `${formatRelativeTime(inf.last_seen)} (${formatTimestamp(inf.last_seen)})` : '-';
+                  const inputId = `plejdPromoteAlias_${idx}`;
                   return `
                     <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                      <td class="py-1.5 px-3 font-bold text-slate-800 dark:text-slate-100">${escapeHtml(nMac)}</td>
-                      <td class="py-1.5 px-3">
+                      <td class="py-2 px-3 font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">${escapeHtml(nMac)}</td>
+                      <td class="py-2 px-3 whitespace-nowrap">
                         <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30 font-sans font-semibold text-[11px]">
                           <i class="mdi mdi-toggle-switch-outline text-xs"></i>${escapeHtml(modName)}
                         </span>
                       </td>
-                      <td class="py-1.5 px-3 text-slate-600 dark:text-slate-300">${escapeHtml(rssiStr)}</td>
-                      <td class="py-1.5 px-3 text-slate-500 dark:text-slate-400 font-sans text-[11px]">${escapeHtml(seenStr)}</td>
+                      <td class="py-2 px-3 whitespace-nowrap ${sigColorCls}">${escapeHtml(sigAndDistStr)}</td>
+                      <td class="py-2 px-3 text-slate-500 dark:text-slate-400 font-sans text-[11px] whitespace-nowrap">${escapeHtml(seenStr)}</td>
+                      <td class="py-1.5 px-3 font-sans">
+                        <div class="flex items-center gap-1.5 min-w-[260px]">
+                          <input
+                            type="text"
+                            id="${inputId}"
+                            placeholder="Alias (t.ex. Plejd Förråd)..."
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();promotePlejdNode('${escapeHtml(nMac)}','${escapeHtml(modName)}','${inputId}');}"
+                            class="flex-1 min-w-[140px] px-2 py-1 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                          />
+                          <button
+                            type="button"
+                            onclick="promotePlejdNode('${escapeHtml(nMac)}', '${escapeHtml(modName)}', '${inputId}')"
+                            class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0"
+                          >
+                            <i class="mdi mdi-plus-box-outline text-xs"></i>
+                            <span>Spara som egen enhet</span>
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   `;
                 }).join('')}
@@ -7016,23 +7057,69 @@
             </table>
           </div>
         `
-        : '';
+        : `<div class="text-xs text-slate-500 dark:text-slate-400 py-2">Inga oidentifierade Plejd-noder i klustret just nu.</div>`;
 
       sec.innerHTML = `
         <div class="flex flex-wrap items-center justify-between gap-2 ${nodesTableHtml ? 'border-b border-slate-200 dark:border-slate-800 pb-2' : ''}">
           <div class="flex items-center gap-2">
             <i class="mdi mdi-hub-outline text-base text-indigo-500"></i>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">PLEJD BLE MESH-NÄTVERK (#${escapeHtml(meshId)})</span>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">UPPTÄCKTA PLEJD-NODER I RADIONÄTVERKET (SORTERADE EFTER SIGNALSTYRKA)</span>
             <span class="px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 text-[10px] font-mono font-semibold">
-              ${isCluster ? `${nodeCount} noder i kluster` : 'Individuell nod (Expanderat läge)'}
+              ${nodeCount} noder i kluster
             </span>
           </div>
-          ${actionBtnHtml}
+          <span class="text-[11px] text-slate-500 dark:text-slate-400">
+            Ge en puck ett eget Alias för att bryta ut den som ett eget kort i signalvyn
+          </span>
         </div>
         ${nodesTableHtml}
       `;
       sec.classList.remove('hidden');
     }
+
+    async function promotePlejdNode(mac, plejdModel, inputId) {
+      const inputEl = document.getElementById(inputId);
+      const aliasVal = inputEl ? String(inputEl.value || '').trim() : '';
+      if (!aliasVal) {
+        if (inputEl) inputEl.focus();
+        showToast('Ange ett Alias först', 'Skriv in ett namn (t.ex. "Plejd Förråd") i fältet innan du sparar enheten.', 'warning', 4000);
+        return;
+      }
+      try {
+        const res = await fetch('/api/plejd/promote-node', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mac: String(mac || ''),
+            alias: aliasVal,
+            plejd_model: String(plejdModel || '')
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showToast('Kunde inte spara Plejd-enhet', data.detail || data.error || 'Ett fel uppstod.', 'error');
+          return;
+        }
+        if (data.promoted_device) {
+          handleDeviceUpdated(data.promoted_device);
+        }
+        if (data.cluster_device) {
+          handleDeviceUpdated(data.cluster_device);
+          currentModalPayload = data.cluster_device.last_payload || currentModalPayload;
+          renderModalTelemetryAndHistory(currentModalPayload, signalsCache.get('Plejd-Mesh_CLUSTER'), null);
+        }
+        showToast(
+          'Plejd-enhet skapad!',
+          `"${aliasVal}" (${mac} • ${data.plejd_model || plejdModel}) har sparats som en egen enhet i signalvyn.`,
+          'success',
+          5000
+        );
+      } catch (e) {
+        showToast('Kommunikationsfel', 'Kunde inte nå servern för att spara Plejd-enheten.', 'error');
+      }
+    }
+
+    window.openDeviceModal = openDeviceModalByKey;
 
     async function togglePlejdMeshExpand(meshId, expand) {
       if (!meshId) return;
@@ -8310,8 +8397,8 @@
       const isFresh = isTimestampFresh10s(ts, freshUntilMs);
       const relTime = isFresh ? 'Just nu' : formatRelativeTime(ts);
       const dotCls = isFresh
-        ? 'live-fresh-dot inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-1.5'
-        : 'live-fresh-dot hidden inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-1.5';
+        ? 'live-fresh-dot inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5'
+        : 'live-fresh-dot hidden inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5';
       const clockCls = isFresh
         ? 'live-clock-icon hidden mdi mdi-clock-outline mr-0.5'
         : 'live-clock-icon mdi mdi-clock-outline mr-0.5';
