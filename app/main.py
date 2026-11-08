@@ -681,6 +681,8 @@ class ControlRequest(BaseModel):
     gain: Optional[str] = None
     ppm: Optional[str] = None
     hop_interval: Optional[str] = None
+    hop_time_433: Optional[str] = None
+    hop_time_868: Optional[str] = None
     custom_freqs: Optional[str] = None
     custom_sample_rate: Optional[str] = None
     ble_enabled: Optional[str] = None
@@ -729,6 +731,8 @@ class SettingsUpdateRequest(BaseModel):
     custom_freqs: Optional[str] = None
     custom_sample_rate: Optional[str] = None
     hop_interval: Optional[str] = None
+    hop_time_433: Optional[str] = None
+    hop_time_868: Optional[str] = None
     gain: Optional[str] = None
     ppm: Optional[str] = None
     debounce_seconds: Optional[str] = None
@@ -833,7 +837,13 @@ async def api_control(req: ControlRequest):
         updates["ppm"] = str(req.ppm).strip() or "0"
         sdr_touched = True
     if req.hop_interval is not None:
-        updates["hop_interval"] = str(req.hop_interval).strip() or "60"
+        updates["hop_interval"] = str(req.hop_interval).strip() or "00:01:00"
+        sdr_touched = True
+    if req.hop_time_433 is not None:
+        updates["hop_time_433"] = str(req.hop_time_433).strip() or "00:01:00"
+        sdr_touched = True
+    if req.hop_time_868 is not None:
+        updates["hop_time_868"] = str(req.hop_time_868).strip() or "00:01:00"
         sdr_touched = True
     if req.custom_freqs is not None:
         updates["custom_freqs"] = str(req.custom_freqs).strip()
@@ -1154,7 +1164,17 @@ async def api_update_settings(req: SettingsUpdateRequest):
         if updated_teslas:
             await ws_manager.broadcast({"type": "devices_bulk_updated", "devices": updated_teslas})
 
-    sdr_keys = ("device_index", "mode", "custom_freqs", "custom_sample_rate", "hop_interval", "gain", "ppm")
+    sdr_keys = (
+        "device_index",
+        "mode",
+        "custom_freqs",
+        "custom_sample_rate",
+        "hop_interval",
+        "hop_time_433",
+        "hop_time_868",
+        "gain",
+        "ppm",
+    )
     ble_keys = ("ble_enabled", "ble_mode", "ble_debounce_seconds")
     mqtt_broker_keys = ("mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_user", "mqtt_pass", "mqtt_prefix")
     ha_keys = ("ha_discovery_enabled", "ha_discovery_prefix")

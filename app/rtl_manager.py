@@ -34,6 +34,61 @@ def compute_payload_signature(payload: Dict[str, Any]) -> str:
     return hashlib.sha1(canonical.encode("utf-8")).hexdigest()
 
 
+def parse_duration_to_seconds(raw: Any, default_sec: int = 60) -> int:
+    """
+    Parses a duration string into integer seconds (minimum 5s).
+    Supports:
+    - 'HH:MM:SS' (e.g. '00:05:00' -> 300, '00:01:00' -> 60)
+    - 'MM:SS' (e.g. '05:00' -> 300, '01:00' -> 60)
+    - '5m', '1h30m', '90s'
+    - Plain integer/float seconds (e.g. '60', '300')
+    """
+    s = str(raw if raw is not None else "").strip()
+    if not s:
+        return max(5, default_sec)
+
+    if ":" in s:
+        parts = [p.strip() for p in s.split(":")]
+        try:
+            if len(parts) == 3:
+                h, m, sec = int(parts[0] or 0), int(parts[1] or 0), float(parts[2] or 0)
+                total = int(round(h * 3600 + m * 60 + sec))
+                return max(5, total)
+            if len(parts) == 2:
+                m, sec = int(parts[0] or 0), float(parts[1] or 0)
+                total = int(round(m * 60 + sec))
+                return max(5, total)
+        except (ValueError, TypeError):
+            return max(5, default_sec)
+
+    unit_matches = re.findall(r"(\d+(?:\.\d+)?)\s*([hmsHMS])", s)
+    if unit_matches:
+        total_f = 0.0
+        for val_str, unit_ch in unit_matches:
+            v = float(val_str)
+            u = unit_ch.lower()
+            if u == "h":
+                total_f += v * 3600.0
+            elif u == "m":
+                total_f += v * 60.0
+            else:
+                total_f += v
+        return max(5, int(round(total_f)))
+
+    try:
+        return max(5, int(round(float(s))))
+    except (ValueError, TypeError):
+        return max(5, default_sec)
+
+
+def format_seconds_to_hhmmss(seconds: Any) -> str:
+    sec = parse_duration_to_seconds(seconds, 60)
+    h = sec // 3600
+    m = (sec % 3600) // 60
+    s = sec % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
 class RTLManager:
     def __init__(
         self,
@@ -70,6 +125,7 @@ class RTLManager:
         self.hop_start_monotonic: float = time.monotonic()
         self._hop_interval: int = 60
         self.hop_interval: int = 60
+        self.hop_intervals: List[int] = [60, 60]
         self._active_freqs: List[str] = ["433.92 MHz", "868.30 MHz"]
         self.hop_freqs: List[str] = ["433.92 MHz", "868.30 MHz"]
         self._last_hop_index: int = 0
@@ -82,53 +138,113 @@ class RTLManager:
     def evict_device(self, model: str, device_id: str) -> None:
         self._debounce_cache.pop(f"{model}:{device_id}", None)
 
-    def _resolve_active_freqs(self, settings: Dict[str, str]) -> List[str]:
+    def _resolve_hop_schedule(self, settings: Dict[str, str]) -> Tuple[List[str], List[str], List[int]]:
+        """
+        Resolves (raw_rtl_freqs, display_freqs, hop_intervals_seconds) from settings.
+        """
         mode = str(settings.get("mode", "hop")).strip().lower()
+        base_default_sec = parse_duration_to_seconds(settings.get("hop_interval", "60"), 60)
+        sec_433 = parse_duration_to_seconds(settings.get("hop_time_433") or base_default_sec, base_default_sec)
+        sec_868 = parse_duration_to_seconds(settings.get("hop_time_868") or base_default_sec, base_default_sec)
+
         if mode == "433":
-            return ["433.92 MHz"]
+            return ["433.92M"], ["433.92 MHz"], [sec_433]
         if mode == "868":
-            return ["868.30 MHz"]
+            return ["868.3M"], ["868.30 MHz"], [sec_868]
         if mode == "custom":
             raw_freqs = str(settings.get("custom_freqs", "433.92M,868.3M"))
-            items = [f.strip() for f in raw_freqs.replace(";", ",").split(",") if f.strip()]
-            normalized: List[str] = []
-            for f in items:
-                m = re.match(r"^([0-9.]+)\s*[mM]?(?:[hH][zZ])?$", f)
+            raw_items = [f.strip() for f in raw_freqs.replace(";", ",").split(",") if f.strip()]
+            if not raw_items:
+                raw_items = ["433.92M"]
+
+            raw_hop_str = str(settings.get("hop_interval", "60"))
+            hop_tokens = [
+                parse_duration_to_seconds(t.strip(), base_default_sec)
+                for t in raw_hop_str.replace(";", ",").split(",")
+                if t.strip()
+            ] or [base_default_sec]
+
+            rtl_freqs: List[str] = []
+            disp_freqs: List[str] = []
+            intervals: List[int] = []
+
+            for idx, item in enumerate(raw_items):
+                inline_dur: Optional[int] = None
+                freq_part = item
+                if "@" in item:
+                    freq_part, dur_part = item.split("@", 1)
+                    freq_part = freq_part.strip()
+                    inline_dur = parse_duration_to_seconds(dur_part.strip(), base_default_sec)
+
+                rtl_freqs.append(freq_part)
+                m = re.match(r"^([0-9.]+)\s*[mM]?(?:[hH][zZ])?$", freq_part)
+                disp_f = freq_part
                 if m:
                     try:
                         val = float(m.group(1))
                         if val > 1_000_000:
                             val = val / 1_000_000.0
-                        normalized.append(f"{val:.2f} MHz")
-                        continue
+                        disp_f = f"{val:.2f} MHz"
                     except ValueError:
                         pass
-                normalized.append(f)
-            return normalized or ["433.92 MHz"]
-        return ["433.92 MHz", "868.30 MHz"]
+                disp_freqs.append(disp_f)
 
-    def _compute_hop_state(self) -> Tuple[str, int, int]:
+                if inline_dur is not None:
+                    intervals.append(inline_dur)
+                elif len(hop_tokens) > 1 and idx < len(hop_tokens):
+                    intervals.append(hop_tokens[idx])
+                elif "433" in disp_f and settings.get("hop_time_433"):
+                    intervals.append(sec_433)
+                elif "868" in disp_f and settings.get("hop_time_868"):
+                    intervals.append(sec_868)
+                else:
+                    intervals.append(hop_tokens[-1])
+
+            return rtl_freqs, disp_freqs, intervals
+
+        # Default: Dual Hop (433.92 MHz + 868.30 MHz)
+        return ["433.92M", "868.3M"], ["433.92 MHz", "868.30 MHz"], [sec_433, sec_868]
+
+    def _resolve_active_freqs(self, settings: Dict[str, str]) -> List[str]:
+        _, disp_freqs, _ = self._resolve_hop_schedule(settings)
+        return disp_freqs
+
+    def _compute_hop_state(self) -> Tuple[str, int, int, int]:
         freqs = self.hop_freqs or self._active_freqs or ["433.92 MHz"]
-        interval = max(5, int(self._hop_interval or 60))
+        intervals = self.hop_intervals if len(self.hop_intervals) == len(freqs) else [max(5, int(self._hop_interval or 60))] * len(freqs)
         if len(freqs) <= 1 or self._state != "running":
-            return freqs[0], interval, 0
+            dur0 = intervals[0] if intervals else max(5, int(self._hop_interval or 60))
+            return freqs[0], dur0, 0, dur0
+
+        total_cycle = max(5, sum(max(5, iv) for iv in intervals))
         elapsed = max(0.0, time.monotonic() - self.hop_start_monotonic)
-        hop_index = int(elapsed // interval) % len(freqs)
-        current_freq = freqs[hop_index]
-        remaining_sec = max(1, int(interval - (elapsed % interval)))
-        return current_freq, remaining_sec, hop_index
+        cycle_pos = elapsed % total_cycle
+
+        acc = 0.0
+        for idx, f_name in enumerate(freqs):
+            band_dur = max(5, int(intervals[idx]))
+            if cycle_pos < acc + band_dur or idx == len(freqs) - 1:
+                pos_in_band = max(0.0, cycle_pos - acc)
+                remaining_sec = max(1, int(band_dur - pos_in_band))
+                return f_name, remaining_sec, idx, band_dur
+            acc += band_dur
+
+        return freqs[0], intervals[0], 0, intervals[0]
 
     def get_freq_state(self) -> Dict[str, Any]:
         settings = self._get_settings()
-        current_freq, remaining_sec, _ = self._compute_hop_state()
+        current_freq, remaining_sec, _, band_dur = self._compute_hop_state()
         self._current_tuned_freq = current_freq
         return {
             "mode": settings.get("mode", "hop"),
             "freq": current_freq,
             "current_tuned_freq": current_freq,
             "remaining": remaining_sec,
-            "last_hop_timestamp": time.time() - (self._hop_interval - remaining_sec),
-            "hop_interval": self._hop_interval,
+            "last_hop_timestamp": time.time() - (band_dur - remaining_sec),
+            "hop_interval": band_dur,
+            "hop_intervals": self.hop_intervals,
+            "hop_time_433": format_seconds_to_hhmmss(settings.get("hop_time_433") or settings.get("hop_interval", "60")),
+            "hop_time_868": format_seconds_to_hhmmss(settings.get("hop_time_868") or settings.get("hop_interval", "60")),
             "active_freqs": self._active_freqs,
         }
 
@@ -151,7 +267,8 @@ class RTLManager:
             if len(self.hop_freqs) > 1:
                 try:
                     idx = self.hop_freqs.index(new_freq)
-                    self.hop_start_monotonic = time.monotonic() - (idx * self._hop_interval)
+                    offset_before = sum(max(5, int(x)) for x in self.hop_intervals[:idx])
+                    self.hop_start_monotonic = time.monotonic() - offset_before
                     self._last_hop_index = idx
                 except ValueError:
                     pass
@@ -169,7 +286,7 @@ class RTLManager:
         raw_gain = str(settings.get("gain", "auto")).strip().replace(",", ".")
         gain = re.sub(r"\s*db$", "", raw_gain, flags=re.IGNORECASE).strip() or "auto"
         ppm = str(settings.get("ppm", "0")).strip().replace(",", ".")
-        hop_interval = str(settings.get("hop_interval", "60")).strip() or "60"
+        rtl_freqs, _, intervals = self._resolve_hop_schedule(settings)
 
         cmd: List[str] = [
             binary,
@@ -194,16 +311,21 @@ class RTLManager:
         elif mode == "868":
             cmd.extend(["-f", "868.3M", "-s", "1024k"])
         elif mode == "hop":
-            cmd.extend(["-f", "433.92M", "-f", "868.3M", "-H", hop_interval, "-s", "1024k"])
+            cmd.extend(["-f", "433.92M", "-f", "868.3M"])
+            if len(intervals) >= 2 and intervals[0] != intervals[1]:
+                cmd.extend(["-H", str(intervals[0]), "-H", str(intervals[1])])
+            else:
+                cmd.extend(["-H", str(intervals[0] if intervals else 60)])
+            cmd.extend(["-s", "1024k"])
         elif mode == "custom":
-            raw_freqs = str(settings.get("custom_freqs", "433.92M,868.3M"))
-            freqs = [f.strip() for f in raw_freqs.replace(";", ",").split(",") if f.strip()]
-            if not freqs:
-                freqs = ["433.92M"]
-            for f in freqs:
+            for f in rtl_freqs:
                 cmd.extend(["-f", f])
-            if len(freqs) > 1:
-                cmd.extend(["-H", hop_interval])
+            if len(rtl_freqs) > 1:
+                if len(set(intervals)) == 1:
+                    cmd.extend(["-H", str(intervals[0])])
+                else:
+                    for iv in intervals:
+                        cmd.extend(["-H", str(iv)])
             sample_rate = str(settings.get("custom_sample_rate", "1024k")).strip()
             if sample_rate:
                 cmd.extend(["-s", sample_rate])
@@ -224,7 +346,7 @@ class RTLManager:
         if self._state == "running" and self._started_at is not None:
             uptime_sec = max(0, int(time.time() - self._started_at))
 
-        current_freq, remaining_sec, _ = self._compute_hop_state()
+        current_freq, remaining_sec, _, band_dur = self._compute_hop_state()
         self._current_tuned_freq = current_freq
 
         return {
@@ -235,11 +357,14 @@ class RTLManager:
             "device_index": settings.get("device_index", "0"),
             "gain": settings.get("gain", "auto"),
             "ppm": settings.get("ppm", "0"),
-            "hop_interval": self._hop_interval,
+            "hop_interval": band_dur,
+            "hop_intervals": self.hop_intervals,
+            "hop_time_433": format_seconds_to_hhmmss(settings.get("hop_time_433") or settings.get("hop_interval", "60")),
+            "hop_time_868": format_seconds_to_hhmmss(settings.get("hop_time_868") or settings.get("hop_interval", "60")),
             "freq": current_freq,
             "current_tuned_freq": current_freq,
             "remaining": remaining_sec,
-            "last_hop_timestamp": time.time() - (self._hop_interval - remaining_sec),
+            "last_hop_timestamp": time.time() - (band_dur - remaining_sec),
             "active_freqs": self._active_freqs,
             "custom_freqs": settings.get("custom_freqs", "433.92M,868.3M"),
             "custom_sample_rate": settings.get("custom_sample_rate", "1024k"),
@@ -416,14 +541,14 @@ class RTLManager:
     async def _hop_tracker_loop(self) -> None:
         while self._state == "running" and self._process and self._process.returncode is None:
             await asyncio.sleep(0.25)
-            if len(self.hop_freqs) <= 1 or self.hop_interval <= 0:
+            if len(self.hop_freqs) <= 1:
                 continue
-            elapsed = max(0.0, time.monotonic() - self.hop_start_monotonic)
-            hop_index = int(elapsed // self.hop_interval) % len(self.hop_freqs)
-            current_freq = self.hop_freqs[hop_index]
+            current_freq, _, hop_index, band_dur = self._compute_hop_state()
             if hop_index != self._last_hop_index or current_freq != self._current_tuned_freq:
                 self._last_hop_index = hop_index
                 self._current_tuned_freq = current_freq
+                self._hop_interval = band_dur
+                self.hop_interval = band_dur
                 self._last_hop_timestamp = time.time()
                 await self._emit_freq_change()
 
@@ -433,13 +558,12 @@ class RTLManager:
             settings = self._get_settings()
             cmd = self.build_command(settings)
             self._current_cmd = cmd
-            try:
-                self._hop_interval = max(5, int(settings.get("hop_interval", "60") or 60))
-            except (ValueError, TypeError):
-                self._hop_interval = 60
+            _, disp_freqs, intervals = self._resolve_hop_schedule(settings)
+            self._active_freqs = disp_freqs
+            self.hop_freqs = list(disp_freqs)
+            self.hop_intervals = list(intervals) if intervals else [60]
+            self._hop_interval = self.hop_intervals[0]
             self.hop_interval = self._hop_interval
-            self._active_freqs = self._resolve_active_freqs(settings)
-            self.hop_freqs = list(self._active_freqs)
             self._current_tuned_freq = self.hop_freqs[0]
             self.hop_start_monotonic = time.monotonic()
             self._last_hop_index = 0

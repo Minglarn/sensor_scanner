@@ -241,7 +241,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.48</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.49</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -989,7 +989,7 @@
               </div>
 
               <div class="space-y-3">
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div>
                     <label class="block text-slate-500 dark:text-slate-400 mb-1">Enhetsindex / Serienummer (-d)</label>
                     <input type="text" id="set_device_index" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0 eller 00000433" />
@@ -1004,15 +1004,23 @@
                     </select>
                   </div>
                   <div>
-                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Hopp-intervall (-H sek)</label>
-                    <input type="number" id="set_hop_interval" min="5" max="3600" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" />
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Tid på 433.92 MHz (-H, HH:MM:SS)</label>
+                    <input type="text" id="set_hop_time_433" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="00:01:00" title="Ange tid i HH:MM:SS (t.ex. 00:01:00 för 1 min) eller sekunder" />
+                  </div>
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Tid på 868.30 MHz (-H, HH:MM:SS)</label>
+                    <input type="text" id="set_hop_time_868" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="00:05:00" title="Ange tid i HH:MM:SS (t.ex. 00:05:00 för 5 min) eller sekunder" />
                   </div>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom-frekvenser (kommaseparerade)</label>
-                    <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M,868.3M" />
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom-frekvenser (eller freq@HH:MM:SS)</label>
+                    <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M@00:01:00,868.3M@00:05:00" title="Kommaseparerade frekvenser, t.ex. 433.92M,868.3M eller med individuell tid 433.92M@00:01:00,868.3M@00:05:00" />
+                  </div>
+                  <div>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom Hopp-intervall (-H, HH:MM:SS)</label>
+                    <input type="text" id="set_hop_interval" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="00:01:00 eller 00:01:00,00:05:00" title="Standard hopp-tid eller kommaseparerade HH:MM:SS per custom-frekvens" />
                   </div>
                   <div>
                     <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom Sample Rate (-s)</label>
@@ -1964,8 +1972,56 @@
     let sdrCurrentFreq = '433.92 MHz';
     let sdrLastHopTimestamp = Date.now() / 1000;
     let sdrHopInterval = 60;
+    let sdrHopIntervals = [60, 60];
     let sdrRemainingSec = 60;
     let sdrActiveFreqs = ['433.92 MHz', '868.30 MHz'];
+
+    function parseDurationToSeconds(val, defaultSec = 60) {
+      if (val === null || val === undefined) return defaultSec;
+      const s = String(val).trim();
+      if (!s) return defaultSec;
+      if (s.includes(':')) {
+        const parts = s.split(':').map((p) => Number(p.trim()) || 0);
+        if (parts.length === 3) return Math.max(5, Math.min(86400, parts[0] * 3600 + parts[1] * 60 + parts[2]));
+        if (parts.length === 2) return Math.max(5, Math.min(86400, parts[0] * 60 + parts[1]));
+      }
+      const n = Number(s);
+      if (!Number.isNaN(n) && n > 0) return Math.max(5, Math.min(86400, Math.round(n)));
+      return defaultSec;
+    }
+
+    function formatSecondsToHhMmSs(sec) {
+      const total = Math.max(5, Math.round(Number(sec) || 60));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function formatDurationListToHhMmSs(rawVal, defaultSec = 60) {
+      const s = String(rawVal ?? '').trim();
+      if (!s) return formatSecondsToHhMmSs(defaultSec);
+      return s
+        .split(',')
+        .map((part) => formatSecondsToHhMmSs(parseDurationToSeconds(part.trim(), defaultSec)))
+        .join(',');
+    }
+
+    function formatCountdownBadgeTime(sec) {
+      const total = Math.max(1, Math.round(Number(sec) || 1));
+      if (total >= 3600) {
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = total % 60;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      }
+      if (total >= 60) {
+        const m = Math.floor(total / 60);
+        const s = total % 60;
+        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      }
+      return `${total}s`;
+    }
 
     let bleEnabled = true;
     let bleRunning = false;
@@ -2231,17 +2287,23 @@
           if (isHopMode) {
             sdrRemainingSec -= 1;
             if (sdrRemainingSec <= 0) {
-              sdrRemainingSec = sdrHopInterval;
-              // Flip frequency text & color in the exact same millisecond when timer transitions 1s -> 0s (60s)!
+              // Flip frequency text & color in the exact same millisecond when timer transitions 1s -> 0s!
+              let nextIdx = 0;
               if (sdrActiveFreqs.length > 1) {
                 const curIdx = sdrActiveFreqs.findIndex((f) => String(f) === String(sdrCurrentFreq));
-                const nextIdx = curIdx !== -1
+                nextIdx = curIdx !== -1
                   ? (curIdx + 1) % sdrActiveFreqs.length
                   : (String(sdrCurrentFreq).includes('868') ? 0 : 1);
                 sdrCurrentFreq = sdrActiveFreqs[nextIdx];
               } else {
-                sdrCurrentFreq = String(sdrCurrentFreq).includes('868') ? '433.92 MHz' : '868.30 MHz';
+                const was868 = String(sdrCurrentFreq).includes('868');
+                nextIdx = was868 ? 0 : 1;
+                sdrCurrentFreq = was868 ? '433.92 MHz' : '868.30 MHz';
               }
+              if (Array.isArray(sdrHopIntervals) && sdrHopIntervals.length > nextIdx) {
+                sdrHopInterval = Math.max(5, Number(sdrHopIntervals[nextIdx]) || 60);
+              }
+              sdrRemainingSec = sdrHopInterval;
             }
           }
         }
@@ -4331,6 +4393,9 @@
 
       sdrMode = (rtl.mode || 'hop').toLowerCase();
       sdrState = rtl.state || (rtl.running ? 'running' : 'stopped');
+      if (Array.isArray(rtl.hop_intervals) && rtl.hop_intervals.length > 0) {
+        sdrHopIntervals = rtl.hop_intervals.map((iv) => Math.max(5, Number(iv) || 60));
+      }
       if (rtl.hop_interval) {
         sdrHopInterval = Math.max(5, Number(rtl.hop_interval) || 60);
       }
@@ -4457,6 +4522,9 @@
 
     function handleRtlFreqChange(data) {
       if (!data) return;
+      if (Array.isArray(data.hop_intervals) && data.hop_intervals.length > 0) {
+        sdrHopIntervals = data.hop_intervals.map((iv) => Math.max(5, Number(iv) || 60));
+      }
       if (data.hop_interval) sdrHopInterval = Math.max(5, Number(data.hop_interval) || 60);
       if (data.mode) sdrMode = String(data.mode).toLowerCase();
       if (Array.isArray(data.active_freqs) && data.active_freqs.length > 0) {
@@ -4519,7 +4587,8 @@
         sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0';
       }
 
-      sdrText.innerHTML = `<span>${escapeHtml(sdrCurrentFreq)}</span><span class="text-[11px] text-slate-400 font-mono">(${remainingSec}s)</span>`;
+      const countdownLabel = formatCountdownBadgeTime(remainingSec);
+      sdrText.innerHTML = `<span>${escapeHtml(sdrCurrentFreq)}</span><span class="text-[11px] text-slate-400 font-mono">(${escapeHtml(countdownLabel)})</span>`;
     }
 
     function renderTopbarBleStatusBadge(ble = {}) {
@@ -4828,13 +4897,17 @@
         const devIdxEl = document.getElementById('set_device_index');
         const modeEl = document.getElementById('set_mode');
         const hopEl = document.getElementById('set_hop_interval');
+        const hop433El = document.getElementById('set_hop_time_433');
+        const hop868El = document.getElementById('set_hop_time_868');
         const freqsEl = document.getElementById('set_custom_freqs');
         const srEl = document.getElementById('set_custom_sample_rate');
         const gainEl = document.getElementById('set_gain');
         const ppmEl = document.getElementById('set_ppm');
         if (devIdxEl && devIdxEl.value.trim()) bodyPayload.device_index = devIdxEl.value.trim();
         if (modeEl && modeEl.value) bodyPayload.mode = modeEl.value;
-        if (hopEl && hopEl.value) bodyPayload.hop_interval = String(hopEl.value);
+        if (hopEl && hopEl.value.trim()) bodyPayload.hop_interval = hopEl.value.trim();
+        if (hop433El && hop433El.value.trim()) bodyPayload.hop_time_433 = hop433El.value.trim();
+        if (hop868El && hop868El.value.trim()) bodyPayload.hop_time_868 = hop868El.value.trim();
         if (freqsEl && freqsEl.value.trim()) bodyPayload.custom_freqs = freqsEl.value.trim();
         if (srEl && srEl.value.trim()) bodyPayload.custom_sample_rate = srEl.value.trim();
         if (gainEl) bodyPayload.gain = gainEl.value.trim() || 'auto';
@@ -8153,7 +8226,12 @@
 
         document.getElementById('set_device_index').value = s.device_index ?? '0';
         document.getElementById('set_mode').value = s.mode ?? 'hop';
-        document.getElementById('set_hop_interval').value = s.hop_interval ?? '60';
+        const baseHopSec = parseDurationToSeconds(s.hop_interval ?? '60', 60);
+        document.getElementById('set_hop_interval').value = formatDurationListToHhMmSs(s.hop_interval ?? '00:01:00', baseHopSec);
+        const hop433El = document.getElementById('set_hop_time_433');
+        if (hop433El) hop433El.value = formatSecondsToHhMmSs(parseDurationToSeconds(s.hop_time_433 || baseHopSec, baseHopSec));
+        const hop868El = document.getElementById('set_hop_time_868');
+        if (hop868El) hop868El.value = formatSecondsToHhMmSs(parseDurationToSeconds(s.hop_time_868 || baseHopSec, baseHopSec));
         document.getElementById('set_custom_freqs').value = s.custom_freqs ?? '433.92M,868.3M';
         document.getElementById('set_custom_sample_rate').value = s.custom_sample_rate ?? '1024k';
         document.getElementById('set_gain').value = s.gain ?? 'auto';
@@ -8341,10 +8419,22 @@
     async function saveSettings(event) {
       event.preventDefault();
       const rawVin = (document.getElementById('set_tesla_vin')?.value || '').trim().toUpperCase();
+      const rawHopInterval = document.getElementById('set_hop_interval').value.trim() || '00:01:00';
+      const rawHop433 = document.getElementById('set_hop_time_433')?.value.trim() || '00:01:00';
+      const rawHop868 = document.getElementById('set_hop_time_868')?.value.trim() || '00:01:00';
+      const formattedHopInterval = formatDurationListToHhMmSs(rawHopInterval, 60);
+      const formattedHop433 = formatSecondsToHhMmSs(parseDurationToSeconds(rawHop433, 60));
+      const formattedHop868 = formatSecondsToHhMmSs(parseDurationToSeconds(rawHop868, 60));
+      document.getElementById('set_hop_interval').value = formattedHopInterval;
+      if (document.getElementById('set_hop_time_433')) document.getElementById('set_hop_time_433').value = formattedHop433;
+      if (document.getElementById('set_hop_time_868')) document.getElementById('set_hop_time_868').value = formattedHop868;
+
       const payload = {
         device_index: document.getElementById('set_device_index').value.trim(),
         mode: document.getElementById('set_mode').value,
-        hop_interval: String(document.getElementById('set_hop_interval').value),
+        hop_interval: formattedHopInterval,
+        hop_time_433: formattedHop433,
+        hop_time_868: formattedHop868,
         custom_freqs: document.getElementById('set_custom_freqs').value.trim(),
         custom_sample_rate: document.getElementById('set_custom_sample_rate').value.trim(),
         gain: document.getElementById('set_gain').value.trim() || 'auto',
