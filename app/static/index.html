@@ -194,7 +194,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.37</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.38</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -7071,16 +7071,24 @@
         }
       }
 
+      const { primaryName, secondaryName } = resolveSignalDisplayNames(dev, lastPayload);
+      const titleEl = cardEl.querySelector('[data-dev-title]');
+      if (titleEl) {
+        if (titleEl.textContent !== primaryName) titleEl.textContent = primaryName;
+        titleEl.setAttribute('title', primaryName);
+      }
+
       const subEl = cardEl.querySelector('[data-dev-subtitle]');
       if (subEl) {
-        const { secondaryName } = resolveSignalDisplayNames(dev, lastPayload);
-        const nextSub = secondaryName || dev.model;
+        const nextSub = secondaryName || dev.model || '-';
         if (subEl.textContent !== nextSub) subEl.textContent = nextSub;
+        subEl.setAttribute('title', nextSub);
       }
 
       const freqEl = cardEl.querySelector('[data-dev-freq]');
-      if (freqEl && radio.freqMHz) {
-        const nextFreq = `• ${radio.freqLabel}`;
+      if (freqEl && (radio.isBle || radio.freqMHz)) {
+        const shortFreq = radio.isBle ? '2.4 GHz' : `${radio.freqMHz.toFixed(2)} MHz`;
+        const nextFreq = ` • ${shortFreq}`;
         if (freqEl.textContent !== nextFreq) freqEl.textContent = nextFreq;
       }
 
@@ -7266,7 +7274,7 @@
       if (deviceGroupBy === 'none') {
         const sorted = sortDevicesArray(filtered);
         container.innerHTML = `
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+          <div id="devices-cards" class="group-cards-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
             ${sorted.map((dev) => buildDeviceCardHtml(dev)).join('')}
           </div>
         `;
@@ -7321,7 +7329,7 @@
               <div onclick="toggleCollapseGroup('${escapeHtml(gKey)}')" class="flex items-center gap-2 cursor-pointer select-none min-w-0 flex-1 flex-wrap">
                 <i class="mdi ${isCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-down'} text-base text-slate-400"></i>
                 <i class="mdi ${groupIcon} text-base"></i>
-                <h3 class="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 break-words [overflow-wrap:anywhere]">${escapeHtml(groupTitle)}</h3>
+                <h3 class="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(groupTitle)}</h3>
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
                   ${groupDevs.length} ${groupDevs.length === 1 ? 'enhet' : 'enheter'}
                 </span>
@@ -7348,7 +7356,7 @@
             ${
               isCollapsed
                 ? ''
-                : `<div class="p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+                : `<div class="group-cards-grid p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
                     ${groupDevs.map((dev) => buildDeviceCardHtml(dev)).join('')}
                   </div>`
             }
@@ -7366,8 +7374,12 @@
       const catMeta = getCategoryMeta(dev.category);
       const catIcon = catMeta.iconClass;
       const lastPayload = dev.last_payload || {};
-      const { badgesHtml } = extractAndFormatMetrics(lastPayload);
+      const { primaryName, secondaryName } = resolveSignalDisplayNames(dev, lastPayload);
+      const devSubtitle = secondaryName || dev.model || '-';
+      const { badgesHtml } = extractAndFormatMetrics(lastPayload, dev);
       const radio = extractRadioMetadata(null, lastPayload);
+      const shortFreq = radio.isBle ? '2.4 GHz' : (radio.freqMHz ? `${radio.freqMHz.toFixed(2)} MHz` : '');
+      const idLineTooltip = `ID: ${dev.device_id ?? ''}${shortFreq ? ' • ' + shortFreq : ''}`;
       const signalStrengthHtml = buildFooterSignalStrength(lastPayload.rssi, lastPayload.snr, radio.mod, radio.freqMHz, lastPayload);
       const hasGroup = Boolean(dev.group_name && dev.group_name.trim());
 
@@ -7393,46 +7405,38 @@
       return `
         <div
           data-device-card="${escapeHtml(devKey)}"
-          class="bg-white dark:bg-slate-900 border ${borderClass} rounded-xl p-2.5 shadow-sm flex flex-col justify-between gap-2 transition duration-200"
+          class="bg-white dark:bg-slate-900 border ${borderClass} rounded-xl p-3 shadow-sm flex flex-col justify-between h-full transition duration-200"
         >
-          <!-- Header with Multi-Select Checkbox (Two-line stacked Name, Model & Full ID without truncation) -->
-          <div class="flex items-start justify-between gap-1.5">
-            <div class="flex items-start gap-2 min-w-0 flex-1">
+          <!-- ZONE 1: HEADER (Strictly 3 single-line rows - zero wrapping!) -->
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
               <input
                 type="checkbox"
                 ${isSelected ? 'checked' : ''}
                 onchange="toggleSelectDevice('${escapeHtml(devKey)}', this.checked)"
-                class="mt-0.5 w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 cursor-pointer shrink-0"
+                class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-sky-500 cursor-pointer shrink-0"
                 title="Markera enhet för gruppåtgärd"
               />
-              <div class="min-w-0 flex-1 flex flex-col leading-snug">
-                <div class="flex items-center gap-1.5">
-                  <i class="mdi ${catIcon} text-base shrink-0"></i>
-                  <span class="text-xs font-semibold text-slate-800 dark:text-slate-100 leading-tight break-words [overflow-wrap:anywhere]">${escapeHtml(resolveSignalDisplayNames(dev, lastPayload).primaryName)}</span>
-                </div>
-                <div data-dev-subtitle class="text-[11px] font-mono text-slate-400 leading-tight mt-0.5 pl-5 break-words [overflow-wrap:anywhere]">
-                  ${escapeHtml(resolveSignalDisplayNames(dev, lastPayload).secondaryName || dev.model)}
-                </div>
-                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 pl-5 break-words [overflow-wrap:anywhere]">
-                  ID: <strong class="text-slate-700 dark:text-slate-200 break-words [overflow-wrap:anywhere]">${escapeHtml(dev.device_id)}</strong>
-                  <span data-dev-freq>${radio.freqMHz ? `• ${escapeHtml(radio.freqLabel)}` : ''}</span>
-                </div>
+              <i class="mdi ${catIcon} text-base shrink-0" title="Kategori: ${escapeHtml(catMeta.label)}"></i>
+              <div class="min-w-0 flex-1">
+                <span data-dev-title class="font-bold text-sm text-slate-800 dark:text-slate-100 truncate block" title="${escapeHtml(primaryName)}">${escapeHtml(primaryName)}</span>
+                <span data-dev-subtitle class="text-[11px] text-slate-400 truncate block font-mono" title="${escapeHtml(devSubtitle)}">${escapeHtml(devSubtitle)}</span>
+                <span data-dev-idline class="text-[10px] text-slate-500 truncate block font-mono" title="${escapeHtml(idLineTooltip)}">ID: <strong class="text-slate-700 dark:text-slate-200">${escapeHtml(dev.device_id)}</strong><span data-dev-freq>${shortFreq ? ` • ${escapeHtml(shortFreq)}` : ''}</span></span>
               </div>
             </div>
 
-            <div class="text-right font-mono text-[11px] shrink-0 flex flex-col items-end gap-0.5">
+            <div class="shrink-0 text-right font-mono pl-1">
               <div class="flex items-center justify-end gap-1">
                 ${isDeviceTrulyNew(dev, dev) ? '<span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>' : ''}
-                <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold border ${catMeta.badgeClass}"><i class="mdi ${catMeta.icon} text-xs leading-none"></i><span>${escapeHtml(catMeta.label)}</span></span>
-                <span data-dev-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold border border-slate-200/70 dark:border-slate-700/70" title="Totalt antal mottagna träffar">
-                  <i class="mdi mdi-counter text-sky-500 mr-0.5"></i>${dev.hit_count}
+                <span data-dev-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] font-semibold border border-slate-200/70 dark:border-slate-700/70" title="Totalt antal mottagna träffar">
+                  <i class="mdi mdi-counter text-sky-500 mr-0.5"></i>${dev.hit_count || 1}
                 </span>
               </div>
               <div
                 data-dev-lastseen
                 data-timestamp="${escapeHtml(dev.last_seen)}"
                 data-ts="${escapeHtml(dev.last_seen)}"
-                class="text-slate-400 text-[10px] mt-0.5"
+                class="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap"
                 title="${escapeHtml(formatTimestamp(dev.last_seen))}"
               >
                 <span class="rel-time-label">${escapeHtml(formatRelativeTime(dev.last_seen))}</span>
@@ -7440,112 +7444,117 @@
             </div>
           </div>
 
-          <!-- Latest Telemetry Badges Row (Updated live via WebSocket!) -->
-          <div onclick="openDeviceModalByKey('${escapeHtml(devKey)}')" class="cursor-pointer py-1.5 px-2 rounded-lg bg-slate-50/80 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/70 space-y-1.5 hover:border-sky-500/40 transition">
-            <div data-dev-badges class="flex flex-wrap items-center gap-1">
+          <!-- ZONE 2: TELEMETRY PILLS (Starts at identical height across all cards) -->
+          <div onclick="openDeviceModalByKey('${escapeHtml(devKey)}')" class="my-2.5 cursor-pointer py-1.5 px-2 rounded-lg bg-slate-50/80 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/70 hover:border-sky-500/40 transition min-h-[32px] flex items-center">
+            <div data-dev-badges class="flex flex-wrap items-center gap-1.5">
               ${badgesHtml || '<span class="text-[11px] text-slate-400">Inga mätvärden</span>'}
             </div>
-            <div class="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
-              <div data-dev-signal>${signalStrengthHtml}</div>
-              <span class="text-sky-600 dark:text-sky-400 hover:underline">Detaljer <i class="mdi mdi-arrow-right"></i></span>
-            </div>
           </div>
 
-          <!-- Inline Edit Alias, Group & Category (Untouched during live WebSocket telemetry updates!) -->
-          <div class="space-y-1.5 pt-0.5 text-xs">
-            <div class="grid grid-cols-12 gap-1.5 items-center">
-              <div class="col-span-6">
-                <input
-                  type="text"
-                  id="devAlias_${escapeHtml(devKey)}"
-                  value="${escapeHtml(dev.alias || '')}"
-                  onkeydown="if(event.key==='Enter') saveDeviceInline('${escapeHtml(devKey)}')"
-                  placeholder="Alias (namn)..."
-                  class="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none text-xs"
-                />
+          <!-- ZONE 3: BOTTOM FOOTER & INLINE FORM (Locked to card bottom with mt-auto pt-2.5) -->
+          <div class="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800/80 space-y-2">
+            <div onclick="openDeviceModalByKey('${escapeHtml(devKey)}')" class="cursor-pointer flex items-center justify-between text-[11px] font-mono">
+              <div data-dev-signal>${signalStrengthHtml}</div>
+              <span class="text-sky-600 dark:text-sky-400 hover:underline font-semibold">Detaljer <i class="mdi mdi-arrow-right"></i></span>
+            </div>
+
+            <!-- Inline Edit Alias, Group & Category (Untouched during live WebSocket telemetry updates!) -->
+            <div class="space-y-1.5 text-xs">
+              <div class="grid grid-cols-12 gap-1.5 items-center">
+                <div class="col-span-6">
+                  <input
+                    type="text"
+                    id="devAlias_${escapeHtml(devKey)}"
+                    value="${escapeHtml(dev.alias || '')}"
+                    onkeydown="if(event.key==='Enter') saveDeviceInline('${escapeHtml(devKey)}')"
+                    placeholder="Alias (namn)..."
+                    class="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none text-xs"
+                  />
+                </div>
+                <div class="col-span-6 relative">
+                  <input
+                    type="text"
+                    id="devGroup_${escapeHtml(devKey)}"
+                    list="existing-groups"
+                    value="${escapeHtml(dev.group_name || '')}"
+                    onkeydown="if(event.key==='Enter') saveDeviceInline('${escapeHtml(devKey)}')"
+                    placeholder="Grupp..."
+                    class="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border ${hasGroup ? 'border-sky-500/40' : 'border-slate-200 dark:border-slate-800'} rounded text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none text-xs"
+                  />
+                </div>
               </div>
-              <div class="col-span-6 relative">
-                <input
-                  type="text"
-                  id="devGroup_${escapeHtml(devKey)}"
-                  list="existing-groups"
-                  value="${escapeHtml(dev.group_name || '')}"
-                  onkeydown="if(event.key==='Enter') saveDeviceInline('${escapeHtml(devKey)}')"
-                  placeholder="Grupp..."
-                  class="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border ${hasGroup ? 'border-sky-500/40' : 'border-slate-200 dark:border-slate-800'} rounded text-slate-900 dark:text-slate-100 focus:border-sky-500 focus:outline-none text-xs"
-                />
+
+              <div class="grid grid-cols-12 gap-1.5 items-center">
+                <div class="col-span-9">
+                  <select
+                    id="devCat_${escapeHtml(devKey)}"
+                    class="w-full px-1.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-800 dark:text-slate-200 text-xs"
+                  >
+                    ${BASE_CATEGORIES.map(
+                      (c) => `<option value="${c}" ${catMeta.id === c ? 'selected' : ''}>${escapeHtml(getCategoryMeta(c).label)}</option>`
+                    ).join('')}
+                  </select>
+                </div>
+                <div class="col-span-3">
+                  <button
+                    onclick="saveDeviceInline('${escapeHtml(devKey)}')"
+                    class="w-full py-1 px-2 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold transition text-xs flex items-center justify-center gap-0.5"
+                    title="Spara Alias, Grupp & Kategori"
+                  >
+                    <i class="mdi mdi-check"></i><span>Spara</span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div class="grid grid-cols-12 gap-1.5 items-center">
-              <div class="col-span-9">
-                <select
-                  id="devCat_${escapeHtml(devKey)}"
-                  class="w-full px-1.5 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-slate-800 dark:text-slate-200 text-xs"
-                >
-                  ${BASE_CATEGORIES.map(
-                    (c) => `<option value="${c}" ${catMeta.id === c ? 'selected' : ''}>${escapeHtml(getCategoryMeta(c).label)}</option>`
-                  ).join('')}
-                </select>
+            <!-- Action Switches & Buttons -->
+            <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[11px]">
+              <div class="flex items-center gap-2.5 flex-wrap">
+                <label class="inline-flex items-center gap-1 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    ${isMqtt ? 'checked' : ''}
+                    onchange="toggleDeviceFlag('${escapeHtml(devKey)}', 'mqtt_enabled', this.checked ? 1 : 0)"
+                    class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500"
+                  />
+                  <span class="text-slate-600 dark:text-slate-300">MQTT</span>
+                </label>
+
+                ${haCheckboxHtml}
+
+                <label class="inline-flex items-center gap-1 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    ${isIgnored ? 'checked' : ''}
+                    onchange="toggleDeviceFlag('${escapeHtml(devKey)}', 'ignored', this.checked ? 1 : 0)"
+                    class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-rose-500"
+                  />
+                  <span class="text-slate-600 dark:text-slate-300">Ignorera</span>
+                </label>
               </div>
-              <div class="col-span-3">
+
+              <div class="flex items-center gap-1">
                 <button
-                  onclick="saveDeviceInline('${escapeHtml(devKey)}')"
-                  class="w-full py-1 px-2 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold transition text-xs flex items-center justify-center gap-0.5"
-                  title="Spara Alias, Grupp & Kategori"
+                  onclick="openDeviceModalByKey('${escapeHtml(devKey)}')"
+                  class="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+                  title="Visa telemetri och historik"
                 >
-                  <i class="mdi mdi-check"></i><span>Spara</span>
+                  <i class="mdi mdi-chart-box-outline"></i>
+                </button>
+                <button
+                  onclick="deleteDevice('${escapeHtml(devKey)}')"
+                  class="px-2 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+                  title="Radera enhet och historik"
+                >
+                  <i class="mdi mdi-trash-can-outline"></i>
                 </button>
               </div>
-            </div>
-          </div>
-
-          <!-- Action Switches & Buttons -->
-          <div class="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[11px]">
-            <div class="flex items-center gap-2.5 flex-wrap">
-              <label class="inline-flex items-center gap-1 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  ${isMqtt ? 'checked' : ''}
-                  onchange="toggleDeviceFlag('${escapeHtml(devKey)}', 'mqtt_enabled', this.checked ? 1 : 0)"
-                  class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500"
-                />
-                <span class="text-slate-600 dark:text-slate-300">MQTT</span>
-              </label>
-
-              ${haCheckboxHtml}
-
-              <label class="inline-flex items-center gap-1 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  ${isIgnored ? 'checked' : ''}
-                  onchange="toggleDeviceFlag('${escapeHtml(devKey)}', 'ignored', this.checked ? 1 : 0)"
-                  class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 text-rose-500"
-                />
-                <span class="text-slate-600 dark:text-slate-300">Ignorera</span>
-              </label>
-            </div>
-
-            <div class="flex items-center gap-1">
-              <button
-                onclick="openDeviceModalByKey('${escapeHtml(devKey)}')"
-                class="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
-                title="Visa telemetri och historik"
-              >
-                <i class="mdi mdi-chart-box-outline"></i>
-              </button>
-              <button
-                onclick="deleteDevice('${escapeHtml(devKey)}')"
-                class="px-2 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/30"
-                title="Radera enhet och historik"
-              >
-                <i class="mdi mdi-trash-can-outline"></i>
-              </button>
             </div>
           </div>
         </div>
       `;
     }
+    const createDeviceCard = buildDeviceCardHtml;
 
     // -----------------------------------------------------------------------
     // Multi-Select & Bulk Group Actions
