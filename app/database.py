@@ -361,6 +361,58 @@ def _is_older_than_15_min(ts_str: Any) -> bool:
         return False
 
 
+PASSIVE_BLE_TELEMETRY_KEYS: Tuple[str, ...] = (
+    "temperature_C",
+    "humidity",
+    "pressure_hPa",
+    "pressure_kPa",
+    "pressure_PSI",
+    "battery_pct",
+    "voltage_V",
+    "battery_mV",
+    "power_W",
+    "energy_kWh",
+    "cumulative_kwh",
+    "current_A",
+    "lux",
+    "illuminance",
+    "moisture",
+    "contact_open",
+    "motion",
+    "button",
+    "state",
+    "co2",
+    "pm25",
+    "voc",
+    "weight_kg",
+    "impedance_ohm",
+    "rain_mm",
+    "rain_rate_mm_h",
+    "wind_avg_m_s",
+)
+
+
+def is_passive_ble_payload(model: str, payload: Dict[str, Any]) -> bool:
+    """
+    Returns True if a device payload is a passive BLE beacon/announcement without
+    active sensor telemetry measurements (and not a verified own vehicle).
+    """
+    mod_str = str(model or payload.get("model") or "").strip()
+    is_ble = (
+        str(payload.get("mod") or "").upper() == "BLE"
+        or "BLE" in mod_str
+        or mod_str == "Plejd-Mesh"
+    )
+    if not is_ble:
+        return False
+    if payload.get("is_own_vehicle") is True:
+        return False
+    has_telemetry = any(payload.get(k) is not None for k in PASSIVE_BLE_TELEMETRY_KEYS)
+    if has_telemetry:
+        return False
+    return True
+
+
 class Database:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
@@ -371,6 +423,7 @@ class Database:
         self._last_prune_time: Optional[str] = None
         self._last_pruned_count: int = 0
         self._last_pruned_signals: int = 0
+        self._pending_merged_mqtt_clears: List[Tuple[str, str, str]] = []
         self._init_db()
         self.expire_new_devices()
 
@@ -810,6 +863,14 @@ class Database:
                         if is_protected or has_sensor_measurements:
                             continue
 
+                        # Passive untracked BLE beacons should never default to mqtt_enabled = 1
+                        if int(d.get("mqtt_enabled") or 0) == 1 and pl.get("is_own_vehicle") is not True:
+                            conn.execute(
+                                "UPDATE devices SET mqtt_enabled = 0 WHERE device_key = ?;",
+                                (d["device_key"],),
+                            )
+                            d["mqtt_enabled"] = 0
+
                         computed_id, fp_source = compute_ble_device_id(
                             mac=mac_val,
                             mac_vendor=pl.get("mac_vendor") if new_mac_type == "IEEE Public (Fast)" else None,
@@ -885,15 +946,23 @@ class Database:
                             if (existing_target and existing_target["category"] and existing_target["category"] != "Generic")
                             else (newest_d.get("category") or "Generic")
                         )
-                        merged_mqtt = int(existing_target["mqtt_enabled"] if existing_target else newest_d.get("mqtt_enabled", 1))
                         merged_ha = int(existing_target["ha_discovery"] if existing_target else newest_d.get("ha_discovery", 0))
                         merged_ignored = int(existing_target["ignored"] if existing_target else newest_d.get("ignored", 0))
+                        if not merged_alias and not merged_group and not merged_ha and is_passive_ble_payload(mod_str, newest_pl):
+                            merged_mqtt = 0
+                        else:
+                            merged_mqtt = int(existing_target["mqtt_enabled"] if existing_target else newest_d.get("mqtt_enabled", 1))
                         if existing_target and existing_target["device_key"] not in [x[0]["device_key"] for x in group_items]:
                             total_hits += int(existing_target["hit_count"] or 0)
                         merged_is_new = 0 if (total_hits > 5 or merged_alias or merged_group or _is_older_than_15_min(min_first_seen)) else 1
                         new_pl_json = json.dumps(newest_pl, ensure_ascii=False)
 
-                        old_keys = [x[0]["device_key"] for x in group_items if x[0]["device_key"] != target_key]
+                        old_items = [
+                            (str(x[0]["device_key"]), str(x[0].get("model") or mod_str), str(x[0].get("device_id") or ""))
+                            for x in group_items
+                            if x[0]["device_key"] != target_key
+                        ]
+                        old_keys = [x[0] for x in old_items]
                         old_model_ids = {
                             (str(x[0].get("model") or mod_str), str(x[0].get("device_id") or ""))
                             for x in group_items
@@ -910,6 +979,7 @@ class Database:
                                 model = excluded.model,
                                 device_id = excluded.device_id,
                                 category = excluded.category,
+                                mqtt_enabled = excluded.mqtt_enabled,
                                 first_seen = excluded.first_seen,
                                 last_seen = excluded.last_seen,
                                 hit_count = excluded.hit_count,
@@ -934,8 +1004,9 @@ class Database:
                             ),
                         )
 
-                        for ok in old_keys:
-                            conn.execute("DELETE FROM devices WHERE device_key = ?;", (ok,))
+                        for ok_dk, ok_mod, ok_did in old_items:
+                            conn.execute("DELETE FROM devices WHERE device_key = ?;", (ok_dk,))
+                            self._pending_merged_mqtt_clears.append((ok_dk, ok_mod, ok_did))
                             merged_clones_count += 1
 
                         for old_m, oid in old_model_ids:
@@ -1003,15 +1074,22 @@ class Database:
 
                         merged_alias = str(existing_cluster["alias"] if existing_cluster else newest_d.get("alias") or "")
                         merged_group = str(existing_cluster["group_name"] if existing_cluster else newest_d.get("group_name") or "")
-                        merged_mqtt = int(existing_cluster["mqtt_enabled"] if existing_cluster else newest_d.get("mqtt_enabled", 1))
                         merged_ha = int(existing_cluster["ha_discovery"] if existing_cluster else newest_d.get("ha_discovery", 0))
                         merged_ignored = int(existing_cluster["ignored"] if existing_cluster else newest_d.get("ignored", 0))
+                        if not merged_alias and not merged_group and not merged_ha:
+                            merged_mqtt = 0
+                        else:
+                            merged_mqtt = int(existing_cluster["mqtt_enabled"] if existing_cluster else newest_d.get("mqtt_enabled", 1))
                         if existing_cluster and existing_cluster["device_key"] not in [x[0]["device_key"] for x in p_items]:
                             total_hits += int(existing_cluster["hit_count"] or 0)
                         merged_is_new = 0 if (total_hits > 5 or merged_alias or merged_group or _is_older_than_15_min(min_first_seen)) else 1
                         new_pl_json = json.dumps(newest_pl, ensure_ascii=False)
 
-                        old_keys = [x[0]["device_key"] for x in p_items if x[0]["device_key"] != cluster_key]
+                        old_p_items = [
+                            (str(x[0]["device_key"]), "Plejd-Mesh", str(x[0]["device_id"]))
+                            for x in p_items
+                            if x[0]["device_key"] != cluster_key
+                        ]
                         old_ids = [str(x[0]["device_id"]) for x in p_items if str(x[0]["device_id"]) != cluster_id]
 
                         conn.execute(
@@ -1024,6 +1102,7 @@ class Database:
                                 model = 'Plejd-Mesh',
                                 device_id = excluded.device_id,
                                 category = 'Switch',
+                                mqtt_enabled = excluded.mqtt_enabled,
                                 first_seen = excluded.first_seen,
                                 last_seen = excluded.last_seen,
                                 hit_count = excluded.hit_count,
@@ -1046,8 +1125,9 @@ class Database:
                             ),
                         )
 
-                        for ok in old_keys:
-                            conn.execute("DELETE FROM devices WHERE device_key = ?;", (ok,))
+                        for ok_dk, ok_mod, ok_did in old_p_items:
+                            conn.execute("DELETE FROM devices WHERE device_key = ?;", (ok_dk,))
+                            self._pending_merged_mqtt_clears.append((ok_dk, ok_mod, ok_did))
                             merged_clones_count += 1
 
                         for oid in old_ids:
@@ -1387,14 +1467,15 @@ class Database:
                     is_brand_new = existing_dev is None
                     if is_brand_new:
                         init_is_new = 0 if auto_alias else 1
+                        init_mqtt = 0 if (is_passive_ble_payload(model, payload) and not auto_alias) else 1
                         conn.execute(
                             """
                             INSERT INTO devices (
                                 device_key, model, device_id, alias, group_name, category,
                                 mqtt_enabled, ha_discovery, ignored, is_new, first_seen, last_seen, hit_count, last_payload
-                            ) VALUES (?, ?, ?, ?, '', ?, 1, 0, 0, ?, ?, ?, 1, ?);
+                            ) VALUES (?, ?, ?, ?, '', ?, ?, 0, 0, ?, ?, ?, 1, ?);
                             """,
-                            (device_key, model, device_id, auto_alias, inferred_cat, init_is_new, timestamp, timestamp, raw_json),
+                            (device_key, model, device_id, auto_alias, inferred_cat, init_mqtt, init_is_new, timestamp, timestamp, raw_json),
                         )
                     else:
                         try:
@@ -1936,12 +2017,23 @@ class Database:
                 if not row:
                     return None
 
-                new_alias = alias.strip() if alias is not None else (row["alias"] or "")
-                new_group = group_name.strip() if group_name is not None else (row["group_name"] or "")
+                prev_alias = str(row["alias"] or "").strip()
+                prev_group = str(row["group_name"] or "").strip()
+                prev_ha = int(row["ha_discovery"] or 0)
+                prev_mqtt = int(row["mqtt_enabled"] or 0)
+                was_untracked = (not prev_alias and not prev_group and prev_ha == 0 and prev_mqtt == 0)
+
+                new_alias = alias.strip() if alias is not None else prev_alias
+                new_group = group_name.strip() if group_name is not None else prev_group
                 new_cat = normalize_category(category.strip() if category is not None else (row["category"] or "Generic"), row["model"])
-                new_mqtt = int(bool(mqtt_enabled)) if mqtt_enabled is not None else row["mqtt_enabled"]
-                new_ha = int(bool(ha_discovery)) if ha_discovery is not None else row["ha_discovery"]
+                new_ha = int(bool(ha_discovery)) if ha_discovery is not None else prev_ha
                 new_ignored = int(bool(ignored)) if ignored is not None else row["ignored"]
+                now_tracked = bool(new_alias or new_group or new_ha == 1)
+
+                if was_untracked and now_tracked and new_ignored == 0 and (mqtt_enabled is None or new_ha == 1):
+                    new_mqtt = 1
+                else:
+                    new_mqtt = int(bool(mqtt_enabled)) if mqtt_enabled is not None else prev_mqtt
 
                 with conn:
                     conn.execute(
@@ -1976,19 +2068,26 @@ class Database:
                         ).fetchone()
                         if not row:
                             continue
-                        new_group = group_name.strip() if group_name is not None else (row["group_name"] or "")
+                        prev_alias = str(row["alias"] or "").strip()
+                        prev_group = str(row["group_name"] or "").strip()
+                        prev_ha = int(row["ha_discovery"] or 0)
+                        prev_mqtt = int(row["mqtt_enabled"] or 0)
+                        new_group = group_name.strip() if group_name is not None else prev_group
                         new_cat = normalize_category(
                             category.strip() if (category is not None and category.strip() != "") else (row["category"] or "Generic"),
                             row["model"],
                         )
                         new_ignored = int(bool(ignored)) if ignored is not None else row["ignored"]
+                        new_mqtt = prev_mqtt
+                        if not prev_alias and not prev_group and prev_ha == 0 and prev_mqtt == 0 and new_group and new_ignored == 0:
+                            new_mqtt = 1
                         conn.execute(
                             """
                             UPDATE devices
-                            SET group_name = ?, category = ?, ignored = ?, is_new = 0
+                            SET group_name = ?, category = ?, mqtt_enabled = ?, ignored = ?, is_new = 0
                             WHERE device_key = ?;
                             """,
-                            (new_group, new_cat, new_ignored, dk),
+                            (new_group, new_cat, new_mqtt, new_ignored, dk),
                         )
                         updated_keys.append(dk)
             finally:
@@ -2441,6 +2540,9 @@ class Database:
         cutoff_stale_iso = (now_dt - timedelta(days=stale_days)).isoformat(timespec="seconds")
 
         pruned_items: List[Tuple[str, str, str]] = []
+        if self._pending_merged_mqtt_clears:
+            pruned_items.extend(self._pending_merged_mqtt_clears)
+            self._pending_merged_mqtt_clears = []
         pruned_signals = 0
 
         with self._lock:

@@ -241,7 +241,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.45</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.46</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1192,7 +1192,15 @@
                 </div>
               </div>
 
-              <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+              <div class="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
+                <button
+                  type="button"
+                  onclick="purgeOrphanedMqttTopics()"
+                  class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold text-xs transition cursor-pointer"
+                >
+                  <i class="mdi mdi-broom text-sm"></i>
+                  <span>Städa föräldralösa MQTT-topics i brokern</span>
+                </button>
                 <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow transition">
                   <i class="mdi mdi-content-save-outline text-sm"></i>
                   <span>Spara &amp; Tillämpa</span>
@@ -1433,6 +1441,21 @@
                         <p class="text-[11px] text-slate-500 dark:text-slate-400">Kör <code class="font-mono">wal_checkpoint(TRUNCATE)</code> och <code class="font-mono">VACUUM</code> för att krympa filen</p>
                       </div>
                       <i class="mdi mdi-chevron-right text-slate-400 group-hover:text-amber-500 text-base"></i>
+                    </button>
+
+                    <button
+                      type="button"
+                      onclick="purgeOrphanedMqttTopics()"
+                      class="sm:col-span-2 flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 hover:bg-emerald-500/10 dark:bg-slate-950 dark:hover:bg-emerald-500/15 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/40 text-left transition group cursor-pointer"
+                    >
+                      <div class="space-y-0.5">
+                        <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                          <i class="mdi mdi-broom text-emerald-500 text-sm"></i>
+                          <span>Städa föräldralösa MQTT-topics i brokern</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Skannar Mosquitto efter kvarhängande retained topics som inte längre har en aktiv MQTT-enhet i SQLite och raderar dem permanent</p>
+                      </div>
+                      <i class="mdi mdi-chevron-right text-slate-400 group-hover:text-emerald-500 text-base"></i>
                     </button>
                   </div>
                 </div>
@@ -6720,12 +6743,25 @@
         modalBadgeEl.innerHTML = `<i class="mdi ${catMeta.icon} text-xs leading-none"></i><span>${escapeHtml(catMeta.label)}</span>`;
         document.getElementById('modalPacketTime').textContent = formatTimestamp(currentModalPayload.time || dev.last_seen);
 
-        document.getElementById('modalAliasInput').value = dev.alias || '';
-        document.getElementById('modalGroupInput').value = dev.group_name || '';
+        const aliasEl = document.getElementById('modalAliasInput');
+        const groupEl = document.getElementById('modalGroupInput');
+        const mqttEl = document.getElementById('modalMqttToggle');
+        const haEl = document.getElementById('modalHaDiscoveryToggle');
+        aliasEl.value = dev.alias || '';
+        groupEl.value = dev.group_name || '';
         document.getElementById('modalCategorySelect').value = catMeta.id;
-        document.getElementById('modalMqttToggle').checked = Boolean(dev.mqtt_enabled);
-        document.getElementById('modalHaDiscoveryToggle').checked = Boolean(dev.ha_discovery);
+        mqttEl.checked = Boolean(dev.mqtt_enabled);
+        haEl.checked = Boolean(dev.ha_discovery);
         document.getElementById('modalIgnoredToggle').checked = Boolean(dev.ignored);
+        const wasUntrackedPassiveBle = !dev.alias && !dev.group_name && !dev.ha_discovery && Number(dev.mqtt_enabled) === 0;
+        const autoEnableMqttIfTracked = () => {
+          if (wasUntrackedPassiveBle && (aliasEl.value.trim() || groupEl.value.trim() || haEl.checked)) {
+            mqttEl.checked = true;
+          }
+        };
+        aliasEl.oninput = autoEnableMqttIfTracked;
+        groupEl.oninput = autoEnableMqttIfTracked;
+        haEl.onchange = autoEnableMqttIfTracked;
         syncHaDiscoveryUiVisibility();
 
         renderModalTelemetryAndHistory(currentModalPayload, matchingSig, history);
@@ -8113,15 +8149,18 @@
 
         let summaryTitle = 'Underhåll slutfört';
         let summaryMsg = 'Underhållsåtgärd slutförd!';
+        const mqttPurgedSuffix = Number(data.mqtt_purged_topics || 0) > 0
+          ? ` • ${formatNumberSpaces(data.mqtt_purged_topics)} gamla MQTT-topics raderades ur brokern!`
+          : '';
         if (action === 'prune_now') {
           summaryTitle = 'Automatisk städning klar';
-          summaryMsg = `Rensade ${data.devices_deleted ?? 0} tillfälliga/inaktiva enheter och ${data.signals_deleted ?? 0} historikrader (${Number(data.db_size_mb ?? 0).toFixed(2)} MB).`;
+          summaryMsg = `Rensade ${data.devices_deleted ?? 0} tillfälliga/inaktiva enheter och ${data.signals_deleted ?? 0} historikrader (${Number(data.db_size_mb ?? 0).toFixed(2)} MB)${mqttPurgedSuffix}`;
         } else if (action === 'clear_unaliased_tpms') {
           summaryTitle = 'TPMS-städning klar';
-          summaryMsg = `Rensade ${data.devices_deleted ?? 0} okända TPMS-däcksensorer och ${data.signals_deleted ?? 0} signalrader.`;
+          summaryMsg = `Rensade ${data.devices_deleted ?? 0} okända TPMS-däcksensorer och ${data.signals_deleted ?? 0} signalrader.${mqttPurgedSuffix}`;
         } else if (action === 'clear_unaliased_ble') {
           summaryTitle = 'BLE-städning klar';
-          summaryMsg = `Rensade ${data.devices_deleted ?? 0} okända passiva BLE-beacons och ${data.signals_deleted ?? 0} signalrader.`;
+          summaryMsg = `Rensade ${data.devices_deleted ?? 0} okända passiva BLE-beacons och ${data.signals_deleted ?? 0} signalrader.${mqttPurgedSuffix}`;
         } else if (action === 'vacuum') {
           summaryTitle = 'SQLite VACUUM slutförd';
           summaryMsg = `Databasen komprimerades från ${Number(data.size_before_mb ?? 0).toFixed(2)} MB till ${Number(data.db_size_mb ?? 0).toFixed(2)} MB.`;
@@ -8138,6 +8177,42 @@
         await loadStatus();
       } catch (e) {
         showToast('Kommunikationsfel', 'Kunde inte utföra databasunderhåll mot servern.', 'error');
+      }
+    }
+
+    async function purgeOrphanedMqttTopics() {
+      const fbBanner = document.getElementById('dbMaintenanceFeedbackBanner');
+      const fbText = document.getElementById('dbMaintenanceFeedbackText');
+      showToast('Skannar MQTT-brokern...', 'Lyssnar efter kvarhängande retained topics under 2.5 sekunder...', 'info', 3000);
+      try {
+        const res = await fetch('/api/mqtt/purge-orphans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showToast('MQTT-städning misslyckades', data.detail || data.error || 'MQTT-klienten är inte ansluten.', 'error', 5000);
+          return;
+        }
+        const purgedCount = Number(data.purged_topics_count ?? 0);
+        const inspectedCount = Number(data.retained_inspected_count ?? 0);
+        const countFormatted = formatNumberSpaces(purgedCount);
+        const msg = purgedCount > 0
+          ? `${countFormatted} gamla MQTT-topics raderades ur brokern! (${formatNumberSpaces(inspectedCount)} retained topics granskades)`
+          : `Inga föräldralösa MQTT-topics hittades (${formatNumberSpaces(inspectedCount)} aktiva retained topics granskades).`;
+        if (fbBanner && fbText) {
+          fbText.textContent = `MQTT Orphan Sweeper: ${msg}`;
+          fbBanner.classList.remove('hidden');
+        }
+        showToast(
+          `${countFormatted} gamla MQTT-topics raderades ur brokern!`,
+          msg,
+          'success',
+          6000
+        );
+        await loadStatus();
+      } catch (e) {
+        showToast('Kommunikationsfel', 'Kunde inte kontakta servern för MQTT-städning.', 'error', 5000);
       }
     }
 

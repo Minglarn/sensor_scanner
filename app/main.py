@@ -475,22 +475,52 @@ async def retention_worker() -> None:
         await asyncio.sleep(86400)
 
 
+async def run_mqtt_orphan_sweep(listen_seconds: float = 2.5) -> Dict[str, Any]:
+    """
+    Fetches all devices from SQLite and runs MQTTManager.sweep_orphaned_mqtt_topics
+    to purge any retained MQTT state or HA discovery topics that no longer belong
+    to an active MQTT-enabled device in SQLite.
+    """
+    mqtt_st = mqtt_manager.get_status()
+    if not mqtt_st.get("connected"):
+        return {
+            "ok": False,
+            "error": "MQTT-klienten är inte ansluten till brokern.",
+            "purged_topics_count": 0,
+            "retained_inspected_count": 0,
+            "purged_topics": [],
+        }
+    all_devs = await asyncio.to_thread(db.get_devices, include_ignored=True)
+    res = await asyncio.to_thread(mqtt_manager.sweep_orphaned_mqtt_topics, all_devs, listen_seconds)
+    purged_cnt = int(res.get("purged_topics_count") or 0)
+    if purged_cnt > 0:
+        print(
+            f"[MQTT-SWEEPER] Raderade {purged_cnt} föräldralösa retained MQTT-topics ur brokern (av {res.get('retained_inspected_count', 0)} granskade)",
+            flush=True,
+        )
+        await broadcast_full_status()
+    return res
+
+
 async def auto_prune_worker() -> None:
     """
     Runs automatic database pruning on startup and every hour (3600s) for:
     - Passing/ephemeral unknown devices (hit_count <= 10, older than prune_ephemeral_hours)
     - Stale/inactive unknown devices (older than prune_stale_days)
     - Orphaned signal rows and excess history rows (> max_signals_per_device)
+    - Sweeps orphaned retained MQTT topics 10s after startup and on every prune run.
     Protected devices (with alias, group_name, ha_discovery=1, or ignored=1) are NEVER touched.
     """
     await asyncio.sleep(5)
+    first_run = True
     while True:
         try:
             res = await asyncio.to_thread(db.auto_prune_database)
             pruned_items = res.get("pruned_items") or []
-            for _dk, mod, did in pruned_items:
+            for dk, mod, did in pruned_items:
                 ble_manager.evict_device(str(mod), str(did))
                 rtl_manager.evict_device(str(mod), str(did))
+                await asyncio.to_thread(mqtt_manager.clear_device_topics, str(dk), str(mod), str(did))
             pruned_keys = res.get("pruned_keys") or []
             if pruned_keys or int(res.get("signals_deleted") or 0) > 0:
                 if pruned_keys:
@@ -500,6 +530,11 @@ async def auto_prune_worker() -> None:
                     )
                     await ws_manager.broadcast({"type": "devices_pruned", "device_keys": pruned_keys})
                 await broadcast_full_status()
+
+            if first_run:
+                await asyncio.sleep(5)
+                first_run = False
+            await run_mqtt_orphan_sweep(listen_seconds=2.5)
         except Exception as exc:
             logger.error("Error in auto_prune_worker: %s", exc)
         await asyncio.sleep(3600)
@@ -908,6 +943,15 @@ async def api_bulk_group_devices(req: BulkGroupRequest):
         category=req.category,
         ignored=req.ignored,
     )
+    if req.ignored is not None and int(bool(req.ignored)) == 1:
+        for d in updated_devices:
+            await asyncio.to_thread(
+                mqtt_manager.clear_device_topics,
+                str(d.get("device_key") or ""),
+                str(d.get("model") or ""),
+                str(d.get("device_id") or ""),
+                str(d.get("alias") or ""),
+            )
     await ws_manager.broadcast({"type": "devices_bulk_updated", "devices": updated_devices})
     await broadcast_full_status()
     return {"ok": True, "devices": updated_devices, "count": len(updated_devices)}
@@ -932,8 +976,17 @@ async def api_update_device(device_key: str, req: DeviceUpdateRequest):
     if not updated:
         raise HTTPException(status_code=404, detail="Enheten hittades inte.")
 
-    # Handle HA Auto-Discovery publish or removal when ha_discovery flag changes
-    if req.ha_discovery is not None:
+    # If the device is now ignored or MQTT-disabled, clear all retained MQTT & HA topics for it
+    if int(updated.get("ignored") or 0) == 1 or int(updated.get("mqtt_enabled", 1)) == 0:
+        await asyncio.to_thread(
+            mqtt_manager.clear_device_topics,
+            device_key,
+            str(updated.get("model") or ""),
+            str(updated.get("device_id") or ""),
+            str(prev_device.get("alias") or updated.get("alias") or ""),
+        )
+    elif req.ha_discovery is not None:
+        # Handle HA Auto-Discovery publish or removal when ha_discovery flag changes
         if int(bool(req.ha_discovery)) == 1:
             await asyncio.to_thread(mqtt_manager.publish_ha_discovery, updated)
         elif int(prev_device.get("ha_discovery", 0)) == 1 and int(bool(req.ha_discovery)) == 0:
@@ -1011,6 +1064,9 @@ async def api_toggle_plejd_mesh_expand(mesh_id: str, req: PlejdMeshToggleRequest
 
     ble_manager.evict_plejd_mesh_cache(mesh_id)
     deleted_keys = result.get("deleted_keys") or []
+    for dk in deleted_keys:
+        did_guess = str(dk).replace("Plejd-Mesh_", "")
+        await asyncio.to_thread(mqtt_manager.clear_device_topics, str(dk), "Plejd-Mesh", did_guess)
     if deleted_keys:
         await ws_manager.broadcast({"type": "devices_pruned", "device_keys": deleted_keys})
     updated_devs = result.get("devices") or []
@@ -1023,8 +1079,13 @@ async def api_toggle_plejd_mesh_expand(mesh_id: str, req: PlejdMeshToggleRequest
 @app.delete("/api/devices/{device_key:path}")
 async def api_delete_device(device_key: str):
     device = await asyncio.to_thread(db.get_device, device_key)
-    if device and int(device.get("ha_discovery", 0)) == 1:
-        await asyncio.to_thread(mqtt_manager.clear_ha_discovery, device)
+    await asyncio.to_thread(
+        mqtt_manager.clear_device_topics,
+        device_key,
+        str(device.get("model", "")) if device else "",
+        str(device.get("device_id", "")) if device else "",
+        str(device.get("alias", "")) if device else "",
+    )
 
     deleted = await asyncio.to_thread(db.delete_device, device_key)
     if not deleted:
@@ -1074,9 +1135,10 @@ async def api_update_settings(req: SettingsUpdateRequest):
 
     if prune_changed:
         prune_res = await asyncio.to_thread(db.auto_prune_database)
-        for _, mod, did in prune_res.get("pruned_items", []):
+        for dk, mod, did in prune_res.get("pruned_items", []):
             ble_manager.evict_device(mod, did)
             rtl_manager.evict_device(mod, did)
+            await asyncio.to_thread(mqtt_manager.clear_device_topics, str(dk), str(mod), str(did))
         if prune_res.get("pruned_keys"):
             await ws_manager.broadcast({"type": "devices_pruned", "device_keys": prune_res["pruned_keys"]})
 
@@ -1143,16 +1205,27 @@ async def api_db_maintenance(req: DbMaintenanceRequest):
         raise HTTPException(status_code=400, detail=result.get("error", "Ogiltigt underhållskommando."))
 
     pruned_items = result.pop("pruned_items", None) or []
-    for _dk, mod, did in pruned_items:
+    for dk, mod, did in pruned_items:
         ble_manager.evict_device(str(mod), str(did))
         rtl_manager.evict_device(str(mod), str(did))
+        await asyncio.to_thread(mqtt_manager.clear_device_topics, str(dk), str(mod), str(did))
 
     pruned_keys = result.get("pruned_keys") or []
     if pruned_keys:
         await ws_manager.broadcast({"type": "devices_pruned", "device_keys": pruned_keys})
 
+    if req.action in ("prune_now", "clear_unaliased_tpms", "clear_unaliased_ble"):
+        sweep_res = await run_mqtt_orphan_sweep(listen_seconds=2.0)
+        result["mqtt_purged_topics"] = int(sweep_res.get("purged_topics_count") or 0)
+
     await broadcast_full_status()
     return result
+
+
+@app.post("/api/mqtt/purge-orphans")
+async def api_purge_mqtt_orphans():
+    res = await run_mqtt_orphan_sweep(listen_seconds=2.5)
+    return res
 
 
 @app.get("/api/stats")
@@ -1186,6 +1259,7 @@ async def api_reset_database(req: Optional[DatabaseResetRequest] = None, keep_al
     result = await asyncio.to_thread(db.reset_database, keep)
     rtl_manager.reset_stats_and_cache()
     ble_manager.reset_stats_and_cache()
+    await run_mqtt_orphan_sweep(listen_seconds=2.0)
     status_data = await asyncio.to_thread(build_status_payload)
     await ws_manager.broadcast(
         {

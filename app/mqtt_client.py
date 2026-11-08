@@ -20,6 +20,87 @@ def sanitize_topic_segment(value: str) -> str:
     return cleaned or "unknown"
 
 
+REAL_SENSOR_TELEMETRY_KEYS: Tuple[str, ...] = (
+    "temperature_C",
+    "temperature_c",
+    "temp_C",
+    "temperature_F",
+    "temperature_1_C",
+    "temperature_2_C",
+    "humidity",
+    "humidity_1",
+    "humidity_2",
+    "pressure_hPa",
+    "pressure_kPa",
+    "pressure_bar",
+    "pressure_PSI",
+    "battery_pct",
+    "battery_mV",
+    "voltage_V",
+    "power_W",
+    "power_kW",
+    "calculated_power_W",
+    "energy_kWh",
+    "cumulative_kwh",
+    "lux",
+    "illuminance",
+    "moisture",
+    "wind_avg_km_h",
+    "wind_avg_m_s",
+    "rain_mm",
+    "contact_open",
+    "motion",
+    "button",
+)
+
+
+def is_untracked_passive_ble_beacon(
+    device: Dict[str, Any], payload: Optional[Dict[str, Any]] = None
+) -> bool:
+    """
+    Returns True if the device is a passive/anonymous BLE beacon without real sensor
+    telemetry measurements AND lacks user-configured alias, group_name, ha_discovery,
+    or verified own-vehicle status.
+    """
+    if not device:
+        return True
+
+    has_alias = bool(str(device.get("alias") or "").strip())
+    has_group = bool(str(device.get("group_name") or "").strip())
+    has_ha = int(device.get("ha_discovery") or 0) == 1
+    if has_alias or has_group or has_ha:
+        return False
+
+    pl = payload if isinstance(payload, dict) else (device.get("last_payload") or {})
+    if isinstance(pl, str):
+        try:
+            pl = json.loads(pl)
+        except Exception:
+            pl = {}
+    if not isinstance(pl, dict):
+        pl = {}
+
+    if pl.get("is_own_vehicle") is True:
+        return False
+
+    if pl.get("is_beacon_only") is True:
+        return True
+
+    mod_str = str(device.get("model") or pl.get("model") or "").strip()
+    is_ble = (
+        str(pl.get("mod") or "").upper() == "BLE"
+        or "BLE" in mod_str
+        or mod_str == "Plejd-Mesh"
+        or (pl.get("freq") is not None and float(pl.get("freq") or 0) >= 2400.0)
+        or bool(pl.get("mac"))
+    )
+    if not is_ble:
+        return False
+
+    has_real_telemetry = any(pl.get(k) is not None for k in REAL_SENSOR_TELEMETRY_KEYS)
+    return not has_real_telemetry
+
+
 # Metric definitions: (json_key, metric_slug, friendly_suffix, unit, device_class, state_class, value_template)
 HA_METRIC_SPECS: List[Tuple[str, str, str, str, Optional[str], str, str]] = [
     (
@@ -274,8 +355,10 @@ class MQTTManager:
         self._ha_discovery_prefix: str = "homeassistant"
         self._last_error: str = ""
         self._published_count: int = 0
+        self._last_purged_topics_count: int = 0
         self._status_callback = status_callback
         self._ble_presence_state: Dict[str, Dict[str, Any]] = {}
+        self._sweep_lock = threading.Lock()
 
     def configure_and_connect(self, settings: Dict[str, Any], reconnect_broker: bool = True) -> None:
         with self._lock:
@@ -387,13 +470,25 @@ class MQTTManager:
             "ha_discovery_prefix": self._ha_discovery_prefix,
             "last_error": self._last_error,
             "published_count": self._published_count,
+            "last_purged_topics_count": self._last_purged_topics_count,
         }
+
+    def is_device_mqtt_allowed(
+        self, device: Dict[str, Any], payload: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        if not device:
+            return False
+        if int(device.get("ignored", 0)) == 1 or int(device.get("mqtt_enabled", 1)) == 0:
+            return False
+        if is_untracked_passive_ble_beacon(device, payload):
+            return False
+        return True
 
     def publish_signal(self, device: Dict[str, Any], payload: Dict[str, Any]) -> bool:
         if not self._enabled or not self._connected or self._client is None:
             return False
 
-        if int(device.get("ignored", 0)) == 1 or int(device.get("mqtt_enabled", 1)) == 0:
+        if not self.is_device_mqtt_allowed(device, payload):
             return False
 
         model_seg = sanitize_topic_segment(device.get("model", "Unknown"))
@@ -415,7 +510,8 @@ class MQTTManager:
         state_topic = f"{self._prefix}/{safe_device_key}/state"
 
         try:
-            self._client.publish(state_topic, payload=json_str, qos=0, retain=False)
+            # Retain ONLY on the canonical state_topic for allowed sensors / named devices
+            self._client.publish(state_topic, payload=json_str, qos=0, retain=True)
             self._client.publish(base_topic, payload=json_str, qos=0, retain=False)
             is_ble = (
                 str(enriched_payload.get("mod") or "").upper() == "BLE"
@@ -874,3 +970,244 @@ class MQTTManager:
             "cleared_count": len(cleared_topics),
             "cleared_topics": cleared_topics,
         }
+
+    def clear_device_topics(
+        self,
+        device_key: str,
+        model: str = "",
+        device_id: str = "",
+        alias: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Clears all retained MQTT state/telemetry topics and Home Assistant Auto-Discovery
+        topics for a removed, merged, ignored, or disabled device by publishing payload=""
+        with retain=True.
+        """
+        if not self._enabled or not self._connected or self._client is None:
+            return {"ok": False, "cleared_count": 0, "cleared_topics": []}
+
+        raw_dk = str(device_key or "").strip()
+        raw_mod = str(model or "").strip()
+        raw_id = str(device_id or "").strip()
+        if not raw_mod and "_" in raw_dk:
+            parts = raw_dk.split("_", 1)
+            raw_mod, raw_id = parts[0], parts[1]
+
+        safe_dk = sanitize_topic_segment(raw_dk or f"{raw_mod}_{raw_id}")
+        model_seg = sanitize_topic_segment(raw_mod) if raw_mod else ""
+        id_seg = sanitize_topic_segment(raw_id) if raw_id else ""
+
+        with self._lock:
+            self._ble_presence_state.pop(safe_dk, None)
+
+        candidate_topics: List[str] = [
+            f"{self._prefix}/{safe_dk}/state",
+            f"{self._prefix}/{safe_dk}",
+            f"{self._prefix}/devices/{safe_dk}",
+            f"{self._prefix}/devices/{safe_dk}/state",
+        ]
+        if raw_dk and raw_dk != safe_dk:
+            candidate_topics.append(f"{self._prefix}/{raw_dk}/state")
+            candidate_topics.append(f"{self._prefix}/{raw_dk}")
+
+        if model_seg and id_seg:
+            candidate_topics.extend(
+                [
+                    f"{self._prefix}/{model_seg}/{id_seg}",
+                    f"{self._prefix}/{model_seg}/{id_seg}/state",
+                    f"{self._prefix}/BLE/{model_seg}/{id_seg}",
+                    f"{self._prefix}/BLE/{model_seg}/{id_seg}/state",
+                ]
+            )
+        if raw_mod and raw_id and (raw_mod != model_seg or raw_id != id_seg):
+            candidate_topics.extend(
+                [
+                    f"{self._prefix}/{raw_mod}/{raw_id}",
+                    f"{self._prefix}/BLE/{raw_mod}/{raw_id}",
+                ]
+            )
+        if alias and str(alias).strip():
+            alias_seg = sanitize_topic_segment(str(alias).strip())
+            candidate_topics.append(f"{self._prefix}/alias/{alias_seg}")
+
+        cleared_topics: List[str] = []
+        seen: set[str] = set()
+        for t in candidate_topics:
+            if not t or t in seen:
+                continue
+            seen.add(t)
+            try:
+                self._client.publish(t, payload="", qos=0, retain=True)
+                cleared_topics.append(t)
+            except Exception as exc:
+                logger.debug("Failed to clear device topic %s: %s", t, exc)
+
+        ha_res = self.clear_ha_discovery(
+            {"device_key": raw_dk or safe_dk, "model": raw_mod, "device_id": raw_id}
+        )
+        cleared_topics.extend(ha_res.get("cleared_topics") or [])
+
+        return {
+            "ok": True,
+            "device_key": safe_dk,
+            "cleared_count": len(cleared_topics),
+            "cleared_topics": cleared_topics,
+        }
+
+    def sweep_orphaned_mqtt_topics(
+        self,
+        valid_devices_map: Any,
+        listen_seconds: float = 2.5,
+    ) -> Dict[str, Any]:
+        """
+        Subscribes temporarily to `{prefix}/#` and `{ha_discovery_prefix}/#`, collects all
+        retained messages currently stored on the MQTT broker, and purges (publishes `""`
+        with `retain=True`) any topic that does not belong to an active, non-ignored,
+        MQTT-enabled sensor or named/grouped/HA device in SQLite.
+        """
+        if not self._enabled or not self._host:
+            return {
+                "ok": False,
+                "error": "MQTT är inaktiverat.",
+                "purged_topics_count": 0,
+                "scanned_retained_count": 0,
+            }
+
+        # Wait up to 3.0s if client is still establishing initial connection
+        wait_start = time.monotonic()
+        while (not self._connected or self._client is None) and (time.monotonic() - wait_start) < 3.0:
+            time.sleep(0.1)
+
+        if not self._connected or self._client is None:
+            return {
+                "ok": False,
+                "error": "MQTT-brokern är inte ansluten.",
+                "purged_topics_count": 0,
+                "scanned_retained_count": 0,
+            }
+
+        with self._sweep_lock:
+            if isinstance(valid_devices_map, dict):
+                devices_iter = list(valid_devices_map.values())
+            elif isinstance(valid_devices_map, list):
+                devices_iter = valid_devices_map
+            else:
+                devices_iter = []
+
+            valid_prefix_topics: set[str] = {f"{self._prefix}/status"}
+            valid_ha_state_topics: set[str] = set()
+
+            for d in devices_iter:
+                if not isinstance(d, dict):
+                    continue
+                if not self.is_device_mqtt_allowed(d):
+                    continue
+
+                raw_dk = str(d.get("device_key") or "").strip()
+                raw_mod = str(d.get("model") or "Unknown").strip()
+                raw_id = str(d.get("device_id") or "unknown").strip()
+                model_seg = sanitize_topic_segment(raw_mod)
+                id_seg = sanitize_topic_segment(raw_id)
+                safe_dk = sanitize_topic_segment(raw_dk or f"{model_seg}_{id_seg}")
+
+                state_t = f"{self._prefix}/{safe_dk}/state"
+                valid_prefix_topics.add(state_t)
+
+                if self._ha_discovery_enabled and int(d.get("ha_discovery") or 0) == 1:
+                    valid_ha_state_topics.add(state_t)
+
+            retained_messages: Dict[str, bytes] = {}
+            last_rx_mono = [time.monotonic()]
+
+            def _on_sweep_msg(client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
+                try:
+                    if msg.retain and msg.payload and len(msg.payload) > 0:
+                        retained_messages[str(msg.topic)] = bytes(msg.payload)
+                        last_rx_mono[0] = time.monotonic()
+                except Exception:
+                    pass
+
+            prefix_sub = f"{self._prefix}/#"
+            ha_sub = f"{self._ha_discovery_prefix}/#"
+
+            prev_on_message = self._client.on_message
+            self._client.on_message = _on_sweep_msg
+            try:
+                self._client.subscribe([(prefix_sub, 0), (ha_sub, 0)])
+                start_mono = time.monotonic()
+                min_wait = max(1.0, float(listen_seconds))
+                max_wait = max(min_wait + 2.5, 5.0)
+                while True:
+                    elapsed = time.monotonic() - start_mono
+                    since_last = time.monotonic() - last_rx_mono[0]
+                    if elapsed >= min_wait and since_last >= 0.35:
+                        break
+                    if elapsed >= max_wait:
+                        break
+                    time.sleep(0.1)
+            finally:
+                try:
+                    self._client.unsubscribe([prefix_sub, ha_sub])
+                except Exception:
+                    pass
+                self._client.on_message = prev_on_message
+
+            orphaned_topics: List[str] = []
+            prefix_slash = f"{self._prefix}/"
+            ha_slash = f"{self._ha_discovery_prefix}/"
+
+            for topic, raw_bytes in retained_messages.items():
+                if topic.startswith(prefix_slash):
+                    if topic == f"{self._prefix}/status":
+                        continue
+                    if topic not in valid_prefix_topics:
+                        orphaned_topics.append(topic)
+                elif topic.startswith(ha_slash):
+                    # Only inspect/purge Home Assistant discovery topics created by SensorScanner
+                    is_ours = "/sensor_scanner_" in topic
+                    state_t = ""
+                    try:
+                        cfg = json.loads(raw_bytes.decode("utf-8", errors="ignore"))
+                        if isinstance(cfg, dict):
+                            state_t = str(cfg.get("state_topic") or "")
+                            dev_block = cfg.get("device") if isinstance(cfg.get("device"), dict) else {}
+                            identifiers = dev_block.get("identifiers") if isinstance(dev_block.get("identifiers"), list) else []
+                            mfg = str(dev_block.get("manufacturer") or "")
+                            if (
+                                state_t.startswith(prefix_slash)
+                                or any(str(i).startswith("sensor_scanner_") for i in identifiers)
+                                or "SensorScanner" in mfg
+                            ):
+                                is_ours = True
+                    except Exception:
+                        pass
+
+                    if not is_ours:
+                        continue
+
+                    if not self._ha_discovery_enabled or not state_t or state_t not in valid_ha_state_topics:
+                        orphaned_topics.append(topic)
+
+            purged_count = 0
+            for idx, topic in enumerate(orphaned_topics):
+                try:
+                    self._client.publish(topic, payload="", qos=0, retain=True)
+                    purged_count += 1
+                    if idx > 0 and idx % 50 == 0:
+                        time.sleep(0.005)
+                except Exception as exc:
+                    logger.debug("Failed to purge orphaned MQTT topic %s: %s", topic, exc)
+
+            self._last_purged_topics_count = purged_count
+            if purged_count > 0:
+                print(
+                    f"[MQTT-SWEEP] Raderade {purged_count} föräldralösa retained MQTT-topics (av {len(retained_messages)} skannade)",
+                    flush=True,
+                )
+            return {
+                "ok": True,
+                "purged_topics_count": purged_count,
+                "scanned_retained_count": len(retained_messages),
+                "active_allowed_topics": len(valid_prefix_topics) - 1,
+                "purged_topics": orphaned_topics[:100],
+            }
