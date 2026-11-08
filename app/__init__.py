@@ -1,4 +1,4 @@
 """SensorScanner - RTL-SDR Blog V4, rtl_433 & BLE 2.4 GHz RF Signal Monitor."""
 
-__version__ = "2026.11.07.44"
+__version__ = "2026.11.07.45"
 __app_name__ = "SensorScanner"

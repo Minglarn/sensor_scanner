@@ -121,19 +121,15 @@
       border-color: rgba(14, 165, 233, 0.5) !important;
     }
     tr[data-pulse="1"] {
-      background-color: rgba(16, 185, 129, 0.14) !important;
+      background-color: rgba(16, 185, 129, 0.08);
       transition: background-color 0.6s ease;
     }
     html.dark tr[data-pulse="1"] {
-      background-color: rgba(16, 185, 129, 0.2) !important;
+      background-color: rgba(16, 185, 129, 0.12);
     }
     div[data-pulse="1"] {
-      background-color: rgba(16, 185, 129, 0.12) !important;
       box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.45);
-      transition: background-color 0.6s ease, box-shadow 0.6s ease;
-    }
-    html.dark div[data-pulse="1"] {
-      background-color: rgba(16, 185, 129, 0.18) !important;
+      transition: box-shadow 0.6s ease;
     }
     .no-scrollbar::-webkit-scrollbar {
       display: none;
@@ -245,7 +241,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.44</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.45</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1910,8 +1906,32 @@
     let groupDevices = localStorage.getItem('ss_group_sections') === 'true';
     let hideEmptyBeacons = localStorage.getItem('ss_hide_empty_beacons') !== 'false';
     let isHoveringList = false;
+    let isUserInteracting = false;
+    let userInteractReleaseTimer = null;
     let pendingHoverReorder = false;
     let haDiscoveryEnabled = false;
+
+    function setUserInteractingLock() {
+      isUserInteracting = true;
+      if (userInteractReleaseTimer) {
+        clearTimeout(userInteractReleaseTimer);
+        userInteractReleaseTimer = null;
+      }
+    }
+
+    function releaseUserInteractingLockDelayed() {
+      if (userInteractReleaseTimer) clearTimeout(userInteractReleaseTimer);
+      userInteractReleaseTimer = setTimeout(() => {
+        userInteractReleaseTimer = null;
+        isUserInteracting = false;
+      }, 150);
+    }
+
+    document.addEventListener('pointerdown', setUserInteractingLock, { passive: true, capture: true });
+    document.addEventListener('mousedown', setUserInteractingLock, { passive: true, capture: true });
+    document.addEventListener('pointerup', releaseUserInteractingLockDelayed, { passive: true, capture: true });
+    document.addEventListener('mouseup', releaseUserInteractingLockDelayed, { passive: true, capture: true });
+    document.addEventListener('pointercancel', releaseUserInteractingLockDelayed, { passive: true, capture: true });
 
     let appUptimeSeconds = 0;
     let sdrUptimeSeconds = 0;
@@ -2436,20 +2456,41 @@
 
     function toggleSignalGroup(groupKey) {
       if (!groupKey) return;
-      if (collapsedGroups.has(groupKey)) {
-        collapsedGroups.delete(groupKey);
-      } else {
+      const willCollapse = !collapsedGroups.has(groupKey);
+      if (willCollapse) {
         collapsedGroups.add(groupKey);
+      } else {
+        collapsedGroups.delete(groupKey);
       }
       saveCollapsedGroupsToStorage();
 
       // Rotate chevron immediately if present in DOM
       const chev = document.getElementById(`chevron-${groupKey}`);
       if (chev) {
-        if (collapsedGroups.has(groupKey)) {
+        if (willCollapse) {
           chev.classList.add('-rotate-90');
         } else {
           chev.classList.remove('-rotate-90');
+        }
+      }
+
+      // Surgical accordion toggle in Card view so other open groups are never rebuilt
+      if (viewMode !== 'table') {
+        const existingBody = document.getElementById(`group-body-${groupKey}`);
+        if (willCollapse) {
+          if (existingBody) existingBody.remove();
+          return;
+        }
+        const headerEl = document.querySelector(`[data-section-header="${CSS.escape(groupKey)}"]`);
+        if (headerEl && !existingBody) {
+          const items = getFilteredSignals();
+          const sections = buildGroupedSignalSections(items);
+          const sec = sections.find((s) => s.key === groupKey);
+          if (sec) {
+            const bodyHtml = `<div id="group-body-${escapeHtml(sec.key)}" data-group-body="${escapeHtml(sec.key)}" class="col-span-full responsive-cards-grid group-cards-grid mb-2">${sec.items.map((sig) => buildSignalCardHtml(sig)).join('')}</div>`;
+            headerEl.insertAdjacentHTML('afterend', bodyHtml);
+            return;
+          }
         }
       }
       renderSignalsView();
@@ -2632,7 +2673,9 @@
       isHoveringList = false;
       if (pendingHoverReorder && activeTab === 'signals') {
         pendingHoverReorder = false;
-        reorderSignalsDomInPlace();
+        if (!groupDevices) {
+          reorderSignalsDomInPlace();
+        }
       }
     }
 
@@ -2640,11 +2683,7 @@
       const container = viewMode === 'table'
         ? document.getElementById('signalsTableBody')
         : document.getElementById('signalsGridContainer');
-      if (!container) return;
-      if (groupDevices) {
-        renderSignalsView();
-        return;
-      }
+      if (!container || groupDevices) return;
       const sortedItems = getFilteredSignals();
       sortedItems.forEach((sig) => {
         const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
@@ -4161,9 +4200,11 @@
             devicesMap.delete(msg.device_key);
             signalsCache.delete(msg.device_key);
             dirtyKeys.delete(msg.device_key);
+            const delEl = document.querySelector(`[data-device-key="${CSS.escape(msg.device_key)}"]`);
+            if (delEl) delEl.remove();
+            if (groupDevices) updateGroupHeaderCountersInDom();
             updateNewDevicesNavBadge();
-            renderCategoryFilterDropdowns();
-            renderSignalsView();
+            updateSignalCountBadge(getFilteredSignals().length);
             if (activeTab === 'settings') loadDbStats();
           } else if (msg.type === 'devices_pruned' && Array.isArray(msg.device_keys)) {
             const prunedSet = new Set(msg.device_keys);
@@ -4172,10 +4213,12 @@
               devicesMap.delete(k);
               signalsCache.delete(k);
               dirtyKeys.delete(k);
+              const prEl = document.querySelector(`[data-device-key="${CSS.escape(k)}"]`);
+              if (prEl) prEl.remove();
             });
+            if (groupDevices) updateGroupHeaderCountersInDom();
             updateNewDevicesNavBadge();
-            renderCategoryFilterDropdowns();
-            renderSignalsView();
+            updateSignalCountBadge(getFilteredSignals().length);
             if (activeTab === 'settings') loadDbStats();
           } else if (msg.type === 'db_reset') {
             handleDatabaseResetEvent(msg);
@@ -5450,7 +5493,7 @@
             subtitleTarget.setAttribute('title', secondaryName);
             subtitleTarget.classList.remove('hidden');
           } else {
-            subtitleTarget.textContent = '';
+            if (subtitleTarget.textContent !== '') subtitleTarget.textContent = '';
             subtitleTarget.removeAttribute('title');
             subtitleTarget.classList.add('hidden');
           }
@@ -5463,19 +5506,24 @@
         }
 
         const { badgesHtml } = extractAndFormatMetrics(p, sig);
-        const badgesTarget = existingEl.querySelector('[data-sig-badges]');
+        const badgesTarget = existingEl.querySelector('[data-field="measurements"], [data-sig-badges]');
         if (badgesTarget) {
+          let newMeasHtml = badgesHtml;
           if (viewMode !== 'table' && sig.group_name && String(sig.group_name).trim()) {
             const grpBadge = `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25"><i class="mdi mdi-folder-outline"></i>${escapeHtml(sig.group_name)}</span>`;
-            badgesTarget.innerHTML = grpBadge + badgesHtml;
-          } else {
-            badgesTarget.innerHTML = badgesHtml;
+            newMeasHtml = grpBadge + badgesHtml;
+          }
+          if (badgesTarget.innerHTML !== newMeasHtml) {
+            badgesTarget.innerHTML = newMeasHtml;
           }
         }
 
         const radioTarget = existingEl.querySelector('[data-sig-radio]');
         if (radioTarget) {
-          radioTarget.innerHTML = renderTableRadioCellHtml(radio);
+          const nextRadioHtml = renderTableRadioCellHtml(radio);
+          if (radioTarget.innerHTML !== nextRadioHtml) {
+            radioTarget.innerHTML = nextRadioHtml;
+          }
         }
         const cardRadioTarget = existingEl.querySelector('[data-sig-card-radio]');
         if (cardRadioTarget) {
@@ -5497,19 +5545,22 @@
           viewMode === 'table'
         );
         if (!updatedInPlace) {
-          strengthTarget.innerHTML = viewMode === 'table'
+          const nextStrengthHtml = viewMode === 'table'
             ? buildTableSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz, p)
             : buildFooterSignalStrength(sig.rssi, sig.snr, radio.mod, radio.freqMHz, p);
+          if (strengthTarget.innerHTML !== nextStrengthHtml) {
+            strengthTarget.innerHTML = nextStrengthHtml;
+          }
         }
       }
 
-      const hitsValTarget = existingEl.querySelector('[data-sig-hits-val]');
+      const hitsValTarget = existingEl.querySelector('[data-field="hits"], [data-sig-hits-val]');
       const nextHitsStr = String(sig.hit_count || 1);
       if (hitsValTarget) {
         if (hitsValTarget.textContent !== nextHitsStr) hitsValTarget.textContent = nextHitsStr;
       } else {
         const hitsTarget = existingEl.querySelector('[data-sig-hits]');
-        if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i><span data-sig-hits-val>${nextHitsStr}</span>`;
+        if (hitsTarget) hitsTarget.innerHTML = `<i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i><span data-field="hits" data-sig-hits-val>${nextHitsStr}</span>`;
       }
 
       const newBadgeTarget = existingEl.querySelector('[data-sig-new]');
@@ -5520,13 +5571,12 @@
         else if (!shouldShowNew && !isHiddenNow) newBadgeTarget.classList.add('hidden');
       }
 
-      const tsTarget = existingEl.querySelector('[data-sig-time]');
+      const tsTarget = existingEl.querySelector('[data-field="time"], [data-sig-time]');
       if (tsTarget) {
         updateSignalTimestampLeafInPlace(tsTarget, sig.timestamp, Date.now() + 10000);
       }
-
-      pulseElement(existingEl);
     }
+    const patchSignalElementInPlace = patchExistingSignalElement;
 
     function scheduleUiFlush() {
       if (uiFlushTimer || document.hidden) return;
@@ -5542,6 +5592,15 @@
         uiFlushTimer = null;
       }
       if (document.hidden) return;
+
+      // Protect clicks: NEVER update DOM while user pointer/mouse button is pressed (+150ms release window)
+      if (isUserInteracting) {
+        uiFlushTimer = setTimeout(() => {
+          uiFlushTimer = null;
+          flushPendingUiUpdates();
+        }, 150);
+        return;
+      }
 
       // 1. Flush header & KPI counters once per batch
       if (pendingCountsUpdate) {
@@ -5575,6 +5634,10 @@
         const emptyEl = document.getElementById('signalsEmptyState');
         const gridEl = document.getElementById('signalsGridContainer');
         const tableWrap = document.getElementById('signalsTableContainer');
+        const isContainerHovered = isHoveringList ||
+          Boolean(container && container.matches(':hover')) ||
+          Boolean(gridEl && gridEl.matches(':hover')) ||
+          Boolean(tableWrap && tableWrap.matches(':hover'));
         let needsReorder = false;
         const touchedGroups = new Set();
 
@@ -5608,7 +5671,7 @@
               if (groupDevices) {
                 // Keep patched in place within its open group section
                 hasInPlaceUpdates = true;
-              } else if (isHoveringList) {
+              } else if (isContainerHovered) {
                 hasInPlaceUpdates = true;
                 pendingHoverReorder = true;
               } else if (signalSort.field === 'time' && signalSort.dir === 'desc') {
@@ -5621,21 +5684,28 @@
             } else if (groupDevices) {
               // New device in an expanded group (or a brand new group section)
               const grpMeta = resolveSignalGroupSectionMeta(sig, devObj);
-              const groupBodyEl = viewMode !== 'table'
-                ? document.getElementById(`group-body-${grpMeta.key}`)
-                : null;
-              if (groupBodyEl) {
-                const temp = document.createElement('div');
-                temp.innerHTML = buildSignalCardHtml(sig, Date.now() + 10000).trim();
-                const newEl = temp.firstElementChild;
-                if (newEl) {
-                  groupBodyEl.prepend(newEl);
-                  pulseElement(newEl);
+              if (viewMode !== 'table') {
+                const groupBodyEl = document.getElementById(`group-body-${grpMeta.key}`);
+                if (groupBodyEl) {
+                  const temp = document.createElement('div');
+                  temp.innerHTML = buildSignalCardHtml(sig, Date.now() + 10000).trim();
+                  const newEl = temp.firstElementChild;
+                  if (newEl) {
+                    groupBodyEl.prepend(newEl);
+                    pulseElement(newEl);
+                  }
                 }
-              } else if (!isHoveringList) {
-                needsReorder = true;
               } else {
-                pendingHoverReorder = true;
+                const headerRow = container.querySelector(`[data-section-header="${CSS.escape(grpMeta.key)}"]`);
+                if (headerRow) {
+                  const temp = document.createElement('tbody');
+                  temp.innerHTML = buildSignalTableRowHtml(sig, Date.now() + 10000).trim();
+                  const newRow = temp.firstElementChild;
+                  if (newRow) {
+                    headerRow.insertAdjacentElement('afterend', newRow);
+                    pulseElement(newRow);
+                  }
+                }
               }
             } else {
               const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
@@ -5644,13 +5714,16 @@
                 : buildSignalCardHtml(sig, Date.now() + 10000)).trim();
               const newEl = temp.firstElementChild;
               if (newEl) {
-                container.prepend(newEl);
-                pulseElement(newEl);
-                if (!isHoveringList && !(signalSort.field === 'time' && signalSort.dir === 'desc')) {
-                  needsReorder = true;
-                } else if (isHoveringList) {
+                if (isContainerHovered) {
+                  container.appendChild(newEl);
                   pendingHoverReorder = true;
+                } else {
+                  container.prepend(newEl);
+                  if (!(signalSort.field === 'time' && signalSort.dir === 'desc')) {
+                    needsReorder = true;
+                  }
                 }
+                pulseElement(newEl);
               }
             }
           }
@@ -5660,7 +5733,7 @@
           updateGroupHeaderCountersInDom(touchedGroups);
         }
 
-        if (needsReorder && !isHoveringList) {
+        if (needsReorder && !isContainerHovered && !groupDevices) {
           reorderSignalsDomInPlace();
         }
         updateSignalCountBadge(getFilteredSignals().length);
@@ -5675,6 +5748,7 @@
 
       dirtyKeys.clear();
     }
+    const flushDirtySignals = flushPendingUiUpdates;
 
     function handleIncomingSignal(sig, dev, counts, totalSignalsCount, totalDevicesCount) {
       if (sig.model && !knownModels.has(sig.model)) {
@@ -5709,7 +5783,7 @@
       }
 
       const p = sig.payload || {};
-      const nextVisualSig = `${sig.rssi ?? ''}|${sig.snr ?? ''}|${p.distance_m ?? ''}|${computeTelemetryFingerprint(sig)}`;
+      const nextVisualSig = `${sig.hit_count ?? ''}|${sig.rssi ?? ''}|${sig.snr ?? ''}|${p.distance_m ?? ''}|${computeTelemetryFingerprint(sig)}`;
       sig._visualSig = nextVisualSig;
 
       // Re-insert so Map order stays LRU -> most recent at the end, oldest at the beginning
@@ -6050,11 +6124,11 @@
                   <span data-sig-title class="font-bold text-sm text-slate-800 dark:text-slate-100 truncate block" title="${escapeHtml(primaryName)}">${escapeHtml(primaryName)}</span>
                   <span data-sig-new class="${isNewDevice ? '' : 'hidden '}px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shrink-0">NY</span>
                 </div>
-                <div data-sig-card-sub class="h-4 truncate block text-[11px] text-slate-400 font-mono leading-4 mt-0.5" title="${escapeHtml(cardSubtitle)}">${escapeHtml(cardSubtitle)}</div>
+                <div data-field="subtitle" data-sig-card-sub class="h-4 truncate block text-[11px] text-slate-400 font-mono leading-4 mt-0.5" title="${escapeHtml(cardSubtitle)}">${escapeHtml(cardSubtitle)}</div>
               </div>
             </div>
             <div class="shrink-0 text-right font-mono pl-2 flex flex-col items-end">
-              <span data-sig-time class="inline-flex items-center justify-end gap-0.5 text-[11px] text-slate-400 dark:text-slate-500 leading-5 whitespace-nowrap" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
+              <span data-field="time" data-sig-time class="inline-flex items-center justify-end gap-0.5 text-[11px] text-slate-400 dark:text-slate-500 leading-5 whitespace-nowrap" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
                 ${timeInnerHtml}
               </span>
               <span data-sig-card-radio class="h-4 text-[10px] text-slate-400 dark:text-slate-500 leading-4 mt-0.5 whitespace-nowrap">${escapeHtml(compactRadioLine)}</span>
@@ -6062,7 +6136,7 @@
           </div>
 
           <!-- ZONE 2: BODY (Strictly aligned metrics across all cards) -->
-          <div data-sig-badges class="my-3 flex flex-wrap items-center gap-1.5 min-h-[28px]">
+          <div data-field="measurements" data-sig-badges class="my-3 flex flex-wrap items-center gap-1.5 min-h-[28px]">
             ${groupBadgeHtml}${badgesHtml}
           </div>
 
@@ -6071,7 +6145,7 @@
             <div data-sig-strength class="flex items-center gap-2.5 min-w-0">${footerSignalHtml}</div>
             <div class="flex items-center gap-1.5 shrink-0">
               <span data-sig-hits class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 text-[11px]" title="Antal mottagna paket från denna enhet">
-                <i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i><span data-sig-hits-val>${hitCount}</span>
+                <i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i><span data-field="hits" data-sig-hits-val>${hitCount}</span>
               </span>
               <div class="inline-flex items-center gap-0.5">
                 <button type="button" data-action="quick-edit" class="w-6 h-6 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 flex items-center justify-center transition" title="Redigera Alias, Grupp & Kategori">
@@ -6195,11 +6269,11 @@
         const distText = distInfo ? formatBleDistanceText(distInfo.distanceM) : '';
         return `
           <div class="flex flex-col items-end leading-tight">
-            <span data-sig-rssi-wrap class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
+            <span data-field="rssi" data-sig-rssi-wrap class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
               <i data-sig-rssi-icon class="mdi ${icon} text-sm leading-none"></i>
               <span data-sig-rssi-val>${val.toFixed(0)} dBm</span>
             </span>
-            <span data-sig-dist-wrap class="${distText ? '' : 'hidden '}inline-flex items-center justify-end gap-0.5 text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5 whitespace-nowrap"><i class="mdi mdi-map-marker-distance text-xs leading-none"></i><span data-sig-dist-val>${escapeHtml(distText)}</span></span>
+            <span data-field="distance" data-sig-dist-wrap class="${distText ? '' : 'hidden '}inline-flex items-center justify-end gap-0.5 text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5 whitespace-nowrap"><i class="mdi mdi-map-marker-distance text-xs leading-none"></i><span data-sig-dist-val>${escapeHtml(distText)}</span></span>
           </div>
         `;
       }
@@ -6221,11 +6295,11 @@
       const hasSnr = snr !== null && snr !== undefined && !Number.isNaN(Number(snr));
       return `
         <div class="flex flex-col items-end leading-tight">
-          <span data-sig-rssi-wrap class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
+          <span data-field="rssi" data-sig-rssi-wrap class="inline-flex items-center justify-end gap-1 font-semibold ${color} whitespace-nowrap">
             <i data-sig-rssi-icon class="mdi ${icon} text-sm leading-none"></i>
             <span data-sig-rssi-val>${val.toFixed(1)} dB</span>
           </span>
-          <span data-sig-dist-wrap class="${hasSnr ? '' : 'hidden '}text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 whitespace-nowrap"><span data-sig-dist-val>${hasSnr ? `SNR: ${Number(snr).toFixed(1)} dB` : ''}</span></span>
+          <span data-field="distance" data-sig-dist-wrap class="${hasSnr ? '' : 'hidden '}text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 whitespace-nowrap"><span data-sig-dist-val>${hasSnr ? `SNR: ${Number(snr).toFixed(1)} dB` : ''}</span></span>
         </div>
       `;
     }
@@ -6258,7 +6332,7 @@
 
       return `
         <tr data-device-key="${escapeHtml(devKey)}" data-signal-id="${Number(sig.id || 0)}" data-metrics-sig="${escapeHtml(metricsSig)}" class="cursor-pointer odd:bg-white dark:odd:bg-slate-900 even:bg-slate-50/90 dark:even:bg-slate-800/45 hover:bg-sky-50/80 dark:hover:bg-sky-900/25 transition-colors">
-          <td data-sig-time class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400 align-middle border-l-4 ${hasAliasOrOwn ? 'border-l-sky-500 dark:border-l-sky-400' : 'border-l-transparent'}" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
+          <td data-field="time" data-sig-time class="w-24 py-2 px-2.5 font-mono text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400 align-middle border-l-4 ${hasAliasOrOwn ? 'border-l-sky-500 dark:border-l-sky-400' : 'border-l-transparent'}" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
             ${timeInnerHtml}
           </td>
           <td class="w-64 min-w-[230px] py-2 px-2.5 align-middle">
@@ -6269,12 +6343,12 @@
                   <i data-sig-own-star class="${hasAliasOrOwn ? '' : 'hidden '}mdi mdi-star text-xs text-amber-500 dark:text-sky-400 shrink-0" title="Namngiven / Egen enhet"></i>
                   <span data-sig-title class="truncate max-w-[210px] block ${hasAliasOrOwn ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-800 dark:text-slate-100'} leading-tight" title="${escapeHtml(primaryName)}">${escapeHtml(primaryName)}</span>
                 </div>
-                <div data-sig-subtitle class="${secondaryName ? 'truncate max-w-[210px] block text-[11px] text-slate-400 leading-tight mt-0.5 pl-5' : 'hidden truncate max-w-[210px] block text-[11px] text-slate-400 leading-tight mt-0.5 pl-5'}" title="${escapeHtml(secondaryName || '')}">${secondaryName ? escapeHtml(secondaryName) : ''}</div>
+                <div data-field="subtitle" data-sig-subtitle class="${secondaryName ? 'truncate max-w-[210px] block text-[11px] text-slate-400 leading-tight mt-0.5 pl-5' : 'hidden truncate max-w-[210px] block text-[11px] text-slate-400 leading-tight mt-0.5 pl-5'}" title="${escapeHtml(secondaryName || '')}">${secondaryName ? escapeHtml(secondaryName) : ''}</div>
                 ${hasGroup ? `<div class="truncate max-w-[210px] block text-[10px] text-sky-600 dark:text-sky-400 leading-tight mt-0.5 pl-5"><i class="mdi mdi-folder-outline mr-0.5"></i>${escapeHtml(sig.group_name)}</div>` : ''}
               </div>
               <div class="shrink-0 flex items-center gap-1 self-center">
                 <span data-sig-new class="${isNewDevice ? '' : 'hidden '}px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">NY</span>
-                <span data-sig-hits class="inline-flex items-center px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500 border border-slate-200/70 dark:border-slate-700/70 self-center"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i><span data-sig-hits-val>${hitCount}</span></span>
+                <span data-sig-hits class="inline-flex items-center px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-500 border border-slate-200/70 dark:border-slate-700/70 self-center"><i class="mdi mdi-counter text-xs text-sky-500 mr-0.5"></i><span data-field="hits" data-sig-hits-val>${hitCount}</span></span>
               </div>
             </div>
           </td>
@@ -6285,7 +6359,7 @@
             ${escapeHtml(sig.device_id)}${sig.channel !== null && sig.channel !== undefined && sig.channel !== '' ? ` <span class="text-slate-400 whitespace-nowrap">/ K${escapeHtml(sig.channel)}</span>` : ''}
           </td>
           <td class="min-w-[200px] py-2 px-2.5 align-middle">
-            <div data-sig-badges class="flex flex-wrap gap-1 items-center">${badgesHtml}</div>
+            <div data-field="measurements" data-sig-badges class="flex flex-wrap gap-1 items-center">${badgesHtml}</div>
           </td>
           <td data-sig-radio class="w-32 py-2 px-2.5 font-mono text-[11px] text-slate-600 dark:text-slate-300 align-middle">
             ${tableRadioHtml}
@@ -6307,6 +6381,7 @@
         </tr>
       `;
     }
+    const createSignalRow = buildSignalTableRowHtml;
 
     function buildFooterSignalStrength(rssi, snr, mod = '', freq = null, payload = null) {
       if (rssi === null || rssi === undefined) {
@@ -6338,10 +6413,10 @@
         const distInfo = computeOrExtractBleDistance(payload, { rssi: val });
         const distText = distInfo ? formatBleDistanceText(distInfo.distanceM) : '';
         return `
-          <span data-sig-rssi-wrap class="inline-flex items-center gap-1 ${color}">
+          <span data-field="rssi" data-sig-rssi-wrap class="inline-flex items-center gap-1 ${color}">
             <i data-sig-rssi-icon class="mdi ${icon} text-sm leading-none"></i>
             <span data-sig-rssi-val>${val.toFixed(0)} dBm</span>
-            <span data-sig-dist-wrap class="${distText ? '' : 'hidden '}text-slate-400 dark:text-slate-500 ml-1 inline-flex items-center gap-0.5"><i class="mdi mdi-map-marker-distance text-xs leading-none"></i><span data-sig-dist-val>${escapeHtml(distText)}</span></span>
+            <span data-field="distance" data-sig-dist-wrap class="${distText ? '' : 'hidden '}text-slate-400 dark:text-slate-500 ml-1 inline-flex items-center gap-0.5"><i class="mdi mdi-map-marker-distance text-xs leading-none"></i><span data-sig-dist-val>${escapeHtml(distText)}</span></span>
           </span>
         `;
       }
@@ -6362,10 +6437,10 @@
 
       const hasSnr = snr !== null && snr !== undefined && !Number.isNaN(Number(snr));
       return `
-        <span data-sig-rssi-wrap class="inline-flex items-center gap-1 ${color}">
+        <span data-field="rssi" data-sig-rssi-wrap class="inline-flex items-center gap-1 ${color}">
           <i data-sig-rssi-icon class="mdi ${icon} text-sm leading-none"></i>
           <span data-sig-rssi-val>${val.toFixed(1)} dB</span>
-          <span data-sig-dist-wrap class="${hasSnr ? '' : 'hidden '}text-slate-400 dark:text-slate-500"><span data-sig-dist-val>${hasSnr ? `/ SNR ${Number(snr).toFixed(1)}` : ''}</span></span>
+          <span data-field="distance" data-sig-dist-wrap class="${hasSnr ? '' : 'hidden '}text-slate-400 dark:text-slate-500"><span data-sig-dist-val>${hasSnr ? `/ SNR ${Number(snr).toFixed(1)}` : ''}</span></span>
         </span>
       `;
     }
@@ -7398,8 +7473,15 @@
     }
 
     function handleDeviceUpdated(dev) {
+      if (!dev || !dev.device_key) return;
+      const prevDev = devicesList.find((d) => d.device_key === dev.device_key);
+      const prevSig = signalsCache.get(dev.device_key);
+      const prevGroup = String((prevDev && prevDev.group_name) || (prevSig && prevSig.group_name) || '').trim();
+      const prevCat = String((prevDev && prevDev.category) || (prevSig && prevSig.category) || 'Generic').trim();
+
       syncDeviceToCaches(dev);
-      if (currentModalDeviceKey && dev && currentModalDeviceKey === dev.device_key) {
+
+      if (currentModalDeviceKey && currentModalDeviceKey === dev.device_key) {
         const catMeta = getCategoryMeta(dev.category);
         const iconEl = document.getElementById('modalCategoryIcon');
         const badgeEl = document.getElementById('modalCategoryBadge');
@@ -7416,14 +7498,57 @@
           renderModalTelemetryAndHistory(currentModalPayload, null, null);
         }
       }
-      updateExistingGroupsDatalist();
+
+      const nextGroup = String(dev.group_name || '').trim();
+      const nextCat = String(dev.category || 'Generic').trim();
+      const groupOrCatChanged = !prevDev || prevGroup !== nextGroup || prevCat !== nextCat;
+
+      if (groupOrCatChanged) {
+        updateExistingGroupsDatalist();
+        renderCategoryFilterDropdowns();
+      }
       updateNewDevicesNavBadge();
-      renderCategoryFilterDropdowns();
-      if (activeTab === 'signals') renderSignalsView();
+
+      if (Number(dev.ignored) === 1) {
+        const existingEl = document.querySelector(`[data-device-key="${CSS.escape(dev.device_key)}"]`);
+        if (existingEl) existingEl.remove();
+        if (groupDevices) updateGroupHeaderCountersInDom();
+        updateSignalCountBadge(getFilteredSignals().length);
+        return;
+      }
+
+      // If group or category changed while grouped view is active, move card/row to the new group section
+      if (activeTab === 'signals' && groupDevices && prevDev && (prevGroup !== nextGroup || prevCat !== nextCat)) {
+        renderSignalsView();
+        return;
+      }
+
+      // Otherwise NEVER call renderSignalsView()! Queue surgical in-place patch via dirtyKeys
+      dirtyKeys.add(dev.device_key);
+      scheduleUiFlush();
     }
 
     function handleDevicesBulkUpdated(devs) {
-      devs.forEach((d) => syncDeviceToCaches(d));
+      if (!Array.isArray(devs) || devs.length === 0) return;
+      let anyGroupOrCatChanged = false;
+      devs.forEach((d) => {
+        if (!d || !d.device_key) return;
+        const prevDev = devicesList.find((x) => x.device_key === d.device_key);
+        const prevGroup = String((prevDev && prevDev.group_name) || '').trim();
+        const prevCat = String((prevDev && prevDev.category) || 'Generic').trim();
+        syncDeviceToCaches(d);
+        const nextGroup = String(d.group_name || '').trim();
+        const nextCat = String(d.category || 'Generic').trim();
+        if (!prevDev || prevGroup !== nextGroup || prevCat !== nextCat) {
+          anyGroupOrCatChanged = true;
+        }
+        if (Number(d.ignored) === 1) {
+          const existingEl = document.querySelector(`[data-device-key="${CSS.escape(d.device_key)}"]`);
+          if (existingEl) existingEl.remove();
+        } else {
+          dirtyKeys.add(d.device_key);
+        }
+      });
       if (currentModalDeviceKey) {
         const matchDev = devs.find((d) => d.device_key === currentModalDeviceKey);
         if (matchDev && matchDev.last_payload) {
@@ -7434,7 +7559,13 @@
       updateExistingGroupsDatalist();
       updateNewDevicesNavBadge();
       renderCategoryFilterDropdowns();
-      if (activeTab === 'signals') renderSignalsView();
+      if (activeTab === 'signals') {
+        if (groupDevices && anyGroupOrCatChanged) {
+          renderSignalsView();
+        } else {
+          scheduleUiFlush();
+        }
+      }
     }
 
     async function toggleDeviceFlag(deviceKey, field, val) {
