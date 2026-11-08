@@ -246,7 +246,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.50</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.51</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -2186,7 +2186,7 @@
 
     // Keys that represent technical radio/envelope metadata rather than sensor measurements
     const TECHNICAL_METADATA_KEYS = new Set([
-      'time', 'protocol', 'model', 'type', 'id', 'device', 'sensor_id', 'node_id',
+      'time', 'protocol', 'protocol_name', 'protocol_full_name', 'model', 'type', 'id', 'device', 'sensor_id', 'node_id',
       'address', 'house_code', 'code', 'channel', 'mic', 'mod', 'freq', 'freq1',
       'freq2', 'rssi', 'snr', 'noise', 'alias', 'group_name', 'device_key',
       'mode', 'pulses_per_kwh', 'pulses_per_kWh', 'calculated_power_W', 'mac', 'mac_type', 'local_name',
@@ -4160,6 +4160,303 @@
       };
     }
 
+    const RTL433_PROTOCOL_NAMES = {
+      1: 'Silvercrest Remote Control',
+      2: 'Rubicson / TFA 30.3197 Temp Sensor',
+      3: 'Prologue / Kedsum Temp/Hygro',
+      4: 'Waveman Switch Transmitter',
+      6: 'ELV EM 1000',
+      7: 'ELV WS 2000',
+      8: 'LaCrosse TX Temp/Hygro',
+      10: 'Acurite 896 Rain Gauge',
+      11: 'Acurite 609TXC Temp/Hygro',
+      12: 'Oregon Scientific Weather Sensor',
+      13: 'Mebus 433',
+      14: 'Intertechno 433',
+      15: 'KlikAanKlikUit Wireless Switch',
+      16: 'AlectoV1 Weather Sensor',
+      17: 'Cardin S466-TX2',
+      18: 'Fine Offset Electronics WH2/WH5',
+      19: 'Nexus / FreeTec / TFA Temp/Hygro',
+      20: 'Ambient Weather F007TH / TFA',
+      21: 'Calibeur RF-104 Sensor',
+      22: 'X10 RF',
+      23: 'DSC Security Contact',
+      24: 'Brennenstuhl RCS 2044',
+      25: 'Globaltronics GT-WT-02 Sensor',
+      26: 'Danfoss CFR Thermostat',
+      29: 'Chuango Security Technology',
+      30: 'Generic Remote SC226x EV1527',
+      31: 'TFA-Twin-Plus-30.3049 / Conrad KW9010',
+      32: 'Bresser Thermo-/Hygro-Sensor 3CH',
+      33: 'WT450 / WT260H Temp/Hygro',
+      34: 'LaCrosse WS-2310 / WS-3600 Weather',
+      35: 'Esperanza EWS',
+      36: 'Efergy e2 Classic',
+      37: 'Inovalley kw9015b Temp/Rain',
+      38: 'Generic Temp Sensor 1',
+      39: 'WG-PB12V1 Temperature Sensor',
+      40: 'Acurite 592TXR Temp/Hygro',
+      41: 'Acurite 986 Refrigerator / Freezer',
+      42: 'HIDEKI TS04 Temp/Hygro/Wind/Rain',
+      43: 'Watchman Sonic / Apollo Ultrasonic',
+      44: 'CurrentCost Current Sensor',
+      45: 'emonTx OpenEnergyMonitor',
+      46: 'HT680 Remote Control',
+      47: 'Conrad S3318P Temp/Hygro',
+      48: 'Akhan 100F14 Remote Keyless Entry',
+      49: 'Quhwa Wireless Doorbell',
+      50: 'OSv1 Temperature Sensor',
+      51: 'Proove / Nexa / KlikAanKlikUit Switch',
+      52: 'Bresser 5-in-1 Weather Station',
+      53: 'Springfield Temp & Soil Moisture',
+      54: 'Oregon Scientific SL109H Temp/Hygro',
+      55: 'Acurite 606TX Temp Sensor',
+      56: 'TFA Pool Temperature Sensor',
+      57: 'Kedsum Temp & Humidity Sensor',
+      58: 'Blyss DC5-UK-WH',
+      59: 'Steelmate TPMS',
+      60: 'Schrader TPMS',
+      61: 'LightwaveRF',
+      62: 'Elro DB286A Doorbell',
+      63: 'Efergy Optical',
+      64: 'Honda Remote Key',
+      67: 'Radiohead ASK',
+      68: 'Kerui PIR / Contact Sensor',
+      69: 'Fine Offset WH1050 Weather Station',
+      70: 'Honeywell Door/Window Sensor',
+      71: 'Maverick ET-732/733 BBQ Sensor',
+      72: 'RF-tech',
+      73: 'LaCrosse TX141TH-Bv2',
+      74: 'Acurite 00275rm/00276rm Temp/Hygro',
+      75: 'LaCrosse TX35DTH-IT / TFA 30.3155',
+      76: 'LaCrosse TX29IT / TFA 30.3159.IT',
+      77: 'Vaillant calorMatic VRT340f',
+      78: 'Fine Offset WH24 / WH65B Weather Station',
+      79: 'Fine Offset WH0530 Temp/Rain',
+      80: 'IBIS Beacon',
+      81: 'Oil Ultrasonic Standard FSK',
+      82: 'Citroen TPMS',
+      83: 'Oil Ultrasonic Standard ASK',
+      84: 'Thermopro TP11 Thermometer',
+      85: 'Solight TE44 / TE66 Temp',
+      86: 'Wireless Smoke & Heat Detector GS 558',
+      87: 'Generic Wireless Motion Sensor',
+      88: 'Toyota TPMS',
+      89: 'Ford TPMS',
+      90: 'Renault TPMS',
+      91: 'inFactory NC-3982 Temp/Hygro',
+      92: 'FT-004-B Temperature Sensor',
+      93: 'Ford Car Key',
+      94: 'Philips Outdoor Temperature Sensor',
+      95: 'Schrader TPMS EG53MA4',
+      96: 'Nexa / Proove Self-Learning Switch',
+      97: 'Thermopro TP08/TP12/TP20 Thermometer',
+      98: 'GE Color Effects',
+      99: 'X10 Security',
+      100: 'Interlogix GE UTC Security Devices',
+      101: 'Dish Remote 6.3',
+      102: 'SimpliSafe Home Security',
+      103: 'Sensible Living Mini-Plant Moisture',
+      104: 'Wireless M-Bus Mode C&T',
+      105: 'Wireless M-Bus Mode S',
+      106: 'Wireless M-Bus Mode R',
+      107: 'Wireless M-Bus Mode F',
+      108: 'Hyundai WS SENZOR77 Temp/Hygro',
+      109: 'WT0124 Pool Thermometer',
+      110: 'PMV-107J (Toyota) TPMS',
+      111: 'Emos TTX201 Temp Sensor',
+      112: 'Ambient Weather F007TH',
+      113: 'Ambient Weather TX-8300',
+      114: 'Maverick ET-73',
+      115: 'Honeywell ActivLink Doorbell',
+      116: 'Honeywell ActivLink Doorbell (FSK)',
+      117: 'ESA1000 / ESA2000 Energy Monitor',
+      118: 'Biltema Rain Gauge',
+      119: 'Bresser Weather Center 5-in-1',
+      120: 'Digitech XC-0324 / AmbientPod',
+      121: 'Opus/Imagintronix XT300 Soil Moisture',
+      122: 'FS20',
+      123: 'Jansite TPMS',
+      124: 'LaCrosse/ELV/Conrad WS7000',
+      125: 'TS-FT002 Tank Liquid Level',
+      126: 'Companion WTR001 Temp Sensor',
+      127: 'Ecowitt WH53 / WH0280 / WH0281A',
+      128: 'DirecTV RC66RX Remote Control',
+      129: 'Eurochron Temp/Hygro Sensor',
+      130: 'IKEA Sparsnäs Energy Meter',
+      131: 'Microchip HCS200/HCS300 KeeLoq',
+      132: 'TFA Dostmann 30.3196 T/H',
+      133: 'Rubicson 48659 Pool Thermometer',
+      134: 'AOK Weather Station',
+      135: 'Philips AJ3650 Awaken',
+      136: 'ESIC EMT7110 Power Meter',
+      137: 'Globaltronics QUIGG GT-TMBBQ-05',
+      138: 'Globaltronics GT-WT-03 Sensor',
+      139: 'Norgo NGE101',
+      140: 'Hyundai / Elantra2012 TPMS',
+      141: 'Auriol HG02832 / Rubicson',
+      142: 'Fine Offset WH32 / EcoWitt',
+      143: 'Holman Industries iWeather WS5029',
+      144: 'TBH Weather Sensor',
+      145: 'WS2032 Weather Station',
+      146: 'Auriol AFW2A1 Temp/Hygro',
+      147: 'TFA Drop Rain Gauge 30.3233.01',
+      148: 'DSC Security Contact (WS4945)',
+      149: 'ERT Standard Consumption Message',
+      150: 'Klimalogg Pro',
+      151: 'Visonic Powercode',
+      152: 'Microchip HCS200/HCS300 KeeLoq',
+      153: 'Cotech 36-7959 / SwitchDoc FT020T',
+      154: 'Standard Consumption Message Plus',
+      155: 'Fine Offset WH1080/WH3080 (FSK)',
+      156: 'Abarth 124 Spider / TPMS',
+      157: 'Missil ML0757 Weather Station',
+      158: 'Sharp SPC775 Weather Station',
+      159: 'Insteon',
+      160: 'Schrader TPMS SMD3MA4 (Subaru)',
+      161: 'FS20 / FHT',
+      162: 'ThermoPro-TX2 Temp Sensor',
+      163: 'Acurite 590TX Temp/Hygro',
+      164: 'Security+ 2.0 (Keyfob)',
+      165: 'TFA Dostmann 30.3221.02 T/H',
+      166: 'LaCrosse View LTV-WSDTH01',
+      167: 'Somfy RTS',
+      168: 'IKEA Sparsnäs Energy Monitor',
+      169: 'Nice Flor-s Remote Control',
+      170: 'LaCrosse View LTV-WR1',
+      171: 'LaCrosse View LTV-TH',
+      172: 'Bresser 6-in-1 Weather Station',
+      173: 'Bresser 7-in-1 Weather Station',
+      174: 'EcoDHOME Smart Socket',
+      175: 'LaCrosse View LTV-R1/R3',
+      176: 'BlueLine PowerCost Monitor',
+      177: 'Burnhard BBQ Thermometer',
+      178: 'Security+ (Keyfob)',
+      179: 'Cavius Smoke, Heat & Water Detector',
+      180: 'Jansite Solar TPMS',
+      181: 'Amazon Basics Meat Thermometer',
+      182: 'TFA Marbella Pool Thermometer',
+      183: 'Auriol AHFL Temp/Hygro',
+      184: 'Auriol AFT 77 B2 Temp',
+      185: 'Honeywell CM921 Wireless Thermostat',
+      186: 'Hyundai VDO TPMS',
+      187: 'RojaFlex Shutter / Awning Motor',
+      188: 'Marlec Solar iBoost+',
+      189: 'Somfy io-homecontrol',
+      190: 'Ambient Weather WH31L Lightning',
+      191: 'Markisol / E-Motion / BOFU Roller',
+      192: 'Govee Water Leak Detector H5054',
+      193: 'ContiPressureCheck TPMS',
+      194: 'Inkbird ITH-20R Temp/Hygro',
+      195: 'RainPoint Soil Temp/Moisture',
+      196: 'Atech-WS308 Temp',
+      197: 'Acurite Grill Thermometer 01185M',
+      198: 'EnOcean ERP1',
+      199: 'Linear Megacode Garage/Gate',
+      200: 'Auriol 4-LD5661/4-LD5972/4-LD6313',
+      201: 'Telldus FT0385R / Cotech Weather Station',
+      202: 'Funkbus / Instafunk Remote',
+      203: 'Porsche Boxster/Cayman TPMS',
+      204: 'Jasco/GE Choice Alert Security',
+      205: 'Telldus Weather Station FT0385R',
+      206: 'LaCrosse TX34-IT Rain Gauge',
+      207: 'SmartFire Proflame 2 Remote',
+      208: 'AVE TPMS',
+      209: 'SimpliSafe Gen 3 Home Security',
+      210: 'Yale HSA Alarm',
+      211: 'Regency Ceiling Fan Remote',
+      212: 'Renault 0435R TPMS',
+      213: 'Fine Offset Electronics WS80 Weather',
+      214: 'EMOS E6016 Weather Station',
+      215: 'Altronics X7064 Temp/Hygro',
+      216: 'ANT and ANT+ Devices',
+      217: 'EMOS E6016 Rain Gauge',
+      218: 'Microchip HCS200/HCS300 KeeLoq (FSK)',
+      219: 'Fine Offset WH45 Air Quality',
+      220: 'Maverick XR-30 BBQ Sensor',
+      221: 'Fine Offset WH34 Temp Sensor',
+      222: 'Rubicson Pool Thermometer 48942',
+      223: 'Badger ORION Water Meter',
+      224: 'GEO minim+ Energy Monitor',
+      225: 'TyreGuard 400 TPMS',
+      226: 'Kia TPMS',
+      227: 'SRSmith Pool Light Remote',
+      228: 'Neptune R900 Flow Meter',
+      229: 'WEC-2103 Temp/Hygro',
+      230: 'Vauno EN8822C Temp/Hygro',
+      231: 'Govee Water Leak Detector H5054',
+      232: 'TFA Dostmann 14.1504.V2 BBQ',
+      233: 'CED7000 Shot Timer',
+      234: 'Watchman Sonic Advanced / Plus',
+      235: 'Oil Ultrasonic SMART FSK',
+      236: 'Gasmate BA1008 Meat Thermometer',
+      237: 'Flowis Flow Meter',
+      238: 'Wireless M-Bus Mode T',
+      239: 'Revolt NC-5462 Energy Meter',
+      240: 'LaCrosse TX31U-IT / TFA 30.3159',
+      241: 'Emax W6 Weather Station',
+      242: 'Baldr / RainPoint Rain Gauge',
+      243: 'Celsia CZC1 Thermostat',
+      244: 'Fine Offset WS90 Weather Station',
+      245: 'ThermoPro TP28b Meat Thermometer',
+      246: 'TFA 30.3151 Weather Station',
+      247: 'Bresser Water Leakage',
+      248: 'Nissan TPMS',
+      249: 'Bresser Lightning Sensor',
+      250: 'Schou 72543 Day Rain Gauge',
+      251: 'Fine Offset WH55 Water Leak',
+      252: 'BMW Gen4-Gen5 TPMS',
+      253: 'Watts WFHT-RF Thermostat',
+      254: 'Thermor DG950 Weather Station',
+      255: 'Mueller Hot Rod Water Meter',
+      256: 'ThermoPro TP829b 4-Probe BBQ',
+      257: 'BMW Gen3 TPMS',
+      258: 'TFA Dostmann 30.3251.02 T/H',
+      259: 'Fine Offset WN34 Temp Sensor',
+      260: 'Vaillant VRT340f Thermostat',
+      261: 'Bresser 8-in-1 Weather Station',
+      262: 'Ambient Weather WH31E Temp/Hygro',
+      263: 'Mercedes TPMS',
+      264: 'Bresser Smile T/H',
+      265: 'Vevor 7-in-1 Weather Station'
+    };
+
+    function resolveRtl433Protocol(protoNum, modelStr = '', payload = null) {
+      const cleanNum = String(protoNum ?? '').trim().replace(/^#/, '');
+      if (!cleanNum) {
+        return { protoNum: '', protoName: '', protoFullName: '', protoModalLabel: '', protoTableLabel: '', protoTooltip: '' };
+      }
+      const p = payload && typeof payload === 'object' ? payload : {};
+      const mapped = RTL433_PROTOCOL_NAMES[Number(cleanNum)] || '';
+      const fromPayload = p.protocol_name ? String(p.protocol_name).trim() : '';
+      const fallbackModel = modelStr && String(modelStr).trim().toLowerCase() !== 'unknown' ? String(modelStr).trim() : '';
+      const protoName = fromPayload || mapped || fallbackModel || `rtl_433 #${cleanNum}`;
+      const protoFullName = (p.protocol_full_name && String(p.protocol_full_name).trim()) || mapped || protoName;
+      const protoModalLabel = `${protoName} (#${cleanNum})`;
+      let shortTablePart = protoName;
+      if (shortTablePart.length > 22) {
+        if (shortTablePart.includes(' / ')) {
+          const segs = shortTablePart.split(' / ');
+          const twoSegs = `${segs[0]} / ${segs[1]}`;
+          shortTablePart = twoSegs.length <= 22 ? twoSegs : segs[0];
+        }
+        if (shortTablePart.length > 22) {
+          shortTablePart = `${shortTablePart.slice(0, 20).trim()}…`;
+        }
+      }
+      const protoTableLabel = `${shortTablePart} (#${cleanNum})`;
+      const protoTooltip = `rtl_433 Protokoll #${cleanNum}: ${protoFullName}`;
+      return {
+        protoNum: cleanNum,
+        protoName,
+        protoFullName,
+        protoModalLabel,
+        protoTableLabel,
+        protoTooltip
+      };
+    }
+
     function extractRadioMetadata(sig, payload) {
       const p = payload && typeof payload === 'object' ? payload : {};
       let freq1MHz = p.freq1 !== undefined && p.freq1 !== null ? Number(p.freq1) : null;
@@ -4183,15 +4480,17 @@
 
       const mod = p.mod ? String(p.mod).toUpperCase() : (freq1MHz && freq2MHz ? 'FSK' : '');
       const isBle = mod === 'BLE' || (freqMHz !== null && freqMHz >= 2400) || Boolean(p.mac);
-      const protoNum = p.protocol !== undefined && p.protocol !== null && String(p.protocol).trim() !== ''
+      const rawProto = p.protocol !== undefined && p.protocol !== null && String(p.protocol).trim() !== ''
         ? String(p.protocol).trim()
         : '';
+      const modelStr = String((sig && sig.model) || p.model || '');
+      const protoInfo = resolveRtl433Protocol(rawProto, modelStr, p);
+      const protoNum = protoInfo.protoNum;
       const proto = protoNum ? `#${protoNum}` : '';
       const mic = p.mic ? String(p.mic) : '';
 
       let bleProto = '';
       if (isBle) {
-        const modelStr = String((sig && sig.model) || p.model || '');
         if (modelStr === 'Tesla-Vehicle-BLE' || p.beacon_hash) {
           bleProto = 'VCSEC';
         } else if (modelStr.includes('Vehicle-BLE') || p.vehicle_status) {
@@ -4226,7 +4525,24 @@
           ? `${freq1MHz.toFixed(2)} / ${freq2MHz.toFixed(2)} MHz`
           : (freqMHz ? `${freqMHz.toFixed(2)} MHz` : '-'));
 
-      return { freqMHz, freq1MHz, freq2MHz, mod, isBle, protoNum, proto, bleProto, mic, freqLabel, dualFreqLabel };
+      return {
+        freqMHz,
+        freq1MHz,
+        freq2MHz,
+        mod,
+        isBle,
+        protoNum,
+        proto,
+        protoName: protoInfo.protoName,
+        protoFullName: protoInfo.protoFullName,
+        protoModalLabel: protoInfo.protoModalLabel,
+        protoTableLabel: protoInfo.protoTableLabel,
+        protoTooltip: protoInfo.protoTooltip,
+        bleProto,
+        mic,
+        freqLabel,
+        dualFreqLabel
+      };
     }
 
     // -----------------------------------------------------------------------
@@ -6282,7 +6598,7 @@
               <span data-field="time" data-sig-time class="inline-flex items-center justify-end gap-0.5 text-[11px] text-slate-400 dark:text-slate-500 leading-5 whitespace-nowrap" title="${escapeHtml(exactTime)}" data-timestamp="${escapeHtml(sig.timestamp)}" data-ts="${escapeHtml(sig.timestamp)}" data-fresh-until="${freshUntilMs || 0}">
                 ${timeInnerHtml}
               </span>
-              <span data-sig-card-radio class="h-4 text-[10px] text-slate-400 dark:text-slate-500 leading-4 mt-0.5 whitespace-nowrap">${escapeHtml(compactRadioLine)}</span>
+              <span data-sig-card-radio class="h-4 text-[10px] text-slate-400 dark:text-slate-500 leading-4 mt-0.5 whitespace-nowrap" title="${escapeHtml(radio.protoTooltip || compactRadioLine)}">${escapeHtml(compactRadioLine)}</span>
             </div>
           </div>
 
@@ -6333,8 +6649,10 @@
         subHtmlParts.push(`<span>${escapeHtml(radio.mod)}</span>`);
       }
       if (radio.protoNum) {
+        const tableProtoText = radio.protoTableLabel || `Proto #${radio.protoNum}`;
+        const protoTitleAttr = radio.protoTooltip ? ` title="${escapeHtml(radio.protoTooltip)}"` : '';
         subHtmlParts.push(
-          `<span class="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono text-[10px] font-semibold">Proto #${escapeHtml(radio.protoNum)}</span>`
+          `<span class="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-mono text-[10px] font-semibold cursor-help"${protoTitleAttr}>${escapeHtml(tableProtoText)}</span>`
         );
       }
       if (radio.mic) {
@@ -6969,10 +7287,17 @@
 
       const indigoChipCls = 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30';
       if (radio.protoNum) {
-        const protoPrimary = `#${radio.protoNum} (rtl_433)`;
+        const protoPrimary = radio.protoModalLabel || `#${radio.protoNum} (rtl_433)`;
         const protoSec = radio.mic ? [`MIC: ${radio.mic}`] : [];
         kpiCardsHtml.push(
-          renderChip('mdi-code-tags', indigoChipCls, 'PROTOKOLL', protoPrimary, protoSec)
+          renderChip(
+            'mdi-code-tags',
+            `${indigoChipCls}${radio.protoTooltip ? ' cursor-help' : ''}`,
+            'PROTOKOLL',
+            protoPrimary,
+            protoSec,
+            radio.protoTooltip || ''
+          )
         );
       } else if (radio.isBle) {
         kpiCardsHtml.push(

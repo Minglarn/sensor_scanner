@@ -25,6 +25,8 @@ VOLATILE_KEYS = {
     "freq2",
     "mod",
     "mic",
+    "protocol_name",
+    "protocol_full_name",
 }
 
 
@@ -382,6 +384,12 @@ class RTLManager:
         if self._running:
             return
         self._running = True
+        from app.sdr_manager import load_rtl433_protocols_from_binary
+
+        try:
+            await asyncio.to_thread(load_rtl433_protocols_from_binary)
+        except Exception:
+            pass
         self._watchdog_task = asyncio.create_task(self._watchdog_loop(), name="rtl_433_watchdog")
 
     async def stop(self) -> None:
@@ -478,6 +486,16 @@ class RTLManager:
                     continue
             except json.JSONDecodeError:
                 continue
+
+            proto_raw = payload.get("protocol")
+            if proto_raw is not None and str(proto_raw).strip() != "":
+                from app.sdr_manager import get_rtl433_protocol_info
+
+                p_short, p_full = get_rtl433_protocol_info(proto_raw, payload.get("model"))
+                if p_short:
+                    payload["protocol_name"] = p_short
+                if p_full and p_full != p_short:
+                    payload["protocol_full_name"] = p_full
 
             # Only infer frequency from packet in fixed single-frequency mode
             if len(self.hop_freqs) <= 1:
