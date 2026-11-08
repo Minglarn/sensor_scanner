@@ -366,7 +366,9 @@ async def on_rtl_stderr_line(line: str) -> None:
 async def on_rtl_freq_change(freq_state: Dict[str, Any]) -> None:
     await ws_manager.broadcast(
         {
-            "type": "freq_change",
+            "type": "sdr_hop",
+            "freq": freq_state.get("current_tuned_freq", "433.92 MHz"),
+            "remaining": freq_state.get("remaining", 60),
             **freq_state,
         }
     )

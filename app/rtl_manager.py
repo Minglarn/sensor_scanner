@@ -67,8 +67,12 @@ class RTLManager:
 
         self._current_tuned_freq: str = "433.92 MHz"
         self._last_hop_timestamp: float = time.time()
+        self.hop_start_monotonic: float = time.monotonic()
         self._hop_interval: int = 60
+        self.hop_interval: int = 60
         self._active_freqs: List[str] = ["433.92 MHz", "868.30 MHz"]
+        self.hop_freqs: List[str] = ["433.92 MHz", "868.30 MHz"]
+        self._last_hop_index: int = 0
 
     def reset_stats_and_cache(self) -> None:
         self._debounce_cache.clear()
@@ -103,12 +107,27 @@ class RTLManager:
             return normalized or ["433.92 MHz"]
         return ["433.92 MHz", "868.30 MHz"]
 
+    def _compute_hop_state(self) -> Tuple[str, int, int]:
+        freqs = self.hop_freqs or self._active_freqs or ["433.92 MHz"]
+        interval = max(5, int(self._hop_interval or 60))
+        if len(freqs) <= 1 or self._state != "running":
+            return freqs[0], interval, 0
+        elapsed = max(0.0, time.monotonic() - self.hop_start_monotonic)
+        hop_index = int(elapsed // interval) % len(freqs)
+        current_freq = freqs[hop_index]
+        remaining_sec = max(1, int(interval - (elapsed % interval)))
+        return current_freq, remaining_sec, hop_index
+
     def get_freq_state(self) -> Dict[str, Any]:
         settings = self._get_settings()
+        current_freq, remaining_sec, _ = self._compute_hop_state()
+        self._current_tuned_freq = current_freq
         return {
             "mode": settings.get("mode", "hop"),
-            "current_tuned_freq": self._current_tuned_freq,
-            "last_hop_timestamp": self._last_hop_timestamp,
+            "freq": current_freq,
+            "current_tuned_freq": current_freq,
+            "remaining": remaining_sec,
+            "last_hop_timestamp": time.time() - (self._hop_interval - remaining_sec),
             "hop_interval": self._hop_interval,
             "active_freqs": self._active_freqs,
         }
@@ -129,6 +148,13 @@ class RTLManager:
             if freq_val > 1_000_000:
                 freq_val = freq_val / 1_000_000.0
             new_freq = f"{freq_val:.2f} MHz"
+            if len(self.hop_freqs) > 1:
+                try:
+                    idx = self.hop_freqs.index(new_freq)
+                    self.hop_start_monotonic = time.monotonic() - (idx * self._hop_interval)
+                    self._last_hop_index = idx
+                except ValueError:
+                    pass
             self._current_tuned_freq = new_freq
             self._last_hop_timestamp = time.time()
             await self._emit_freq_change()
@@ -197,6 +223,9 @@ class RTLManager:
         if self._state == "running" and self._started_at is not None:
             uptime_sec = max(0, int(time.time() - self._started_at))
 
+        current_freq, remaining_sec, _ = self._compute_hop_state()
+        self._current_tuned_freq = current_freq
+
         return {
             "running": self._state == "running",
             "state": self._state,
@@ -206,8 +235,10 @@ class RTLManager:
             "gain": settings.get("gain", "auto"),
             "ppm": settings.get("ppm", "0"),
             "hop_interval": self._hop_interval,
-            "current_tuned_freq": self._current_tuned_freq,
-            "last_hop_timestamp": self._last_hop_timestamp,
+            "freq": current_freq,
+            "current_tuned_freq": current_freq,
+            "remaining": remaining_sec,
+            "last_hop_timestamp": time.time() - (self._hop_interval - remaining_sec),
             "active_freqs": self._active_freqs,
             "custom_freqs": settings.get("custom_freqs", "433.92M,868.3M"),
             "custom_sample_rate": settings.get("custom_sample_rate", "1024k"),
@@ -313,21 +344,22 @@ class RTLManager:
             except json.JSONDecodeError:
                 continue
 
-            # Update current_tuned_freq immediately if incoming packet is on ~433 or ~868 MHz
-            pkt_freq = extract_freq_mhz(payload)
-            if pkt_freq is not None:
-                inferred_band = None
-                if 430.0 <= pkt_freq <= 440.0:
-                    inferred_band = "433.92 MHz"
-                elif 860.0 <= pkt_freq <= 875.0:
-                    inferred_band = "868.30 MHz"
-                else:
-                    inferred_band = f"{pkt_freq:.2f} MHz"
+            # Only infer frequency from packet in fixed single-frequency mode
+            if len(self.hop_freqs) <= 1:
+                pkt_freq = extract_freq_mhz(payload)
+                if pkt_freq is not None:
+                    inferred_band = None
+                    if 430.0 <= pkt_freq <= 440.0:
+                        inferred_band = "433.92 MHz"
+                    elif 860.0 <= pkt_freq <= 875.0:
+                        inferred_band = "868.30 MHz"
+                    else:
+                        inferred_band = f"{pkt_freq:.2f} MHz"
 
-                if inferred_band and inferred_band != self._current_tuned_freq:
-                    self._current_tuned_freq = inferred_band
-                    self._last_hop_timestamp = time.time()
-                    await self._emit_freq_change()
+                    if inferred_band and inferred_band != self._current_tuned_freq:
+                        self._current_tuned_freq = inferred_band
+                        self._last_hop_timestamp = time.time()
+                        await self._emit_freq_change()
 
             settings = self._get_settings()
             try:
@@ -380,22 +412,16 @@ class RTLManager:
 
     async def _hop_tracker_loop(self) -> None:
         while self._state == "running" and self._process and self._process.returncode is None:
-            await asyncio.sleep(1.0)
-            if len(self._active_freqs) <= 1 or self._hop_interval <= 0:
+            await asyncio.sleep(0.25)
+            if len(self.hop_freqs) <= 1 or self.hop_interval <= 0:
                 continue
-            now = time.time()
-            elapsed_since_hop = now - self._last_hop_timestamp
-            if elapsed_since_hop >= self._hop_interval:
-                try:
-                    cur_idx = self._active_freqs.index(self._current_tuned_freq)
-                    next_idx = (cur_idx + 1) % len(self._active_freqs)
-                except ValueError:
-                    if self._started_at is not None:
-                        next_idx = int((now - self._started_at) // self._hop_interval) % len(self._active_freqs)
-                    else:
-                        next_idx = 0
-                self._current_tuned_freq = self._active_freqs[next_idx]
-                self._last_hop_timestamp = now
+            elapsed = max(0.0, time.monotonic() - self.hop_start_monotonic)
+            hop_index = int(elapsed // self.hop_interval) % len(self.hop_freqs)
+            current_freq = self.hop_freqs[hop_index]
+            if hop_index != self._last_hop_index or current_freq != self._current_tuned_freq:
+                self._last_hop_index = hop_index
+                self._current_tuned_freq = current_freq
+                self._last_hop_timestamp = time.time()
                 await self._emit_freq_change()
 
     async def _watchdog_loop(self) -> None:
@@ -408,8 +434,12 @@ class RTLManager:
                 self._hop_interval = max(5, int(settings.get("hop_interval", "60") or 60))
             except (ValueError, TypeError):
                 self._hop_interval = 60
+            self.hop_interval = self._hop_interval
             self._active_freqs = self._resolve_active_freqs(settings)
-            self._current_tuned_freq = self._active_freqs[0]
+            self.hop_freqs = list(self._active_freqs)
+            self._current_tuned_freq = self.hop_freqs[0]
+            self.hop_start_monotonic = time.monotonic()
+            self._last_hop_index = 0
             self._last_hop_timestamp = time.time()
 
             self._state = "starting"
@@ -427,6 +457,8 @@ class RTLManager:
                     )
 
                 self._started_at = time.time()
+                self.hop_start_monotonic = time.monotonic()
+                self._last_hop_index = 0
                 self._last_hop_timestamp = self._started_at
                 self._state = "running"
                 self._last_error = ""
