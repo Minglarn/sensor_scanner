@@ -403,13 +403,18 @@ def on_ble_beacon_seen(payload: Dict[str, Any]) -> bool:
             device_id = extract_device_id(payload)
             dev_key = f"{sanitize_key(model)}_{sanitize_key(device_id)}"
             dev_rec = db.get_device(dev_key)
-            if (
-                dev_rec
-                and int(dev_rec.get("ha_discovery") or 0) == 1
-                and int(dev_rec.get("mqtt_enabled", 1)) == 1
-                and int(dev_rec.get("ignored") or 0) == 0
-            ):
-                mqtt_manager.publish_signal(dev_rec, payload)
+            if dev_rec and int(dev_rec.get("ignored") or 0) == 0:
+                if (
+                    int(dev_rec.get("ha_discovery") or 0) == 1
+                    and int(dev_rec.get("mqtt_enabled", 1)) == 1
+                ):
+                    mqtt_manager.publish_signal(dev_rec, payload)
+                has_name = bool((dev_rec.get("alias") or "").strip()) or bool((payload.get("local_name") or "").strip())
+                if has_name and main_loop and main_loop.is_running():
+                    asyncio.run_coroutine_threadsafe(
+                        ws_manager.broadcast({"type": "device_updated", "device": dev_rec}),
+                        main_loop,
+                    )
         except Exception as exc:
             logger.debug("Error forwarding beacon MQTT heartbeat: %s", exc)
     return exists
@@ -824,7 +829,7 @@ async def api_get_signals(
     freq_band: Optional[str] = Query(default=None),
     only_aliased: bool = Query(default=False),
     unique_devices: bool = Query(default=True),
-    limit: int = Query(default=500, ge=1, le=500),
+    limit: int = Query(default=5000, ge=1, le=10000),
     offset: int = Query(default=0, ge=0),
 ):
     return await asyncio.to_thread(

@@ -1027,11 +1027,134 @@ class Database:
         freq_band: Optional[str] = None,
         only_aliased: bool = False,
         unique_devices: bool = True,
-        limit: int = 500,
+        limit: int = 5000,
         offset: int = 0,
     ) -> Dict[str, Any]:
-        limit = max(1, min(int(limit), 500))
+        limit = max(1, min(int(limit), 10000))
         offset = max(0, int(offset))
+
+        def _to_float(val: Any) -> Optional[float]:
+            if val is None:
+                return None
+            try:
+                return round(float(val), 2)
+            except (ValueError, TypeError):
+                return None
+
+        def _to_int(val: Any) -> Optional[int]:
+            if val is None:
+                return None
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return None
+
+        if unique_devices:
+            dev_where = ["COALESCE(d.ignored, 0) = 0"]
+            dev_params: List[Any] = []
+
+            if model and model.strip() and model.strip().lower() != "all":
+                dev_where.append("d.model = ?")
+                dev_params.append(model.strip())
+
+            if device_id and device_id.strip():
+                dev_where.append("d.device_id = ?")
+                dev_params.append(device_id.strip())
+
+            if only_aliased:
+                dev_where.append("(d.alias IS NOT NULL AND TRIM(d.alias) != '')")
+
+            if search and search.strip():
+                q = f"%{search.strip()}%"
+                dev_where.append(
+                    "(d.model LIKE ? OR d.device_id LIKE ? OR COALESCE(d.alias, '') LIKE ? OR COALESCE(d.group_name, '') LIKE ? OR COALESCE(d.category, '') LIKE ? OR COALESCE(d.last_payload, '') LIKE ?)"
+                )
+                dev_params.extend([q, q, q, q, q, q])
+
+            dev_where_sql = " AND ".join(dev_where)
+            with self._lock:
+                conn = self._get_conn()
+                try:
+                    rows = conn.execute(
+                        f"""
+                        SELECT * FROM devices d
+                        WHERE {dev_where_sql}
+                        ORDER BY d.last_seen DESC;
+                        """,
+                        dev_params,
+                    ).fetchall()
+                    all_items: List[Dict[str, Any]] = []
+                    fb = freq_band.strip().lower() if freq_band else ""
+                    for idx, r in enumerate(rows, start=1):
+                        d = dict(r)
+                        try:
+                            pl = json.loads(d.get("last_payload") or "{}")
+                            pl = enrich_sparsnas_payload(pl) if isinstance(pl, dict) else {"raw": d.get("last_payload") or ""}
+                        except Exception:
+                            pl = {"raw": d.get("last_payload") or ""}
+
+                        freq_val = extract_freq_mhz(pl)
+                        if freq_val is None and (str(pl.get("mod") or "").upper() == "BLE" or "BLE" in str(d.get("model") or "")):
+                            freq_val = 2402.0
+
+                        if fb:
+                            if fb == "433" and not (freq_val is not None and 430.0 <= freq_val <= 440.0):
+                                continue
+                            if fb == "868" and not (freq_val is not None and 860.0 <= freq_val <= 875.0):
+                                continue
+                            if fb in ("2400", "2.4", "ble") and not (freq_val is not None and 2400.0 <= freq_val <= 2500.0):
+                                continue
+
+                        dev_key = d.get("device_key") or f"{sanitize_key(d.get('model'))}_{sanitize_key(d.get('device_id'))}"
+                        is_new_flag = (
+                            1
+                            if (
+                                int(d.get("is_new") or 0) == 1
+                                and int(d.get("hit_count") or 1) <= 5
+                                and not (d.get("alias") or "").strip()
+                                and not (d.get("group_name") or "").strip()
+                                and int(d.get("ignored") or 0) == 0
+                                and not _is_older_than_15_min(d.get("first_seen"))
+                            )
+                            else 0
+                        )
+                        all_items.append(
+                            {
+                                "id": idx,
+                                "timestamp": d.get("last_seen") or pl.get("time") or "",
+                                "first_seen": d.get("first_seen") or "",
+                                "model": d.get("model") or "Unknown",
+                                "device_id": d.get("device_id") or "",
+                                "device_key": dev_key,
+                                "alias": d.get("alias") or "",
+                                "group_name": d.get("group_name") or "",
+                                "category": d.get("category") or "Generic",
+                                "mqtt_enabled": int(d.get("mqtt_enabled", 1)),
+                                "ha_discovery": int(d.get("ha_discovery", 0)),
+                                "ignored": int(d.get("ignored", 0)),
+                                "is_new": is_new_flag,
+                                "hit_count": int(d.get("hit_count") or 1),
+                                "channel": str(pl.get("channel")) if pl.get("channel") is not None else None,
+                                "freq": freq_val,
+                                "rssi": _to_float(pl.get("rssi")),
+                                "snr": _to_float(pl.get("snr")),
+                                "noise": _to_float(pl.get("noise")),
+                                "battery_ok": _to_int(pl.get("battery_ok")),
+                                "temperature_c": extract_temperature_c(pl),
+                                "humidity": _to_float(pl.get("humidity")),
+                                "payload": pl,
+                            }
+                        )
+                    total = len(all_items)
+                    sliced_items = all_items[offset : offset + limit]
+                    return {
+                        "items": sliced_items,
+                        "total": total,
+                        "limit": limit,
+                        "offset": offset,
+                    }
+                finally:
+                    conn.close()
 
         where_clauses = [" COALESCE(d.ignored, 0) = 0 "]
         params: List[Any] = []
@@ -1065,60 +1188,29 @@ class Database:
 
         where_sql = " AND ".join(where_clauses)
 
-        if unique_devices:
-            query = f"""
-                SELECT
-                    s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
-                    s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
-                    d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
-                    COALESCE(d.category, 'Generic') AS category,
-                    COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
-                    COALESCE(d.ignored, 0) AS ignored,
-                    CASE WHEN COALESCE(d.is_new, 0) = 1 AND COALESCE(d.hit_count, 1) <= 5 AND COALESCE(TRIM(d.alias), '') = '' THEN 1 ELSE 0 END AS is_new,
-                    COALESCE(d.hit_count, 1) AS hit_count,
-                    d.first_seen AS first_seen
-                FROM signals s
-                INNER JOIN (
-                    SELECT MAX(s2.id) AS max_id
-                    FROM signals s2
-                    LEFT JOIN devices d2 ON d2.model = s2.model AND d2.device_id = s2.device_id
-                    WHERE {where_sql.replace('s.', 's2.').replace('d.', 'd2.')}
-                    GROUP BY s2.model, s2.device_id
-                ) latest ON s.id = latest.max_id
-                LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
-                ORDER BY s.timestamp DESC, s.id DESC
-                LIMIT ? OFFSET ?;
-            """
-            count_query = f"""
-                SELECT COUNT(DISTINCT s.model || ':' || s.device_id) AS total
-                FROM signals s
-                LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
-                WHERE {where_sql};
-            """
-        else:
-            query = f"""
-                SELECT
-                    s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
-                    s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
-                    d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
-                    COALESCE(d.category, 'Generic') AS category,
-                    COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
-                    COALESCE(d.ignored, 0) AS ignored,
-                    CASE WHEN COALESCE(d.is_new, 0) = 1 AND COALESCE(d.hit_count, 1) <= 5 AND COALESCE(TRIM(d.alias), '') = '' THEN 1 ELSE 0 END AS is_new,
-                    COALESCE(d.hit_count, 1) AS hit_count,
-                    d.first_seen AS first_seen
-                FROM signals s
-                LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
-                WHERE {where_sql}
-                ORDER BY s.timestamp DESC, s.id DESC
-                LIMIT ? OFFSET ?;
-            """
-            count_query = f"""
-                SELECT COUNT(*) AS total
-                FROM signals s
-                LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
-                WHERE {where_sql};
-            """
+        query = f"""
+            SELECT
+                s.id, s.timestamp, s.model, s.device_id, s.channel, s.freq,
+                s.rssi, s.snr, s.noise, s.battery_ok, s.temperature_c, s.humidity, s.payload,
+                d.device_key, COALESCE(d.alias, '') AS alias, COALESCE(d.group_name, '') AS group_name,
+                COALESCE(d.category, 'Generic') AS category,
+                COALESCE(d.mqtt_enabled, 1) AS mqtt_enabled, COALESCE(d.ha_discovery, 0) AS ha_discovery,
+                COALESCE(d.ignored, 0) AS ignored,
+                CASE WHEN COALESCE(d.is_new, 0) = 1 AND COALESCE(d.hit_count, 1) <= 5 AND COALESCE(TRIM(d.alias), '') = '' THEN 1 ELSE 0 END AS is_new,
+                COALESCE(d.hit_count, 1) AS hit_count,
+                d.first_seen AS first_seen
+            FROM signals s
+            LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
+            WHERE {where_sql}
+            ORDER BY s.timestamp DESC, s.id DESC
+            LIMIT ? OFFSET ?;
+        """
+        count_query = f"""
+            SELECT COUNT(*) AS total
+            FROM signals s
+            LEFT JOIN devices d ON d.model = s.model AND d.device_id = s.device_id
+            WHERE {where_sql};
+        """
 
         with self._lock:
             conn = self._get_conn()
@@ -1128,15 +1220,10 @@ class Database:
 
                 rows = conn.execute(query, params + [limit, offset]).fetchall()
                 items = []
-                seen_device_keys = set()
                 for row in rows:
                     item = dict(row)
                     if not item.get("device_key"):
                         item["device_key"] = f"{sanitize_key(item['model'])}_{sanitize_key(item['device_id'])}"
-                    if unique_devices:
-                        if item["device_key"] in seen_device_keys:
-                            continue
-                        seen_device_keys.add(item["device_key"])
                     item["group_name"] = item.get("group_name") or ""
                     try:
                         pl = json.loads(item["payload"])

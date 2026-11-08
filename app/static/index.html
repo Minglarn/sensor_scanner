@@ -142,12 +142,21 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+    .responsive-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+      gap: 0.875rem; /* 14px */
+      width: 100%;
+    }
+    .responsive-cards-grid.hidden {
+      display: none !important;
+    }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 h-screen flex overflow-hidden selection:bg-sky-500 selection:text-white transition-colors duration-150">
+<body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 h-screen w-full max-w-none flex overflow-hidden selection:bg-sky-500 selection:text-white transition-colors duration-150">
 
   <!-- Hidden Tailwind Safelist so all dynamic JS classes are compiled on initial load before disconnecting MutationObserver -->
-  <div id="tw-safelist" class="hidden -rotate-90 rotate-0 transition-transform mb-1 mb-2 mb-3 animate-ping animate-pulse-subtle bg-amber-50 bg-amber-500 bg-amber-500/10 bg-amber-500/15 bg-amber-500/20 bg-blue-50 bg-cyan-50 bg-emerald-50 bg-emerald-500 bg-emerald-500/10 bg-emerald-500/15 bg-indigo-50 bg-indigo-500/15 bg-purple-50 bg-purple-500 bg-purple-500/15 bg-rose-50 bg-rose-500 bg-rose-500/10 bg-rose-500/15 bg-rose-600 bg-sky-50 bg-sky-500 bg-sky-500/10 bg-sky-500/15 bg-sky-500/75 bg-sky-600 bg-slate-100 bg-slate-100/80 bg-slate-100/90 bg-slate-100/95 bg-slate-200/70 bg-slate-400 bg-slate-50 bg-slate-50/80 bg-slate-50/90 bg-slate-500/15 bg-slate-800 bg-teal-50 bg-teal-500/15 bg-violet-500/15 bg-white bg-white/70 bg-white/80 border-amber-200 border-amber-300 border-amber-500 border-amber-500/30 border-amber-500/40 border-b border-blue-200 border-current/20 border-cyan-200 border-emerald-200 border-emerald-300 border-emerald-500 border-emerald-500/30 border-emerald-500/40 border-indigo-200 border-indigo-500/30 border-l border-l-4 border-l-sky-500 border-l-transparent border-purple-200 border-purple-500/30 border-rose-300 border-rose-500 border-rose-500/30 border-rose-600 border-sky-200 border-sky-500 border-sky-500/20 border-sky-500/25 border-sky-500/30 border-sky-500/40 border-sky-500/60 border-sky-600 border-slate-100 border-slate-200 border-slate-200/70 border-slate-200/80 border-slate-300 border-slate-300/60 border-slate-300/80 border-slate-500/30 border-slate-700 border-t border-teal-200 border-teal-500/30 border-transparent border-violet-500/30 border-y bottom-0 break-all break-words col-span-3 col-span-6 col-span-9 col-span-full cursor-help cursor-pointer cursor-wait dark:bg-amber-500/15 dark:bg-amber-950/70 dark:bg-blue-500/15 dark:bg-cyan-500/15 dark:bg-emerald-400 dark:bg-emerald-500/15 dark:bg-emerald-950/60 dark:bg-indigo-500/15 dark:bg-purple-400 dark:bg-purple-500/15 dark:bg-rose-500/20 dark:bg-sky-500/15 dark:bg-slate-700 dark:bg-slate-800 dark:bg-slate-800/70 dark:bg-slate-800/80 dark:bg-slate-800/90 dark:bg-slate-900 dark:bg-slate-900/50 dark:bg-slate-950 dark:bg-slate-950/60 dark:bg-teal-500/15 dark:border-amber-500/30 dark:border-amber-700/60 dark:border-blue-500/30 dark:border-cyan-500/30 dark:border-emerald-500/30 dark:border-emerald-700/60 dark:border-indigo-500/30 dark:border-l-sky-400 dark:border-purple-500/30 dark:border-rose-500/40 dark:border-rose-900/60 dark:border-sky-500/30 dark:border-slate-700 dark:border-slate-700/70 dark:border-slate-700/80 dark:border-slate-800 dark:border-slate-800/60 dark:border-slate-800/70 dark:border-slate-800/80 dark:border-slate-800/90 dark:border-teal-500/30 dark:divide-slate-800/80 dark:even:bg-slate-800/45 dark:hover:bg-sky-900/25 dark:hover:bg-slate-700 dark:hover:bg-slate-700/70 dark:hover:bg-slate-800 dark:hover:bg-slate-800/30 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/80 dark:hover:border-slate-700 dark:hover:text-slate-200 dark:hover:text-white dark:odd:bg-slate-900 dark:ring-white/10 dark:text-amber-200 dark:text-amber-300 dark:text-amber-400 dark:text-blue-300 dark:text-cyan-300 dark:text-emerald-200 dark:text-emerald-300 dark:text-emerald-400 dark:text-indigo-300 dark:text-purple-300 dark:text-rose-100 dark:text-rose-300 dark:text-rose-400 dark:text-sky-300 dark:text-sky-400 dark:text-slate-100 dark:text-slate-200 dark:text-slate-300 dark:text-slate-400 dark:text-slate-500 dark:text-teal-300 dark:text-violet-300 dark:text-white divide-slate-200/60 divide-y duration-200 duration-300 duration-500 even:bg-slate-50/90 first:mt-0 flex-1 flex-col flex-wrap focus:border-sky-500 focus:outline-none focus:ring-0 font-bold font-medium font-mono font-semibold gap-0.5 gap-1 gap-1.5 gap-2 gap-2.5 gap-3 gap-3.5 grid-cols-1 grid-cols-12 group-hover:opacity-100 h-1 h-2 h-3.5 h-4 h-6 h-7 h-8 h-full hover:bg-rose-500 hover:bg-rose-500/20 hover:bg-rose-500/25 hover:bg-sky-400 hover:bg-sky-50/80 hover:bg-sky-500 hover:bg-sky-500/20 hover:bg-slate-100 hover:bg-slate-200 hover:bg-slate-200/70 hover:bg-slate-50/70 hover:bg-white hover:border-sky-500 hover:border-sky-500/40 hover:border-sky-500/60 hover:border-slate-300 hover:text-rose-500 hover:text-sky-500 hover:text-slate-700 hover:text-slate-900 hover:underline items-center items-end items-start justify-between justify-center justify-end leading-4 leading-5 leading-none leading-relaxed leading-snug leading-tight left-0 lg:flex-row lg:grid-cols-3 lg:items-center lg:justify-end max-w-[210px] md:grid-cols-2 min-h-[28px] min-h-[32px] min-w-0 min-w-[140px] min-w-[200px] min-w-[230px] ml-1 mr-0.5 mr-1 mr-1.5 mt-0.5 mt-2 mt-auto my-2.5 my-3 odd:bg-white opacity-0 opacity-40 opacity-50 opacity-60 opacity-65 opacity-70 opacity-75 opacity-80 opacity-85 overflow-hidden p-2.5 p-3 p-3.5 p-4 pb-1 pl-1 pl-1.5 pl-2 pl-4 pl-5 pr-1 pr-2.5 pr-3 pt-1.5 pt-2.5 px-1.5 px-2 px-2.5 px-3 px-3.5 py-0.2 py-0.5 py-1 py-1.5 py-2 py-2.5 py-3 ring-1 ring-2 ring-black/10 ring-sky-500/40 rounded rounded-full rounded-lg rounded-md rounded-t rounded-xl select-none shadow-2xl shadow-2xs shadow-sm shadow-xs sm:flex-initial sm:inline-flex sm:text-sm space-y-0.5 space-y-1.5 space-y-2 text-2xl text-[10px] text-[11px] text-[9px] text-amber-400 text-amber-500 text-amber-600 text-amber-700 text-amber-800 text-base text-blue-800 text-center text-cyan-800 text-emerald-500 text-emerald-600 text-emerald-700 text-emerald-800 text-indigo-500 text-indigo-700 text-indigo-800 text-lg text-purple-500 text-purple-700 text-purple-800 text-right text-rose-400 text-rose-500 text-rose-600 text-rose-700 text-rose-800 text-rose-900 text-sky-500 text-sky-600 text-sky-700 text-sky-800 text-slate-400 text-slate-500 text-slate-600 text-slate-700 text-slate-800 text-slate-900 text-sm text-teal-500 text-teal-700 text-teal-800 text-violet-500 text-violet-700 text-white text-xs tracking-tight tracking-wider transition transition-all transition-colors translate-x-4 truncate w-16 w-2 w-24 w-28 w-3.5 w-32 w-36 w-4 w-6 w-60 w-64 w-8 w-full whitespace-nowrap xl:grid-cols-4 z-10"></div>
+  <div id="tw-safelist" class="hidden responsive-cards-grid group-cards-grid max-w-none pr-32 -rotate-90 rotate-0 transition-transform mb-1 mb-2 mb-3 animate-ping animate-pulse-subtle bg-amber-50 bg-amber-500 bg-amber-500/10 bg-amber-500/15 bg-amber-500/20 bg-blue-50 bg-cyan-50 bg-emerald-50 bg-emerald-500 bg-emerald-500/10 bg-emerald-500/15 bg-indigo-50 bg-indigo-500/15 bg-purple-50 bg-purple-500 bg-purple-500/15 bg-rose-50 bg-rose-500 bg-rose-500/10 bg-rose-500/15 bg-rose-600 bg-sky-50 bg-sky-500 bg-sky-500/10 bg-sky-500/15 bg-sky-500/75 bg-sky-600 bg-slate-100 bg-slate-100/80 bg-slate-100/90 bg-slate-100/95 bg-slate-200/70 bg-slate-400 bg-slate-50 bg-slate-50/80 bg-slate-50/90 bg-slate-500/15 bg-slate-800 bg-teal-50 bg-teal-500/15 bg-violet-500/15 bg-white bg-white/70 bg-white/80 border-amber-200 border-amber-300 border-amber-500 border-amber-500/30 border-amber-500/40 border-b border-blue-200 border-current/20 border-cyan-200 border-emerald-200 border-emerald-300 border-emerald-500 border-emerald-500/30 border-emerald-500/40 border-indigo-200 border-indigo-500/30 border-l border-l-4 border-l-sky-500 border-l-transparent border-purple-200 border-purple-500/30 border-rose-300 border-rose-500 border-rose-500/30 border-rose-600 border-sky-200 border-sky-500 border-sky-500/20 border-sky-500/25 border-sky-500/30 border-sky-500/40 border-sky-500/60 border-sky-600 border-slate-100 border-slate-200 border-slate-200/70 border-slate-200/80 border-slate-300 border-slate-300/60 border-slate-300/80 border-slate-500/30 border-slate-700 border-t border-teal-200 border-teal-500/30 border-transparent border-violet-500/30 border-y bottom-0 break-all break-words col-span-3 col-span-6 col-span-9 col-span-full cursor-help cursor-pointer cursor-wait dark:bg-amber-500/15 dark:bg-amber-950/70 dark:bg-blue-500/15 dark:bg-cyan-500/15 dark:bg-emerald-400 dark:bg-emerald-500/15 dark:bg-emerald-950/60 dark:bg-indigo-500/15 dark:bg-purple-400 dark:bg-purple-500/15 dark:bg-rose-500/20 dark:bg-sky-500/15 dark:bg-slate-700 dark:bg-slate-800 dark:bg-slate-800/70 dark:bg-slate-800/80 dark:bg-slate-800/90 dark:bg-slate-900 dark:bg-slate-900/50 dark:bg-slate-950 dark:bg-slate-950/60 dark:bg-teal-500/15 dark:border-amber-500/30 dark:border-amber-700/60 dark:border-blue-500/30 dark:border-cyan-500/30 dark:border-emerald-500/30 dark:border-emerald-700/60 dark:border-indigo-500/30 dark:border-l-sky-400 dark:border-purple-500/30 dark:border-rose-500/40 dark:border-rose-900/60 dark:border-sky-500/30 dark:border-slate-700 dark:border-slate-700/70 dark:border-slate-700/80 dark:border-slate-800 dark:border-slate-800/60 dark:border-slate-800/70 dark:border-slate-800/80 dark:border-slate-800/90 dark:border-teal-500/30 dark:divide-slate-800/80 dark:even:bg-slate-800/45 dark:hover:bg-sky-900/25 dark:hover:bg-slate-700 dark:hover:bg-slate-700/70 dark:hover:bg-slate-800 dark:hover:bg-slate-800/30 dark:hover:bg-slate-800/70 dark:hover:bg-slate-800/80 dark:hover:border-slate-700 dark:hover:text-slate-200 dark:hover:text-white dark:odd:bg-slate-900 dark:ring-white/10 dark:text-amber-200 dark:text-amber-300 dark:text-amber-400 dark:text-blue-300 dark:text-cyan-300 dark:text-emerald-200 dark:text-emerald-300 dark:text-emerald-400 dark:text-indigo-300 dark:text-purple-300 dark:text-rose-100 dark:text-rose-300 dark:text-rose-400 dark:text-sky-300 dark:text-sky-400 dark:text-slate-100 dark:text-slate-200 dark:text-slate-300 dark:text-slate-400 dark:text-slate-500 dark:text-teal-300 dark:text-violet-300 dark:text-white divide-slate-200/60 divide-y duration-200 duration-300 duration-500 even:bg-slate-50/90 first:mt-0 flex-1 flex-col flex-wrap focus:border-sky-500 focus:outline-none focus:ring-0 font-bold font-medium font-mono font-semibold gap-0.5 gap-1 gap-1.5 gap-2 gap-2.5 gap-3 gap-3.5 grid-cols-1 grid-cols-12 group-hover:opacity-100 h-1 h-2 h-3.5 h-4 h-6 h-7 h-8 h-full hover:bg-rose-500 hover:bg-rose-500/20 hover:bg-rose-500/25 hover:bg-sky-400 hover:bg-sky-50/80 hover:bg-sky-500 hover:bg-sky-500/20 hover:bg-slate-100 hover:bg-slate-200 hover:bg-slate-200/70 hover:bg-slate-50/70 hover:bg-white hover:border-sky-500 hover:border-sky-500/40 hover:border-sky-500/60 hover:border-slate-300 hover:text-rose-500 hover:text-sky-500 hover:text-slate-700 hover:text-slate-900 hover:underline items-center items-end items-start justify-between justify-center justify-end leading-4 leading-5 leading-none leading-relaxed leading-snug leading-tight left-0 lg:flex-row lg:grid-cols-3 lg:items-center lg:justify-end max-w-[210px] md:grid-cols-2 min-h-[28px] min-h-[32px] min-w-0 min-w-[140px] min-w-[200px] min-w-[230px] ml-1 mr-0.5 mr-1 mr-1.5 mt-0.5 mt-2 mt-auto my-2.5 my-3 odd:bg-white opacity-0 opacity-40 opacity-50 opacity-60 opacity-65 opacity-70 opacity-75 opacity-80 opacity-85 overflow-hidden p-2.5 p-3 p-3.5 p-4 pb-1 pl-1 pl-1.5 pl-2 pl-4 pl-5 pr-1 pr-2.5 pr-3 pt-1.5 pt-2.5 px-1.5 px-2 px-2.5 px-3 px-3.5 py-0.2 py-0.5 py-1 py-1.5 py-2 py-2.5 py-3 ring-1 ring-2 ring-black/10 ring-sky-500/40 rounded rounded-full rounded-lg rounded-md rounded-t rounded-xl select-none shadow-2xl shadow-2xs shadow-sm shadow-xs sm:flex-initial sm:inline-flex sm:text-sm space-y-0.5 space-y-1.5 space-y-2 text-2xl text-[10px] text-[11px] text-[9px] text-amber-400 text-amber-500 text-amber-600 text-amber-700 text-amber-800 text-base text-blue-800 text-center text-cyan-800 text-emerald-500 text-emerald-600 text-emerald-700 text-emerald-800 text-indigo-500 text-indigo-700 text-indigo-800 text-lg text-purple-500 text-purple-700 text-purple-800 text-right text-rose-400 text-rose-500 text-rose-600 text-rose-700 text-rose-800 text-rose-900 text-sky-500 text-sky-600 text-sky-700 text-sky-800 text-slate-400 text-slate-500 text-slate-600 text-slate-700 text-slate-800 text-slate-900 text-sm text-teal-500 text-teal-700 text-teal-800 text-violet-500 text-violet-700 text-white text-xs tracking-tight tracking-wider transition transition-all transition-colors translate-x-4 truncate w-16 w-2 w-24 w-28 w-3.5 w-32 w-36 w-4 w-6 w-60 w-64 w-8 w-full whitespace-nowrap xl:grid-cols-4 z-10"></div>
 
   <!-- MOBILE SIDEBAR BACKDROP -->
   <div id="sidebarBackdrop" onclick="toggleMobileSidebar(false)" class="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-xs hidden lg:hidden"></div>
@@ -236,7 +245,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.40</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.41</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -267,11 +276,11 @@
   <!-- ===================================================================== -->
   <!-- RIGHT SHELL: TOPBAR + SCROLLABLE MAIN VIEWPORT                        -->
   <!-- ===================================================================== -->
-  <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+  <div class="flex-1 w-full max-w-none flex flex-col min-w-0 h-screen overflow-hidden">
 
     <!-- TOPBAR -->
-    <header class="z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-xs shrink-0">
-      <div class="px-3 sm:px-6 py-1.5">
+    <header class="z-20 w-full max-w-none bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 shadow-xs shrink-0">
+      <div class="w-full max-w-none px-4 py-1.5">
         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-1.5">
           
           <!-- Left: Mobile Hamburger + Active View Title + Divider + Unified Status Indicators -->
@@ -399,16 +408,16 @@
     </header>
 
     <!-- MAIN WORKSPACE (FLEX-SPLIT WITH PINNED TOOLBARS & STICKY TABLE HEADER) -->
-    <main class="flex-1 min-w-0 flex flex-col overflow-hidden">
-      <div class="max-w-[1920px] w-full min-w-0 mx-auto flex-1 flex flex-col overflow-hidden">
+    <main class="flex-1 w-full max-w-none min-w-0 flex flex-col overflow-hidden">
+      <div class="w-full max-w-none min-w-0 flex-1 flex flex-col overflow-hidden">
 
         <!-- =================================================================== -->
         <!-- VIEW 1: SIGNALER (#view-signals)                                    -->
         <!-- =================================================================== -->
-        <section id="view-signals" class="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+        <section id="view-signals" class="flex flex-col flex-1 w-full max-w-none min-h-0 min-w-0 overflow-hidden">
       
       <!-- Pinned Filter & View Controls Bar (Single non-wrapping row) -->
-      <div class="shrink-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-1.5 shadow-xs">
+      <div class="shrink-0 z-30 w-full max-w-none bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-1.5 shadow-xs">
         <div class="flex items-center justify-between gap-2 flex-nowrap">
           
           <!-- Left Group: Search (with Rensa + Count badge) + Filter & Kategorier Popover + Mina enheter -->
@@ -422,7 +431,7 @@
                 id="signalSearchInput"
                 oninput="debouncedLoadSignals()"
                 placeholder="Sök modell, ID, alias eller JSON..."
-                class="w-full pl-8 pr-28 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                class="w-full pl-8 pr-32 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-500"
               />
               <div class="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
                 <button
@@ -468,8 +477,8 @@
                       <button type="button" onclick="clearSignalFilters()" class="text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:underline">Återställ alla</button>
                     </div>
 
-                    <!-- Hidden select synced for loadSignals() / signalMatchesActiveFilters() -->
-                    <select id="signalFreqSelect" onchange="loadSignals()" class="hidden">
+                    <!-- Hidden select synced for renderSignalsView() / signalMatchesActiveFilters() -->
+                    <select id="signalFreqSelect" onchange="renderSignalsView()" class="hidden">
                       <option value="">Alla frekvensband</option>
                       <option value="433">433 MHz-bandet</option>
                       <option value="868">868 MHz-bandet</option>
@@ -669,7 +678,7 @@
       </div>
 
       <!-- Paused Notice Banner -->
-      <div id="pausedBanner" class="hidden shrink-0 mx-3 sm:mx-6 mt-2 bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-200 px-3 py-1.5 rounded-lg text-xs flex items-center justify-between">
+      <div id="pausedBanner" class="hidden shrink-0 mx-4 mt-2 bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-200 px-3 py-1.5 rounded-lg text-xs flex items-center justify-between">
         <div class="flex items-center gap-1.5">
           <i class="mdi mdi-pause-circle-outline text-base"></i>
           <span>Live-flödet är pausat i gränssnittet. Inkommande signaler sparas fortfarande i databasen.</span>
@@ -682,18 +691,18 @@
         id="signals-scroll-container"
         onmouseenter="onSignalsScrollMouseEnter()"
         onmouseleave="onSignalsScrollMouseLeave()"
-        class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-3 sm:px-6 pt-2.5 pb-6"
+        class="flex-1 w-full max-w-none min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-4 pt-2.5 pb-6"
       >
-        <!-- Signals Multi-Column Card Grid (Max 4 Columns) -->
+        <!-- Signals Dynamic Widescreen Card Grid (auto-fill minmax(330px, 1fr)) -->
         <div
           id="signalsGridContainer"
-          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5"
+          class="responsive-cards-grid"
         >
           <!-- Rendered by JS -->
         </div>
 
         <!-- Signals Dense Table View (Multi-line Stacked Cells + Sticky Thead) -->
-        <div id="signalsTableContainer" class="hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
+        <div id="signalsTableContainer" class="hidden w-full max-w-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
           <table class="w-full text-left border-collapse text-xs">
             <thead class="sticky top-0 z-20 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-sm shadow-sm">
               <tr class="text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider">
@@ -807,7 +816,7 @@
         <!-- =================================================================== -->
         <!-- VIEW 3: STATISTIK (#view-stats) - DEDICATED VIEW                    -->
         <!-- =================================================================== -->
-        <section id="view-stats" class="hidden flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-6 py-3 space-y-4">
+        <section id="view-stats" class="hidden flex-1 w-full max-w-none min-h-0 min-w-0 overflow-y-auto px-4 py-3 space-y-4">
           
           <!-- Overview KPI Cards -->
           <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -923,7 +932,7 @@
         <!-- =================================================================== -->
         <!-- VIEW 4: INSTÄLLNINGAR (#view-settings) - DEDICATED VIEW WITH SUB-TABS -->
         <!-- =================================================================== -->
-        <section id="view-settings" class="hidden flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-6 py-3 space-y-4">
+        <section id="view-settings" class="hidden flex-1 w-full max-w-none min-h-0 min-w-0 overflow-y-auto px-4 py-3 space-y-4">
           <!-- Horizontal Sub-Tab Menu (4 Sub-Tabs) -->
           <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1.5 shadow-sm flex flex-wrap items-center gap-1.5">
             <button
@@ -1489,7 +1498,7 @@
         <!-- =================================================================== -->
         <!-- VIEW 5: LOGGAR & DIAGNOSTIK (#view-logs) - DEDICATED VIEW           -->
         <!-- =================================================================== -->
-        <section id="view-logs" class="hidden flex-1 min-h-0 min-w-0 overflow-y-auto px-3 sm:px-6 py-3 space-y-3">
+        <section id="view-logs" class="hidden flex-1 w-full max-w-none min-h-0 min-w-0 overflow-y-auto px-4 py-3 space-y-3">
           
           <!-- Process Status & Active Command Card -->
           <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm space-y-3">
@@ -2096,17 +2105,18 @@
     }
 
     function pruneSignalsCacheIfNeeded() {
-      if (signalsCache.size <= 500) return;
+      if (signalsCache.size <= 2500) return;
       for (const [k, s] of signalsCache.entries()) {
-        if (signalsCache.size <= 500) break;
-        const hasName = Boolean((s.alias && String(s.alias).trim()) || (s.group_name && String(s.group_name).trim()));
+        if (signalsCache.size <= 2500) break;
+        const p = s.payload || {};
+        const hasName = Boolean((s.alias && String(s.alias).trim()) || (s.group_name && String(s.group_name).trim()) || (p.local_name && String(p.local_name).trim()));
         if (!hasName) {
           signalsCache.delete(k);
           dirtyKeys.delete(k);
         }
       }
       for (const k of signalsCache.keys()) {
-        if (signalsCache.size <= 500) break;
+        if (signalsCache.size <= 2500) break;
         signalsCache.delete(k);
         dirtyKeys.delete(k);
       }
@@ -2499,7 +2509,7 @@
       if (sel) sel.value = val || '';
       syncSignalFreqBandPills();
       updateFilterDropdownBadges();
-      loadSignals();
+      renderSignalsView();
     }
 
     function syncSignalFreqBandPills() {
@@ -4823,7 +4833,13 @@
 
     function debouncedLoadSignals() {
       clearTimeout(searchDebounceTimer);
-      searchDebounceTimer = setTimeout(loadSignals, 180);
+      searchDebounceTimer = setTimeout(() => {
+        if (signalsCache.size === 0) {
+          loadSignals();
+        } else {
+          renderSignalsView();
+        }
+      }, 120);
     }
 
     function clearSignalFilters() {
@@ -4840,23 +4856,48 @@
       syncToggleBeaconsButton();
       renderSignalModelDropdownList();
       renderCategoryFilterDropdowns();
-      loadSignals();
+      renderSignalsView();
+    }
+
+    function deviceRecordToSignalItem(dev) {
+      const p = (dev && dev.last_payload && typeof dev.last_payload === 'object') ? dev.last_payload : {};
+      const freqVal = p.freq !== undefined && p.freq !== null
+        ? Number(p.freq)
+        : (String(p.mod || '').toUpperCase() === 'BLE' || String(dev.model || '').includes('BLE') ? 2402.0 : null);
+      const tempVal = p.temperature_C !== undefined ? p.temperature_C : (p.temperature_c !== undefined ? p.temperature_c : null);
+      return {
+        id: 0,
+        timestamp: dev.last_seen || p.time || '',
+        first_seen: dev.first_seen || '',
+        model: dev.model || 'Unknown',
+        device_id: dev.device_id || '',
+        device_key: dev.device_key || `${dev.model}_${dev.device_id}`,
+        alias: dev.alias || '',
+        group_name: dev.group_name || '',
+        category: dev.category || 'Generic',
+        mqtt_enabled: dev.mqtt_enabled ?? 1,
+        ha_discovery: dev.ha_discovery ?? 0,
+        ignored: dev.ignored ?? 0,
+        is_new: dev.is_new ?? 0,
+        hit_count: Number(dev.hit_count) || 1,
+        channel: p.channel !== undefined && p.channel !== null ? String(p.channel) : null,
+        freq: freqVal,
+        rssi: p.rssi !== undefined && p.rssi !== null ? Number(p.rssi) : null,
+        snr: p.snr !== undefined && p.snr !== null ? Number(p.snr) : null,
+        noise: p.noise !== undefined && p.noise !== null ? Number(p.noise) : null,
+        battery_ok: p.battery_ok !== undefined && p.battery_ok !== null ? Number(p.battery_ok) : null,
+        temperature_c: tempVal !== null ? Number(tempVal) : null,
+        humidity: p.humidity !== undefined && p.humidity !== null ? Number(p.humidity) : null,
+        payload: p
+      };
     }
 
     async function loadSignals() {
-      const search = document.getElementById('signalSearchInput').value.trim();
-      const freqBand = document.getElementById('signalFreqSelect').value;
-
       const params = new URLSearchParams({
-        limit: '500',
+        limit: '5000',
         offset: '0',
         unique_devices: 'true'
       });
-      if (search) params.set('search', search);
-      if (selectedSignalModels.size === 1) {
-        params.set('model', Array.from(selectedSignalModels)[0]);
-      }
-      if (freqBand) params.set('freq_band', freqBand);
 
       try {
         const res = await fetch(`/api/signals?${params.toString()}`);
@@ -4871,6 +4912,14 @@
             signalsCache.set(dk, s);
           }
         });
+        // Also ensure every non-ignored device already in devicesList is present in signalsCache
+        devicesList.forEach((d) => {
+          if (Number(d.ignored) === 1) return;
+          const dk = d.device_key || `${d.model}_${d.device_id}`;
+          if (!signalsCache.has(dk)) {
+            signalsCache.set(dk, deviceRecordToSignalItem(d));
+          }
+        });
         pruneSignalsCacheIfNeeded();
         renderSignalModelDropdownList();
         renderCategoryFilterDropdowns();
@@ -4882,19 +4931,31 @@
       }
     }
 
-    function signalMatchesActiveFilters(sig) {
+    function isAnonymousRawBeacon(sig, devObj = null) {
+      const p = sig.payload || {};
+      const hasAlias = Boolean((sig.alias && String(sig.alias).trim()) || (devObj && devObj.alias && String(devObj.alias).trim()));
+      const hasGroup = Boolean((sig.group_name && String(sig.group_name).trim()) || (devObj && devObj.group_name && String(devObj.group_name).trim()));
+      const rawLocalName = String(p.local_name || (devObj && devObj.last_payload && devObj.last_payload.local_name) || '').trim();
+      const hasRealLocalName = rawLocalName.length > 0 && !/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(rawLocalName);
+      const hitCount = Number(sig.hit_count || (devObj && devObj.hit_count) || 1);
+      const isBrandNewDiscovery = isDeviceTrulyNew(sig, devObj) && hitCount <= 1;
+
+      if (hasRealTelemetryMetrics(sig, p) || hasAlias || hasGroup || hasRealLocalName || isBrandNewDiscovery) {
+        return false;
+      }
+      return true;
+    }
+
+    function signalMatchesActiveFilters(sig, ignoreBeaconFilter = false) {
       const search = document.getElementById('signalSearchInput').value.trim().toLowerCase();
       const freqBand = document.getElementById('signalFreqSelect').value;
       const p = sig.payload || {};
+      const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
+      const devObj = devicesList.find((d) => d.device_key === devKey);
 
-      // 0. Hide Empty Beacons filter (Active by default: hideEmptyBeacons = true)
-      if (hideEmptyBeacons) {
-        const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
-        const devObj = devicesList.find((d) => d.device_key === devKey);
-        const hasAlias = Boolean(sig.alias && sig.alias.trim()) || Boolean(devObj && devObj.alias && devObj.alias.trim());
-        const hitCount = Number(sig.hit_count || (devObj && devObj.hit_count) || 1);
-        const isBrandNewDiscovery = isDeviceTrulyNew(sig, devObj) && hitCount <= 1;
-        if (!hasRealTelemetryMetrics(sig, p) && !hasAlias && !isBrandNewDiscovery) {
+      // 0. Hide Empty Beacons filter (Rule A: Ignored when search query is non-empty! Rule B: Never hides devices with alias or local_name!)
+      if (hideEmptyBeacons && !ignoreBeaconFilter && search.length === 0) {
+        if (isAnonymousRawBeacon(sig, devObj)) {
           return false;
         }
       }
@@ -4906,8 +4967,6 @@
 
       // 2. Multi-Select Status filters ('new', 'low_battery', 'aliased')
       if (selectedSignalStatusFilters.has('aliased')) {
-        const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
-        const devObj = devicesList.find((d) => d.device_key === devKey);
         const { isNamedOrGrouped } = isDeviceNamedOrOwn(sig, p, devObj);
         if (!isNamedOrGrouped) return false;
       }
@@ -4917,8 +4976,6 @@
         if (!isLow) return false;
       }
       if (selectedSignalStatusFilters.has('new')) {
-        const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
-        const devObj = devicesList.find((d) => d.device_key === devKey);
         if (!isDeviceTrulyNew(sig, devObj)) return false;
       }
 
@@ -4940,10 +4997,45 @@
       // 5. Free-text search
       if (search) {
         const catLabel = getCategoryMeta(sig.category).label;
-        const hay = `${sig.model || ''} ${sig.device_id || ''} ${sig.alias || ''} ${sig.group_name || ''} ${sig.category || ''} ${catLabel} ${JSON.stringify(p)}`.toLowerCase();
+        const hay = `${sig.model || ''} ${sig.device_id || ''} ${sig.alias || ''} ${sig.group_name || ''} ${sig.category || ''} ${catLabel} ${(devObj && devObj.alias) || ''} ${(devObj && devObj.group_name) || ''} ${JSON.stringify(p)}`.toLowerCase();
         if (!hay.includes(search)) return false;
       }
       return true;
+    }
+
+    function updateSignalCountBadge(visibleCount) {
+      const countEl = document.getElementById('visibleSignalCount');
+      const badgeEl = document.getElementById('signal-count-badge');
+      if (!countEl || !badgeEl) return;
+
+      const totalCount = signalsCache.size;
+      const search = document.getElementById('signalSearchInput').value.trim();
+      let hiddenBeaconsCount = 0;
+
+      if (hideEmptyBeacons && search.length === 0) {
+        for (const sig of signalsCache.values()) {
+          if (!signalMatchesActiveFilters(sig, false) && signalMatchesActiveFilters(sig, true)) {
+            hiddenBeaconsCount += 1;
+          }
+        }
+      }
+
+      if (hiddenBeaconsCount > 0) {
+        const nextTxt = `${visibleCount} / ${totalCount}`;
+        if (countEl.textContent !== nextTxt) countEl.textContent = nextTxt;
+        badgeEl.setAttribute(
+          'title',
+          `${hiddenBeaconsCount} anonyma beacons dolda – öppna Filter & Kategorier -> Visa råa Beacons för att visa alla`
+        );
+      } else if (visibleCount < totalCount) {
+        const nextTxt = `${visibleCount} / ${totalCount}`;
+        if (countEl.textContent !== nextTxt) countEl.textContent = nextTxt;
+        badgeEl.setAttribute('title', `Visar ${visibleCount} av ${totalCount} enheter`);
+      } else {
+        const nextTxt = String(visibleCount);
+        if (countEl.textContent !== nextTxt) countEl.textContent = nextTxt;
+        badgeEl.setAttribute('title', `Antal synliga signaler (${totalCount} st)`);
+      }
     }
 
     function saveSignalSort() {
@@ -5506,7 +5598,7 @@
         if (needsReorder && !isHoveringList) {
           reorderSignalsDomInPlace();
         }
-        document.getElementById('visibleSignalCount').textContent = getFilteredSignals().length;
+        updateSignalCountBadge(getFilteredSignals().length);
       }
 
       // 3. Live update Detail Modal if open for a dirty device
@@ -5744,7 +5836,7 @@
     function renderSignalsView() {
       hasInPlaceUpdates = false;
       const items = getFilteredSignals();
-      document.getElementById('visibleSignalCount').textContent = items.length;
+      updateSignalCountBadge(items.length);
       if (activeTab !== 'signals') return;
 
       const gridEl = document.getElementById('signalsGridContainer');
@@ -5798,7 +5890,7 @@
               // Do NOT render cards inside a collapsed group!
               return headerCard;
             }
-            return `${headerCard}<div id="group-body-${escapeHtml(sec.key)}" data-group-body="${escapeHtml(sec.key)}" class="col-span-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 mb-2">${sec.items.map((sig) => buildSignalCardHtml(sig)).join('')}</div>`;
+            return `${headerCard}<div id="group-body-${escapeHtml(sec.key)}" data-group-body="${escapeHtml(sec.key)}" class="col-span-full responsive-cards-grid group-cards-grid mb-2">${sec.items.map((sig) => buildSignalCardHtml(sig)).join('')}</div>`;
           }).join('');
         }
       }
@@ -6984,13 +7076,34 @@
         if (!res.ok) return;
         const data = await res.json();
         devicesList = data.devices || [];
+        let addedAnyToSignalsCache = false;
         devicesList.forEach((d) => {
           if (d.model) knownModels.add(d.model);
+          if (Number(d.ignored) === 1) return;
+          const dk = d.device_key || `${d.model}_${d.device_id}`;
+          if (!signalsCache.has(dk)) {
+            signalsCache.set(dk, deviceRecordToSignalItem(d));
+            addedAnyToSignalsCache = true;
+          } else {
+            const existingSig = signalsCache.get(dk);
+            existingSig.alias = d.alias ?? existingSig.alias ?? '';
+            existingSig.group_name = d.group_name ?? existingSig.group_name ?? '';
+            existingSig.category = d.category ?? existingSig.category ?? 'Generic';
+            existingSig.hit_count = Math.max(Number(existingSig.hit_count) || 1, Number(d.hit_count) || 1);
+            if (d.last_seen && (!existingSig.timestamp || d.last_seen > existingSig.timestamp)) {
+              existingSig.timestamp = d.last_seen;
+            }
+          }
         });
         updateExistingGroupsDatalist();
         updateNewDevicesNavBadge();
         renderSignalModelDropdownList();
         renderCategoryFilterDropdowns();
+        if (addedAnyToSignalsCache && activeTab === 'signals') {
+          renderSignalsView();
+        } else {
+          updateSignalCountBadge(getFilteredSignals().length);
+        }
       } catch (e) {
         console.error(e);
       }
@@ -7031,6 +7144,14 @@
           cachedSig.mqtt_enabled = dev.mqtt_enabled;
           cachedSig.ha_discovery = dev.ha_discovery;
           cachedSig.ignored = dev.ignored;
+          if (dev.hit_count) cachedSig.hit_count = dev.hit_count;
+          if (dev.last_seen) cachedSig.timestamp = dev.last_seen;
+          if (dev.last_payload && typeof dev.last_payload === 'object') {
+            cachedSig.payload = { ...(cachedSig.payload || {}), ...dev.last_payload };
+            if (dev.last_payload.rssi !== undefined) cachedSig.rssi = dev.last_payload.rssi;
+          }
+        } else {
+          signalsCache.set(dev.device_key, deviceRecordToSignalItem(dev));
         }
       }
     }
