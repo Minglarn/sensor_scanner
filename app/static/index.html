@@ -241,7 +241,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.47</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.48</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -4423,10 +4423,26 @@
         }
       }
 
-      if (Array.isArray(rtl.stderr_tail) && stderrLogBuffer.length === 0) {
-        stderrLogBuffer = rtl.stderr_tail.slice(-150);
-        if (activeTab === 'logs') {
-          renderStderrBufferToDom();
+      if (Array.isArray(rtl.stderr_tail) && rtl.stderr_tail.length > 0) {
+        if (stderrLogBuffer.length === 0) {
+          stderrLogBuffer = rtl.stderr_tail.slice(-150);
+          if (activeTab === 'logs') {
+            renderStderrBufferToDom();
+          }
+        } else {
+          let appendedAny = false;
+          for (const tailLine of rtl.stderr_tail) {
+            if (!stderrLogBuffer.includes(tailLine)) {
+              stderrLogBuffer.push(tailLine);
+              appendedAny = true;
+            }
+          }
+          if (stderrLogBuffer.length > 150) {
+            stderrLogBuffer.splice(0, stderrLogBuffer.length - 150);
+          }
+          if (appendedAny && activeTab === 'logs') {
+            renderStderrBufferToDom();
+          }
         }
       }
 
@@ -4807,14 +4823,33 @@
     }
 
     async function restartSdrProcess() {
+      const bodyPayload = { action: 'restart' };
+      if (activeTab === 'settings') {
+        const devIdxEl = document.getElementById('set_device_index');
+        const modeEl = document.getElementById('set_mode');
+        const hopEl = document.getElementById('set_hop_interval');
+        const freqsEl = document.getElementById('set_custom_freqs');
+        const srEl = document.getElementById('set_custom_sample_rate');
+        const gainEl = document.getElementById('set_gain');
+        const ppmEl = document.getElementById('set_ppm');
+        if (devIdxEl && devIdxEl.value.trim()) bodyPayload.device_index = devIdxEl.value.trim();
+        if (modeEl && modeEl.value) bodyPayload.mode = modeEl.value;
+        if (hopEl && hopEl.value) bodyPayload.hop_interval = String(hopEl.value);
+        if (freqsEl && freqsEl.value.trim()) bodyPayload.custom_freqs = freqsEl.value.trim();
+        if (srEl && srEl.value.trim()) bodyPayload.custom_sample_rate = srEl.value.trim();
+        if (gainEl) bodyPayload.gain = gainEl.value.trim() || 'auto';
+        if (ppmEl) bodyPayload.ppm = String(ppmEl.value || '0');
+      }
       try {
         const res = await fetch('/api/control', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'restart' })
+          body: JSON.stringify(bodyPayload)
         });
         if (res.ok) {
-          showToast('Omstart av rtl_433 begärd');
+          const data = await res.json();
+          if (data && data.status) applyStatusUpdate(data.status);
+          showToast('Omstart av rtl_433 begärd och nya SDR-inställningar tillämpade');
         }
       } catch (e) {
         showToast('Kunde inte starta om SDR', true);

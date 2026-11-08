@@ -582,6 +582,12 @@ class Database:
                             "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);",
                             (k, str(v)),
                         )
+                    env_gain = (os.environ.get("RTL_GAIN") or "").strip()
+                    if env_gain and env_gain.lower() != "auto":
+                        conn.execute(
+                            "UPDATE settings SET value = ? WHERE key = 'gain' AND value = 'auto';",
+                            (env_gain,),
+                        )
 
                     # Explicit category upgrades for IKEA Sparsnäs and Oregon rain/weather sensors
                     conn.execute(

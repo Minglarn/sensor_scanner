@@ -166,8 +166,9 @@ class RTLManager:
         binary = shutil.which("rtl_433") or "/usr/local/bin/rtl_433"
         device_index = str(settings.get("device_index", "0")).strip() or "0"
         mode = str(settings.get("mode", "hop")).strip().lower()
-        gain = str(settings.get("gain", "auto")).strip()
-        ppm = str(settings.get("ppm", "0")).strip()
+        raw_gain = str(settings.get("gain", "auto")).strip().replace(",", ".")
+        gain = re.sub(r"\s*db$", "", raw_gain, flags=re.IGNORECASE).strip() or "auto"
+        ppm = str(settings.get("ppm", "0")).strip().replace(",", ".")
         hop_interval = str(settings.get("hop_interval", "60")).strip() or "60"
 
         cmd: List[str] = [
@@ -243,7 +244,7 @@ class RTLManager:
             "custom_freqs": settings.get("custom_freqs", "433.92M,868.3M"),
             "custom_sample_rate": settings.get("custom_sample_rate", "1024k"),
             "debounce_seconds": float(settings.get("debounce_seconds", "2.0") or 2.0),
-            "command": " ".join(self._current_cmd) if self._current_cmd else " ".join(self.build_command(settings)),
+            "command": " ".join(self.build_command(settings)),
             "uptime_seconds": uptime_sec,
             "last_error": self._last_error,
             "stderr_tail": list(self._stderr_buffer)[-40:],
@@ -274,8 +275,10 @@ class RTLManager:
 
     async def restart(self) -> None:
         logger.info("Restarting rtl_433 subprocess on user/config request...")
+        self._current_cmd = self.build_command(self._get_settings())
         self._restart_event.set()
         await self._terminate_process()
+        await asyncio.sleep(0.05)
 
     async def _terminate_process(self) -> None:
         async with self._process_lock:
@@ -447,7 +450,8 @@ class RTLManager:
 
             try:
                 logger.info("Starting rtl_433: %s", " ".join(cmd))
-                self._append_stderr(f"Startar: {' '.join(cmd)}")
+                start_line = self._append_stderr(f"Startar: {' '.join(cmd)}")
+                await self._on_stderr_line(start_line)
 
                 async with self._process_lock:
                     self._process = await asyncio.create_subprocess_exec(
@@ -478,7 +482,8 @@ class RTLManager:
 
                 if self._restart_event.is_set():
                     self._restart_count += 1
-                    self._append_stderr("Omstart begärd, laddar nya inställningar...")
+                    restart_line = self._append_stderr("Omstart begärd, laddar nya inställningar...")
+                    await self._on_stderr_line(restart_line)
                     continue
 
                 self._state = "error"
@@ -486,7 +491,8 @@ class RTLManager:
                 self._restart_count += 1
                 if not self._last_error:
                     self._last_error = f"rtl_433 avslutades oväntat (exit code {return_code})"
-                self._append_stderr(f"Processen stoppade (kod {return_code}). Försöker igen om 5 sekunder...")
+                stop_line = self._append_stderr(f"Processen stoppade (kod {return_code}). Försöker igen om 5 sekunder...")
+                await self._on_stderr_line(stop_line)
                 await self._on_status_change(self.get_status())
 
             except FileNotFoundError:
