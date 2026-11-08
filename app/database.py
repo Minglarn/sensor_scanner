@@ -1026,8 +1026,8 @@ class Database:
         device_id: Optional[str] = None,
         freq_band: Optional[str] = None,
         only_aliased: bool = False,
-        unique_devices: bool = False,
-        limit: int = 100,
+        unique_devices: bool = True,
+        limit: int = 500,
         offset: int = 0,
     ) -> Dict[str, Any]:
         limit = max(1, min(int(limit), 500))
@@ -1128,10 +1128,15 @@ class Database:
 
                 rows = conn.execute(query, params + [limit, offset]).fetchall()
                 items = []
+                seen_device_keys = set()
                 for row in rows:
                     item = dict(row)
                     if not item.get("device_key"):
                         item["device_key"] = f"{sanitize_key(item['model'])}_{sanitize_key(item['device_id'])}"
+                    if unique_devices:
+                        if item["device_key"] in seen_device_keys:
+                            continue
+                        seen_device_keys.add(item["device_key"])
                     item["group_name"] = item.get("group_name") or ""
                     try:
                         pl = json.loads(item["payload"])

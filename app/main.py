@@ -821,8 +821,8 @@ async def api_get_signals(
     device_id: Optional[str] = Query(default=None),
     freq_band: Optional[str] = Query(default=None),
     only_aliased: bool = Query(default=False),
-    unique_devices: bool = Query(default=False),
-    limit: int = Query(default=150, ge=1, le=500),
+    unique_devices: bool = Query(default=True),
+    limit: int = Query(default=500, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
     return await asyncio.to_thread(
@@ -862,10 +862,27 @@ async def api_get_device_detail(device_key: str):
         db.get_signals,
         model=device["model"],
         device_id=device["device_id"],
+        unique_devices=False,
         limit=20,
         offset=0,
     )
     return {"device": device, "history": history["items"]}
+
+
+@app.get("/api/devices/{device_key}/history")
+async def api_get_device_history(device_key: str, limit: int = Query(default=20, ge=1, le=100)):
+    device = await asyncio.to_thread(db.get_device, device_key)
+    if not device:
+        raise HTTPException(status_code=404, detail="Enheten hittades inte.")
+    history = await asyncio.to_thread(
+        db.get_signals,
+        model=device["model"],
+        device_id=device["device_id"],
+        unique_devices=False,
+        limit=limit,
+        offset=0,
+    )
+    return {"device_key": device_key, "history": history["items"]}
 
 
 @app.post("/api/devices/bulk_group")

@@ -194,7 +194,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.36</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.37</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -562,7 +562,7 @@
               id="groupDevicesBtn"
               onclick="toggleGroupDevices()"
               class="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border transition shrink-0"
-              title="Gruppera dubbletter: visa endast senaste kortet/raden per unik enhet"
+              title="Gruppera unika enheter visuellt i sektioner efter Grupp eller Kategori"
             >
               <i class="mdi mdi-folder-outline text-sm leading-none"></i>
               <span class="hidden lg:inline">Gruppera</span>
@@ -1997,7 +1997,7 @@
     let isPaused = false;
     let sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
     let viewMode = localStorage.getItem('ss_view_mode') || 'grid';
-    let groupDevices = localStorage.getItem('ss_group_devices') !== 'false';
+    let groupDevices = localStorage.getItem('ss_group_sections') === 'true';
     let hideEmptyBeacons = localStorage.getItem('ss_hide_empty_beacons') !== 'false';
     let isHoveringList = false;
     let pendingHoverReorder = false;
@@ -2434,9 +2434,9 @@
 
     function toggleGroupDevices() {
       groupDevices = !groupDevices;
-      localStorage.setItem('ss_group_devices', groupDevices ? 'true' : 'false');
+      localStorage.setItem('ss_group_sections', groupDevices ? 'true' : 'false');
       syncGroupDevicesButton();
-      loadSignals();
+      renderSignalsView();
     }
 
     function syncGroupDevicesButton() {
@@ -2597,7 +2597,7 @@
         ? document.getElementById('signalsTableBody')
         : document.getElementById('signalsGridContainer');
       if (!container) return;
-      if (!groupDevices) {
+      if (groupDevices) {
         renderSignalsView();
         return;
       }
@@ -4934,12 +4934,11 @@
     async function loadSignals() {
       const search = document.getElementById('signalSearchInput').value.trim();
       const freqBand = document.getElementById('signalFreqSelect').value;
-      const onlyAliased = selectedSignalStatusFilters.has('aliased');
 
       const params = new URLSearchParams({
         limit: '500',
         offset: '0',
-        unique_devices: groupDevices ? 'true' : 'false'
+        unique_devices: 'true'
       });
       if (search) params.set('search', search);
       if (selectedSignalModels.size === 1) {
@@ -4951,15 +4950,16 @@
         const res = await fetch(`/api/signals?${params.toString()}`);
         if (!res.ok) return;
         const data = await res.json();
-        rawSignalsList = data.items || [];
+        const incomingItems = data.items || [];
         signalsCache.clear();
-        rawSignalsList.forEach((s) => {
+        incomingItems.forEach((s) => {
           if (s.model) knownModels.add(s.model);
           const dk = s.device_key || `${s.model}_${s.device_id}`;
           if (!signalsCache.has(dk)) {
             signalsCache.set(dk, s);
           }
         });
+        rawSignalsList = Array.from(signalsCache.values());
         renderSignalModelDropdownList();
         renderCategoryFilterDropdowns();
         if (activeTab === 'signals') {
@@ -5525,11 +5525,14 @@
 
           const devObj = devicesList.find((d) => d.device_key === devKey);
 
-          if (groupDevices && container) {
+          if (container) {
             const existingEl = container.querySelector(`[data-device-key="${CSS.escape(devKey)}"]`);
             if (existingEl) {
               patchExistingSignalElement(existingEl, sig, devObj);
-              if (isHoveringList) {
+              if (groupDevices) {
+                // Keep patched in place within its section
+                hasInPlaceUpdates = true;
+              } else if (isHoveringList) {
                 hasInPlaceUpdates = true;
                 pendingHoverReorder = true;
               } else if (signalSort.field === 'time' && signalSort.dir === 'desc') {
@@ -5538,6 +5541,12 @@
                 }
               } else {
                 needsReorder = true;
+              }
+            } else if (groupDevices) {
+              if (!isHoveringList) {
+                needsReorder = true;
+              } else {
+                pendingHoverReorder = true;
               }
             } else {
               const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
@@ -5553,19 +5562,6 @@
                 } else if (isHoveringList) {
                   pendingHoverReorder = true;
                 }
-              }
-            }
-          } else if (!groupDevices && container) {
-            const temp = document.createElement(viewMode === 'table' ? 'tbody' : 'div');
-            temp.innerHTML = (viewMode === 'table'
-              ? buildSignalTableRowHtml(sig, Date.now() + 10000)
-              : buildSignalCardHtml(sig, Date.now() + 10000)).trim();
-            const newEl = temp.firstElementChild;
-            if (newEl) {
-              container.prepend(newEl);
-              pulseElement(newEl);
-              while (container.children.length > 100) {
-                container.removeChild(container.lastElementChild);
               }
             }
           }
@@ -5632,7 +5628,7 @@
 
       if (isPaused) return;
 
-      // Store ONLY the single latest packet per device_key in signalsCache & rawSignalsList
+      // Always strictly 1 entry per unique device_key in both signalsCache & rawSignalsList
       const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
       const prevCached = signalsCache.get(devKey);
       if (prevCached && !sig.hit_count) {
@@ -5642,19 +5638,14 @@
       }
       signalsCache.set(devKey, sig);
 
-      if (groupDevices) {
-        const existingIdx = rawSignalsList.findIndex(
-          (item) => (item.device_key || `${item.model}_${item.device_id}`) === devKey
-        );
-        if (existingIdx !== -1) {
-          rawSignalsList.splice(existingIdx, 1);
-        }
-        rawSignalsList.unshift(sig);
-        if (rawSignalsList.length > 500) rawSignalsList.length = 500;
-      } else {
-        rawSignalsList.unshift(sig);
-        if (rawSignalsList.length > 100) rawSignalsList.length = 100;
+      const existingIdx = rawSignalsList.findIndex(
+        (item) => (item.device_key || `${item.model}_${item.device_id}`) === devKey
+      );
+      if (existingIdx !== -1) {
+        rawSignalsList.splice(existingIdx, 1);
       }
+      rawSignalsList.unshift(sig);
+      if (rawSignalsList.length > 500) rawSignalsList.length = 500;
 
       dirtyKeys.add(devKey);
 
@@ -5670,10 +5661,6 @@
 
     function getFilteredSignals() {
       const filtered = rawSignalsList.filter(signalMatchesActiveFilters);
-      if (!groupDevices) {
-        return filtered.slice(0, 100).sort(compareSignals);
-      }
-
       const seen = new Map();
       for (const sig of filtered) {
         const key = sig.device_key || `${sig.model}_${sig.device_id}`;
@@ -5682,6 +5669,56 @@
         }
       }
       return Array.from(seen.values()).sort(compareSignals);
+    }
+
+    function buildGroupedSignalSections(items) {
+      const customGroups = new Map();
+      const categoryGroups = new Map();
+
+      for (const sig of items) {
+        const devKey = sig.device_key || `${sig.model}_${sig.device_id}`;
+        const devObj = devicesList.find((d) => d.device_key === devKey);
+        const grpName = String(sig.group_name || (devObj && devObj.group_name) || '').trim();
+
+        if (grpName) {
+          if (!customGroups.has(grpName)) {
+            customGroups.set(grpName, []);
+          }
+          customGroups.get(grpName).push(sig);
+        } else {
+          const catRaw = sig.category || (devObj && devObj.category) || (sig.payload && sig.payload.category) || 'Generic';
+          const meta = getCategoryMeta(catRaw);
+          if (!categoryGroups.has(meta.id)) {
+            categoryGroups.set(meta.id, { meta, items: [] });
+          }
+          categoryGroups.get(meta.id).items.push(sig);
+        }
+      }
+
+      const sections = [];
+      const sortedCustomNames = Array.from(customGroups.keys()).sort((a, b) => a.localeCompare(b, 'sv'));
+      for (const grpName of sortedCustomNames) {
+        sections.push({
+          key: `group_${grpName}`,
+          title: `Grupp: ${grpName}`,
+          iconClass: 'mdi-folder-star text-amber-500',
+          items: customGroups.get(grpName)
+        });
+      }
+
+      for (const catId of BASE_CATEGORIES) {
+        if (categoryGroups.has(catId)) {
+          const entry = categoryGroups.get(catId);
+          sections.push({
+            key: `cat_${catId}`,
+            title: entry.meta.label,
+            iconClass: entry.meta.iconClass,
+            items: entry.items
+          });
+        }
+      }
+
+      return sections;
     }
 
     function renderSignalsView() {
@@ -5711,13 +5748,31 @@
         gridEl.innerHTML = '';
         gridEl.classList.add('hidden');
         tableWrap.classList.remove('hidden');
-        tableBody.innerHTML = items.map((sig) => buildSignalTableRowHtml(sig)).join('');
+        if (!groupDevices) {
+          tableBody.innerHTML = items.map((sig) => buildSignalTableRowHtml(sig)).join('');
+        } else {
+          const sections = buildGroupedSignalSections(items);
+          tableBody.innerHTML = sections.map((sec) => {
+            const countText = `${sec.items.length} ${sec.items.length === 1 ? 'enhet' : 'enheter'}`;
+            const headerRow = `<tr data-section-header="${escapeHtml(sec.key)}" class="bg-slate-100/95 dark:bg-slate-800/90 border-y border-slate-200 dark:border-slate-700"><td colspan="8" class="px-3 py-1.5"><div class="flex items-center justify-between"><div class="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-100"><i class="mdi ${sec.iconClass} text-sm"></i><span>${escapeHtml(sec.title)}</span></div><span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${countText}</span></div></td></tr>`;
+            return headerRow + sec.items.map((sig) => buildSignalTableRowHtml(sig)).join('');
+          }).join('');
+        }
       } else {
         // Strictly empty the hidden table body so zero hidden table row DOM nodes stay in RAM
         tableBody.innerHTML = '';
         tableWrap.classList.add('hidden');
         gridEl.classList.remove('hidden');
-        gridEl.innerHTML = items.map((sig) => buildSignalCardHtml(sig)).join('');
+        if (!groupDevices) {
+          gridEl.innerHTML = items.map((sig) => buildSignalCardHtml(sig)).join('');
+        } else {
+          const sections = buildGroupedSignalSections(items);
+          gridEl.innerHTML = sections.map((sec) => {
+            const countText = `${sec.items.length} ${sec.items.length === 1 ? 'enhet' : 'enheter'}`;
+            const headerCard = `<div data-section-header="${escapeHtml(sec.key)}" class="col-span-full flex items-center justify-between px-3 py-1.5 mt-2 first:mt-0 rounded-lg bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/70"><div class="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-100"><i class="mdi ${sec.iconClass} text-sm"></i><span>${escapeHtml(sec.title)}</span></div><span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${countText}</span></div>`;
+            return headerCard + sec.items.map((sig) => buildSignalCardHtml(sig)).join('');
+          }).join('');
+        }
       }
     }
 
