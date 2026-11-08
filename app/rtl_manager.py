@@ -422,9 +422,16 @@ class RTLManager:
                     logger.debug("Error terminating rtl_433: %s", exc)
             self._process = None
 
+    def append_raw_log(self, formatted_line: str) -> str:
+        self._stderr_buffer.append(formatted_line)
+        return formatted_line
+
     def _append_stderr(self, line: str) -> str:
+        if re.match(r"^\d{2}:\d{2}:\d{2}\s+\|\s+\[", line):
+            self._stderr_buffer.append(line)
+            return line
         ts = datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S")
-        formatted = f"[{ts}] {line}"
+        formatted = f"{ts} | [{'SDR':<6}] | {'RTL-SDR V4':<11} | {line}"
         self._stderr_buffer.append(formatted)
         return formatted
 
@@ -550,6 +557,17 @@ class RTLManager:
                 self._hop_interval = band_dur
                 self.hop_interval = band_dur
                 self._last_hop_timestamp = time.time()
+                ts = datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S")
+                freq_col = f"{current_freq[:11]:<11}"
+                name_col = f"{f'Frekvenshopp -> {current_freq}':<42}"
+                meas_col = f"{f'Lyssnar i {format_seconds_to_hhmmss(band_dur)} ({band_dur}s)':<32}"
+                hop_line = self.append_raw_log(
+                    f"{ts} | [{'SDR':<6}] | {freq_col} | {name_col} | {meas_col} | RSSI: {'-':>5}    "
+                )
+                try:
+                    await self._on_stderr_line(hop_line)
+                except Exception:
+                    pass
                 await self._emit_freq_change()
 
     async def _watchdog_loop(self) -> None:

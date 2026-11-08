@@ -227,15 +227,86 @@ _last_logged_rtl_state: Optional[str] = None
 _last_logged_ble_state: Optional[str] = None
 
 
+def format_aligned_log_line(
+    action: str,
+    freq_str: str,
+    name_str: str,
+    meas_str: str = "-",
+    rssi_val: Optional[Any] = None,
+    is_ble: bool = False,
+) -> str:
+    """
+    Formats a log line with fixed-width columns so all '|' separators align vertically:
+    HH:MM:SS | [ACTION] | FREQ        | NAME (42 chars)                            | MEAS (32 chars)                  | RSSI:      VAL
+    """
+    ts_short = datetime.now(LOCAL_TZ).strftime("%H:%M:%S")
+    act_col = str(action or "INFO").strip().upper()[:6]
+    freq_col = str(freq_str or "-").strip()[:11]
+
+    name_clean = str(name_str or "-").strip()
+    name_col = (name_clean[:39] + "...") if len(name_clean) > 42 else name_clean
+
+    meas_clean = str(meas_str or "-").strip()
+    meas_col = (meas_clean[:29] + "...") if len(meas_clean) > 32 else meas_clean
+
+    if rssi_val is not None and str(rssi_val).strip() not in ("", "-"):
+        try:
+            if is_ble:
+                num_s = f"{int(round(float(rssi_val))):>5}"
+                rssi_str = f"{num_s} dBm"
+            else:
+                num_s = f"{float(rssi_val):>5.1f}"
+                rssi_str = f"{num_s} dB "
+        except (ValueError, TypeError):
+            rssi_str = f"{'-':>5}    "
+    else:
+        rssi_str = f"{'-':>5}    "
+
+    return (
+        f"{ts_short} | [{act_col:<6}] | {freq_col:<11} | "
+        f"{name_col:<42} | {meas_col:<32} | RSSI: {rssi_str:>9}"
+    )
+
+
+def emit_aligned_log(
+    action: str,
+    freq_str: str,
+    name_str: str,
+    meas_str: str = "-",
+    rssi_val: Optional[Any] = None,
+    is_ble: bool = False,
+) -> str:
+    line = format_aligned_log_line(action, freq_str, name_str, meas_str, rssi_val, is_ble)
+    print(line, flush=True)
+    try:
+        if "rtl_manager" in globals() and rtl_manager is not None:
+            rtl_manager.append_raw_log(line)
+            if main_loop and main_loop.is_running():
+                asyncio.run_coroutine_threadsafe(on_rtl_stderr_line(line), main_loop)
+    except Exception:
+        pass
+    return line
+
+
 def _on_mqtt_status_threadsafe(mqtt_status: Dict[str, Any]) -> None:
     global _last_logged_mqtt_state
     conn_state = bool(mqtt_status.get("connected"))
     if _last_logged_mqtt_state != conn_state:
         _last_logged_mqtt_state = conn_state
         if conn_state:
-            print(f"[SYSTEM] MQTT connected to {mqtt_status.get('host')}:{mqtt_status.get('port')}", flush=True)
+            emit_aligned_log(
+                "SYSTEM",
+                "SYS / MQTT",
+                f"MQTT Broker ({mqtt_status.get('host')}:{mqtt_status.get('port')})",
+                "Ansluten till MQTT-broker",
+            )
         elif mqtt_status.get("enabled"):
-            print(f"[SYSTEM] MQTT disconnected ({mqtt_status.get('last_error') or 'offline'})", flush=True)
+            emit_aligned_log(
+                "SYSTEM",
+                "SYS / MQTT",
+                "MQTT Broker",
+                f"Frånkopplad ({mqtt_status.get('last_error') or 'offline'})",
+            )
     if main_loop and main_loop.is_running():
         asyncio.run_coroutine_threadsafe(broadcast_full_status(), main_loop)
 
@@ -245,8 +316,8 @@ mqtt_manager = MQTTManager(status_callback=_on_mqtt_status_threadsafe)
 
 def _log_signal_stdout(signal_rec: Dict[str, Any], device_rec: Dict[str, Any]) -> None:
     payload = signal_rec.get("payload") or {}
-    model = str(signal_rec.get("model") or "Unknown")
-    device_id = str(signal_rec.get("device_id") or "")
+    model = str(signal_rec.get("model") or "Unknown").strip()
+    device_id = str(signal_rec.get("device_id") or "").strip()
     alias = str(device_rec.get("alias") or "").strip()
     local_name = str(payload.get("local_name") or "").strip()
     freq = signal_rec.get("freq")
@@ -254,21 +325,12 @@ def _log_signal_stdout(signal_rec: Dict[str, Any], device_rec: Dict[str, Any]) -
     rssi = signal_rec.get("rssi")
 
     is_ble = mod == "BLE" or (freq is not None and float(freq) >= 2400.0) or "BLE" in model
-    band_str = "2.4 GHz BLE" if is_ble else (f"{float(freq):.2f} MHz" if freq is not None else "RF")
-    rssi_str = (
-        f"RSSI: {int(round(float(rssi)))} dBm"
-        if (rssi is not None and is_ble)
-        else (f"RSSI: {float(rssi):.1f} dB" if rssi is not None else "RSSI: -")
-    )
+    freq_str = "2.4 GHz BLE" if is_ble else (f"{float(freq):.2f} MHz" if freq is not None else "RF")
 
     is_brand_new = bool(device_rec.get("is_brand_new"))
-    if is_brand_new:
-        label = f"{local_name} ({model}, ID: {device_id})" if (local_name and local_name != model) else f"{model} (ID: {device_id})"
-        print(f"[NEW DEVICE] {band_str} | {label} | {rssi_str}", flush=True)
-        return
 
-    # Skip passive BLE beacons without telemetry
-    if payload.get("is_beacon_only") is True:
+    # Skip passive BLE beacons without telemetry unless brand new or explicitly named
+    if not is_brand_new and payload.get("is_beacon_only") is True and not alias:
         return
 
     metrics: List[str] = []
@@ -294,29 +356,38 @@ def _log_signal_stdout(signal_rec: Dict[str, Any], device_rec: Dict[str, Any]) -
     elif signal_rec.get("battery_ok") is not None:
         metrics.append(f"Batt: {'OK' if int(signal_rec['battery_ok']) == 1 else 'LOW'}")
     if model == "Tesla-Vehicle-BLE":
-        metrics.append("VCSEC • Verifierat VIN" if payload.get("is_own_vehicle") is True else "VCSEC • Inom räckvidd")
+        metrics.append("VCSEC - Verifierat VIN" if payload.get("is_own_vehicle") is True else "VCSEC - Inom räckvidd")
     elif payload.get("vehicle_status"):
         metrics.append(str(payload.get("vehicle_status")))
+    elif model == "Plejd-Mesh":
+        p_mod = str(payload.get("plejd_model") or "").strip()
+        metrics.append(f"BLE Mesh ({p_mod})" if p_mod else "BLE Mesh")
     if not metrics and not is_ble:
         state_val = payload.get("state") or payload.get("cmd") or payload.get("button")
         if state_val is not None:
             metrics.append(f"State: {state_val}")
 
-    if not metrics and is_ble:
+    if not is_brand_new and not metrics and is_ble and not alias:
         return
 
+    short_model = model.replace("-BLE", "")
     if alias:
-        name_part = f"{alias} ({model})"
+        if short_model.lower() in alias.lower() or len(alias) >= 34:
+            name_str = alias
+        else:
+            name_str = f"{alias} ({short_model})"
     elif local_name and local_name != model:
-        name_part = f"{local_name} ({model})"
+        name_str = f"{local_name} ({short_model})"
     else:
-        name_part = f"{model} (ID: {device_id})"
+        name_str = f"{model} (ID: {device_id})"
 
-    metrics_str = ", ".join(metrics)
-    if metrics_str:
-        print(f"[UPDATE] {band_str} | {name_part} | {metrics_str} | {rssi_str}", flush=True)
-    else:
-        print(f"[UPDATE] {band_str} | {name_part} | {rssi_str}", flush=True)
+    if is_brand_new:
+        meas_str = ", ".join(metrics) if metrics else "Ny enhet upptäckt"
+        emit_aligned_log("NEW", freq_str, name_str, meas_str, rssi_val=rssi, is_ble=is_ble)
+        return
+
+    meas_str = ", ".join(metrics) if metrics else ("BLE Beacon" if is_ble else "RF Paket")
+    emit_aligned_log("UPDATE", freq_str, name_str, meas_str, rssi_val=rssi, is_ble=is_ble)
 
 
 async def on_rtl_signal(payload: Dict[str, Any]) -> None:
@@ -346,9 +417,11 @@ async def on_rtl_status_change(rtl_status: Dict[str, Any]) -> None:
     st_key = f"{rtl_status.get('state')}:{rtl_status.get('mode')}:{rtl_status.get('current_tuned_freq')}"
     if _last_logged_rtl_state != st_key:
         _last_logged_rtl_state = st_key
-        print(
-            f"[SYSTEM] SDR state={rtl_status.get('state')} mode={rtl_status.get('mode')} freq={rtl_status.get('current_tuned_freq')}",
-            flush=True,
+        emit_aligned_log(
+            "SYSTEM",
+            str(rtl_status.get("current_tuned_freq") or "RTL-SDR V4"),
+            f"SDR state={rtl_status.get('state')} mode={rtl_status.get('mode')}",
+            f"Gain: {rtl_status.get('gain', 'auto')}",
         )
     await broadcast_full_status()
 
@@ -388,9 +461,11 @@ async def on_ble_status_change(ble_status: Dict[str, Any]) -> None:
     st_key = f"{ble_status.get('state')}:{ble_status.get('mode')}"
     if _last_logged_ble_state != st_key:
         _last_logged_ble_state = st_key
-        print(
-            f"[SYSTEM] BLE state={ble_status.get('state')} mode={ble_status.get('mode')}",
-            flush=True,
+        emit_aligned_log(
+            "SYSTEM",
+            "2.4 GHz BLE",
+            f"BLE state={ble_status.get('state')}",
+            f"Läge: {ble_status.get('mode')}",
         )
     await broadcast_full_status()
 
@@ -494,9 +569,11 @@ async def run_mqtt_orphan_sweep(listen_seconds: float = 2.5) -> Dict[str, Any]:
     res = await asyncio.to_thread(mqtt_manager.sweep_orphaned_mqtt_topics, all_devs, listen_seconds)
     purged_cnt = int(res.get("purged_topics_count") or 0)
     if purged_cnt > 0:
-        print(
-            f"[MQTT-SWEEPER] Raderade {purged_cnt} föräldralösa retained MQTT-topics ur brokern (av {res.get('retained_inspected_count', 0)} granskade)",
-            flush=True,
+        emit_aligned_log(
+            "PRUNE",
+            "SYS / MQTT",
+            "MQTT Orphan Sweeper",
+            f"Raderade {purged_cnt} topics ({res.get('retained_inspected_count', 0)} granskade)",
         )
         await broadcast_full_status()
     return res
@@ -524,9 +601,11 @@ async def auto_prune_worker() -> None:
             pruned_keys = res.get("pruned_keys") or []
             if pruned_keys or int(res.get("signals_deleted") or 0) > 0:
                 if pruned_keys:
-                    print(
-                        f"[AUTO-PRUNE] Rensade {len(pruned_keys)} tillfälliga/inaktiva enheter och {res.get('signals_deleted', 0)} historikrader",
-                        flush=True,
+                    emit_aligned_log(
+                        "PRUNE",
+                        "SYS / DB",
+                        "Auto-Prune Databasstädning",
+                        f"Rensade {len(pruned_keys)} enheter, {res.get('signals_deleted', 0)} signaler",
                     )
                     await ws_manager.broadcast({"type": "devices_pruned", "device_keys": pruned_keys})
                 await broadcast_full_status()
@@ -565,7 +644,12 @@ async def ble_presence_timeout_worker() -> None:
                             await asyncio.to_thread(mqtt_manager.publish_ha_discovery, d)
                             synced_count += 1
                     if synced_count > 0:
-                        print(f"[SYSTEM] Synced HA Auto-Discovery for {synced_count} devices", flush=True)
+                        emit_aligned_log(
+                            "SYSTEM",
+                            "SYS / MQTT",
+                            "Home Assistant Auto-Discovery",
+                            f"Synkade {synced_count} enheter",
+                        )
                     ha_synced_on_connect = True
                 await asyncio.to_thread(mqtt_manager.check_ble_presence_timeouts, 120.0)
             else:
@@ -583,9 +667,11 @@ async def github_update_worker() -> None:
             prev_remote = _version_cache.get("remote_sha")
             res = await check_github_updates(force=True)
             if res.get("update_available") and (not prev_avail or res.get("remote_sha") != prev_remote):
-                print(
-                    f"[SYSTEM] GitHub update available: {res.get('remote_sha')} - {res.get('commit_message')}",
-                    flush=True,
+                emit_aligned_log(
+                    "SYSTEM",
+                    "SYS / GIT",
+                    f"GitHub update: {res.get('remote_sha')}",
+                    str(res.get("commit_message") or ""),
                 )
             if res.get("update_available") != prev_avail or res.get("remote_sha") != prev_remote:
                 await broadcast_full_status()

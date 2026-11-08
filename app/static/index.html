@@ -147,6 +147,11 @@
     .responsive-cards-grid.hidden {
       display: none !important;
     }
+    #terminalStderrBox,
+    #terminalStderrBox > div {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      white-space: pre;
+    }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 h-screen w-full max-w-none flex overflow-hidden selection:bg-sky-500 selection:text-white transition-colors duration-150">
@@ -241,7 +246,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.49</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.50</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -1618,7 +1623,7 @@
               </div>
             </div>
 
-            <div id="terminalStderrBox" class="w-full min-h-[58vh] max-h-[68vh] overflow-y-auto p-3.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs leading-relaxed text-slate-300 space-y-1">
+            <div id="terminalStderrBox" class="w-full min-h-[58vh] max-h-[68vh] overflow-y-auto overflow-x-auto whitespace-pre p-3.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs leading-relaxed text-slate-300 space-y-0.5">
               <!-- Stderr lines appended here -->
             </div>
           </div>
@@ -4784,6 +4789,23 @@
       }
     }
 
+    function getTerminalLogLineClass(line) {
+      const low = String(line || '').toLowerCase();
+      if (low.includes('error') || low.includes('failed')) {
+        return 'font-mono whitespace-pre text-rose-400';
+      }
+      if (line.includes('[NEW   ]')) {
+        return 'font-mono whitespace-pre text-emerald-400';
+      }
+      if (line.includes('[PRUNE ]')) {
+        return 'font-mono whitespace-pre text-amber-400';
+      }
+      if (line.includes('[SYSTEM]') || line.includes('[SDR   ]') || line.includes('[BLE   ]')) {
+        return 'font-mono whitespace-pre text-sky-400';
+      }
+      return 'font-mono whitespace-pre text-slate-200';
+    }
+
     function renderStderrBufferToDom() {
       const stderrBox = document.getElementById('terminalStderrBox');
       if (!stderrBox) return;
@@ -4792,9 +4814,8 @@
       const frag = document.createDocumentFragment();
       stderrLogBuffer.forEach((line) => {
         const div = document.createElement('div');
-        if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) {
-          div.className = 'text-rose-400';
-        }
+        div.className = getTerminalLogLineClass(line);
+        div.style.whiteSpace = 'pre';
         div.textContent = line;
         if (searchQ && !line.toLowerCase().includes(searchQ)) {
           div.classList.add('hidden');
@@ -4820,9 +4841,8 @@
       const stderrBox = document.getElementById('terminalStderrBox');
       if (!stderrBox) return;
       const div = document.createElement('div');
-      if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) {
-        div.className = 'text-rose-400';
-      }
+      div.className = getTerminalLogLineClass(line);
+      div.style.whiteSpace = 'pre';
       div.textContent = line;
       const searchQ = (document.getElementById('logSearchInput')?.value || '').trim().toLowerCase();
       if (searchQ && !line.toLowerCase().includes(searchQ)) {

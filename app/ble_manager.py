@@ -1381,7 +1381,7 @@ class BLEManager:
 
     async def _emit_log(self, msg: str) -> None:
         ts = datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S")
-        line = f"[BLE {ts}] {msg}"
+        line = f"{ts} | [{'BLE':<6}] | {'2.4 GHz BLE':<11} | {msg}"
         self._log_tail.append(line)
         try:
             await self._on_log_line(line)
