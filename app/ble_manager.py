@@ -233,23 +233,158 @@ def compute_tesla_ble_prefix(tesla_vin: Optional[str]) -> str:
     return f"S{vin_hash}"
 
 
-def analyze_mac_type(mac: str) -> str:
+ROTATING_BLE_SERVICE_UUID_PREFIXES = (
+    "0000fea0",  # Google Cast / Sony HT-A9 / B&O / Chromecast
+    "0000fe9f",  # Google Fast Pair / Nearby
+    "0000fe2c",  # Google Fast Pair Service
+    "0000fd5a",  # Samsung SmartThings / Find
+    "0000fd69",  # Samsung Continuity
+    "0000feaf",  # Nest
+)
+
+SENSOR_BLE_SERVICE_UUID_PREFIXES = (
+    "0000181a",  # Environmental Sensing (ATC / PVVX / Mi)
+    "0000fcd2",  # BTHome v2
+    "0000181c",  # BTHome v1 / User Data
+    "0000fe95",  # Xiaomi MiBeacon
+    "0000fdcd",  # Qingping
+    "0000180f",  # Battery Service
+    "0000fee0",  # Xiaomi / Huami
+    "0000fff0",  # Inkbird / ThermoPro
+)
+
+FIXED_MAC_SENSOR_MODELS = {
+    "ATC-Thermometer",
+    "Govee-BLE",
+    "Plejd-Mesh",
+    "Enhauto-S3XY",
+    "BTHome-v2",
+    "BTHome-v1",
+    "Xiaomi-MiBeacon",
+    "Qingping-BLE",
+    "RuuviTag-BLE",
+    "Inkbird-BLE",
+    "SwitchBot-BLE",
+    "ThermoPro-BLE",
+    "Shelly-BLE",
+}
+
+
+def analyze_mac_type(
+    mac: str,
+    mac_vendor: Optional[str] = None,
+    is_sensor: bool = False,
+    service_data: Optional[Dict[str, Any]] = None,
+) -> str:
     """
-    Analyzes the first byte of a BLE MAC address to classify its Bluetooth address type.
+    Analyzes a BLE MAC address along with OUI vendor and service_data context.
+    Only classifies as 'IEEE Public (Fast)' if the OUI prefix is a known registered
+    hardware OUI (and not a rotating service like 0xFEA0) or a real measurement sensor.
     """
+    srv_dict = service_data if isinstance(service_data, dict) else {}
+    has_rotating_srv = any(
+        str(u).lower().startswith(ROTATING_BLE_SERVICE_UUID_PREFIXES)
+        for u in srv_dict.keys()
+    )
+    if has_rotating_srv and not is_sensor:
+        return "Random Private (Roterande)"
+
     try:
-        first_byte = int(mac.split(":")[0], 16)
+        first_byte = int(str(mac).split(":")[0], 16)
         top_two = first_byte & 0xC0
         is_locally_administered = bool(first_byte & 0x02)
-        if top_two in (0x40, 0x00) and is_locally_administered:
-            return "Random Private (Roterande)"
         if top_two == 0xC0 and is_locally_administered:
             return "Random Static"
-        if not is_locally_administered:
-            return "IEEE Public (Fast)"
+        if is_sensor or (mac_vendor and not has_rotating_srv):
+            if not is_locally_administered:
+                return "IEEE Public (Fast)"
         return "Random Private (Roterande)"
     except Exception:
-        return "IEEE Public (Fast)"
+        return "Random Private (Roterande)"
+
+
+def compute_ble_device_id(
+    mac: str,
+    mac_vendor: Optional[str],
+    local_name: Optional[str],
+    service_data: Optional[Dict[str, Any]],
+    manufacturer_data: Optional[Dict[str, Any]],
+    ibeacon_info: Optional[Dict[str, Any]],
+    is_sensor: bool,
+    model: Optional[str] = None,
+) -> Tuple[str, Optional[str]]:
+    """
+    Computes a deterministic BLE device_id and optional fingerprint_source.
+    - Case A: Real measurement sensors & known fixed-OUI hardware sensors (ATC, BTHome, Mi, Inkbird, Govee, Plejd, Tesla S...C) -> keep MAC or Tesla name.
+    - Case B: Passive BLE devices with static service_data (>= 8 hex chars / 4 bytes, e.g. 0000fea0 on HT-A9) -> FP<10-char SHA1>.
+    - Case C: iBeacons with rotating MAC -> IB<10-char SHA1>.
+    - Case D: Rotating MAC with local_name + manufacturer_data (>= 12 hex chars / 6 bytes) -> FP<10-char SHA1>.
+    - Case E: All other devices -> MAC without colons (never merge solely by local_name).
+    """
+    mac_clean = re.sub(r"[^0-9A-Fa-f]", "", str(mac or "")).upper()
+    ln = str(local_name or "").strip()
+    mod = str(model or "").strip()
+
+    # Case A1: Tesla / Zeekr / Polestar / Volvo / BMW Vehicles
+    if mod == "Tesla-Vehicle-BLE" or (ln and TESLA_BEACON_RE.match(ln)):
+        return (ln if ln else mac_clean), None
+    if mod in ("Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE") and ln:
+        return ln, None
+
+    srv_dict = service_data if isinstance(service_data, dict) else {}
+    has_rotating_service = any(
+        str(u).lower().startswith(ROTATING_BLE_SERVICE_UUID_PREFIXES)
+        for u in srv_dict.keys()
+    )
+
+    # Case A2: Real measurement sensors & known fixed-OUI hardware sensors
+    if is_sensor or mod in FIXED_MAC_SENSOR_MODELS:
+        return (mac_clean or "UNKNOWN"), None
+
+    # Case B: Devices with static service_data identity (e.g. 0000fea0-... on HT-A9, Google Cast, Fast Pair where is_beacon_only is True)
+    if srv_dict and (not mac_vendor or has_rotating_service):
+        for uuid_key in sorted(srv_dict.keys(), key=lambda x: str(x).lower()):
+            uuid_norm = str(uuid_key).strip().lower()
+            if uuid_norm.startswith(SENSOR_BLE_SERVICE_UUID_PREFIXES):
+                continue
+            raw_val = srv_dict[uuid_key]
+            if isinstance(raw_val, (bytes, bytearray)):
+                srv_hex = bytes(raw_val).hex().upper()
+            else:
+                srv_hex = re.sub(r"[^0-9A-Fa-f]", "", str(raw_val or "")).upper()
+            if len(srv_hex) >= 8:
+                fp = hashlib.sha1(f"{ln}:{uuid_norm}:{srv_hex}".encode("utf-8")).hexdigest()[:10].upper()
+                return f"FP{fp}", f"Service Data ({uuid_norm[:8]})"
+
+    # If the device has a verified fixed OUI vendor and no rotating service_data, keep its MAC
+    if mac_vendor and not has_rotating_service:
+        return (mac_clean or "UNKNOWN"), None
+
+    # Case C: iBeacons with rotating MAC (no known fixed OUI)
+    ib_dict = ibeacon_info if isinstance(ibeacon_info, dict) else {}
+    ib_uuid = str(ib_dict.get("ibeacon_uuid") or "").strip().upper()
+    if ib_uuid:
+        ib_major = str(ib_dict.get("major") if ib_dict.get("major") is not None else "")
+        ib_minor = str(ib_dict.get("minor") if ib_dict.get("minor") is not None else "")
+        fp = hashlib.sha1(f"IBEACON:{ib_uuid}:{ib_major}:{ib_minor}".encode("utf-8")).hexdigest()[:10].upper()
+        return f"IB{fp}", f"iBeacon ({ib_uuid[:8]})"
+
+    # Case D: Rotating MAC with local_name + manufacturer_data (>= 12 hex chars / 6 bytes)
+    mfg_dict = manufacturer_data if isinstance(manufacturer_data, dict) else {}
+    if ln and mfg_dict:
+        for mfg_key in sorted(mfg_dict.keys(), key=lambda x: str(x).upper()):
+            raw_mfg = mfg_dict[mfg_key]
+            if isinstance(raw_mfg, (bytes, bytearray)):
+                mfg_hex = bytes(raw_mfg).hex().upper()
+            else:
+                mfg_hex = re.sub(r"[^0-9A-Fa-f]", "", str(raw_mfg or "")).upper()
+            if len(mfg_hex) >= 12:
+                mfg_id_str = str(mfg_key).strip().upper()
+                fp = hashlib.sha1(f"MFG:{ln}:{mfg_id_str}:{mfg_hex}".encode("utf-8")).hexdigest()[:10].upper()
+                return f"FP{fp}", f"Manufacturer Data ({mfg_id_str})"
+
+    # Case E: All other devices -> MAC without colons (never merge solely by local_name!)
+    return (mac_clean or "UNKNOWN"), None
 
 
 def decode_apple_continuity(data: bytes) -> Tuple[Optional[str], Optional[str]]:
@@ -1461,13 +1596,7 @@ class BLEManager:
                 if sk in ("temperature_C", "humidity", "pressure_hPa", "battery_pct", "lux", "moisture"):
                     has_decoded_sensor = True
 
-        if mac_type == "IEEE Public (Fast)":
-            oui_vendor = self.get_cached_oui_vendor(mac)
-            if oui_vendor:
-                payload["mac_vendor"] = oui_vendor
-                cached_state["mac_vendor"] = oui_vendor
-            if mac[:8] not in self._oui_queried:
-                asyncio.create_task(self.resolve_oui_vendor(mac))
+        oui_vendor = self.get_cached_oui_vendor(mac)
 
         # -------------------------------------------------------------------
         # 2. Smart Identification of Specific BLE Device Types & Models
@@ -1592,6 +1721,79 @@ class BLEManager:
             clean_prefix = prefix_match.group(1) if prefix_match else "Generic"
             model = f"BLE-{clean_prefix}"
 
+        # Determine if this BLE packet carries real sensor telemetry or is a passive raw beacon
+        telemetry_keys = (
+            "temperature_C",
+            "humidity",
+            "pressure_hPa",
+            "battery_pct",
+            "voltage_V",
+            "battery_mV",
+            "power_W",
+            "energy_kWh",
+            "current_A",
+            "lux",
+            "illuminance",
+            "moisture",
+            "contact_open",
+            "motion",
+            "button",
+            "state",
+        )
+        has_real_telemetry = (
+            any(payload.get(k) is not None for k in telemetry_keys)
+            or model in ("Tesla-Vehicle-BLE", "Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE")
+            or bool(payload.get("vehicle_status"))
+        )
+        is_beacon_only = not has_real_telemetry
+        payload["is_beacon_only"] = is_beacon_only
+
+        # Refine mac_type and compute deterministic payload fingerprint ID for rotating BLE devices
+        mac_type = analyze_mac_type(
+            mac,
+            mac_vendor=oui_vendor,
+            is_sensor=has_real_telemetry or (model in FIXED_MAC_SENSOR_MODELS),
+            service_data=payload.get("service_data"),
+        )
+        payload["mac_type"] = mac_type
+
+        if mac_type == "IEEE Public (Fast)":
+            if oui_vendor:
+                payload["mac_vendor"] = oui_vendor
+                cached_state["mac_vendor"] = oui_vendor
+            elif mac[:8] not in self._oui_queried and has_real_telemetry:
+                asyncio.create_task(self.resolve_oui_vendor(mac))
+        else:
+            payload.pop("mac_vendor", None)
+
+        computed_id, fp_source = compute_ble_device_id(
+            mac=mac,
+            mac_vendor=oui_vendor if mac_type == "IEEE Public (Fast)" else None,
+            local_name=local_name,
+            service_data=payload.get("service_data"),
+            manufacturer_data=payload.get("manufacturer_data"),
+            ibeacon_info=payload,
+            is_sensor=has_real_telemetry,
+            model=model,
+        )
+        if computed_id:
+            device_id = computed_id
+        if fp_source:
+            payload["fingerprint_source"] = fp_source
+            payload["mac_type"] = "Random Private (Roterande)"
+            fp_state = self._device_state_cache.setdefault(f"fp:{model}:{device_id}", {})
+            prev_seen_mac = fp_state.get("last_mac")
+            if prev_seen_mac and prev_seen_mac != mac:
+                fp_state["previous_mac"] = prev_seen_mac
+                fp_state["mac_rotations"] = int(fp_state.get("mac_rotations") or 0) + 1
+            fp_state["last_mac"] = mac
+            if fp_state.get("previous_mac"):
+                payload["previous_mac"] = fp_state["previous_mac"]
+            if fp_state.get("mac_rotations"):
+                payload["mac_rotations"] = fp_state["mac_rotations"]
+            # Map BLEDevice object under current MAC and fingerprint key for GATT inspection
+            self._ble_device_objects[device_id] = device
+
         payload["model"] = model
         payload["id"] = device_id
 
@@ -1632,33 +1834,6 @@ class BLEManager:
                 payload["measured_power_1m"] = int(round(measured_power_1m))
             except (ValueError, TypeError):
                 pass
-
-        # Determine if this BLE packet carries real sensor telemetry or is a passive raw beacon
-        telemetry_keys = (
-            "temperature_C",
-            "humidity",
-            "pressure_hPa",
-            "battery_pct",
-            "voltage_V",
-            "battery_mV",
-            "power_W",
-            "energy_kWh",
-            "current_A",
-            "lux",
-            "illuminance",
-            "moisture",
-            "contact_open",
-            "motion",
-            "button",
-            "state",
-        )
-        has_real_telemetry = (
-            any(payload.get(k) is not None for k in telemetry_keys)
-            or model in ("Tesla-Vehicle-BLE", "Zeekr-Vehicle-BLE", "Polestar-Vehicle-BLE", "Volvo-Vehicle-BLE", "BMW-Vehicle-BLE")
-            or bool(payload.get("vehicle_status"))
-        )
-        is_beacon_only = not has_real_telemetry
-        payload["is_beacon_only"] = is_beacon_only
 
         # -------------------------------------------------------------------
         # 3. Smart Mode Filtering (Drop anonymous random MAC spam & passing iPhones in 'smart' mode)

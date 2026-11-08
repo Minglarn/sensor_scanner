@@ -1043,11 +1043,21 @@ async def api_update_settings(req: SettingsUpdateRequest):
     ble_keys = ("ble_enabled", "ble_mode", "ble_debounce_seconds")
     mqtt_broker_keys = ("mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_user", "mqtt_pass", "mqtt_prefix")
     ha_keys = ("ha_discovery_enabled", "ha_discovery_prefix")
+    prune_keys = ("prune_ephemeral_hours", "prune_stale_days", "max_signals_per_device")
 
     sdr_changed = any(old_settings.get(k) != new_settings.get(k) for k in sdr_keys)
     ble_changed = any(old_settings.get(k) != new_settings.get(k) for k in ble_keys)
     mqtt_broker_changed = any(old_settings.get(k) != new_settings.get(k) for k in mqtt_broker_keys)
     ha_changed = any(old_settings.get(k) != new_settings.get(k) for k in ha_keys)
+    prune_changed = any(k in payload for k in prune_keys)
+
+    if prune_changed:
+        prune_res = await asyncio.to_thread(db.auto_prune_database)
+        for _, mod, did in prune_res.get("pruned_items", []):
+            ble_manager.evict_device(mod, did)
+            rtl_manager.evict_device(mod, did)
+        if prune_res.get("pruned_keys"):
+            await ws_manager.broadcast({"type": "devices_pruned", "device_keys": prune_res["pruned_keys"]})
 
     # If HA Discovery was turned OFF globally, clear retained discovery topics for all enabled devices
     old_ha_en = str(old_settings.get("ha_discovery_enabled", "0")) in ("1", "true", "True")
