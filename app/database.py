@@ -272,6 +272,52 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
         any(
             k in keys
             for k in (
+                "motion",
+                "pir",
+                "occupancy",
+                "contact_open",
+                "contact",
+                "door",
+                "window",
+                "opened",
+                "smoke",
+                "fire",
+                "alarm",
+                "tamper",
+                "water_leak",
+                "leak",
+                "wet",
+            )
+        )
+        or str(payload.get("subtype") or "").strip().lower() in ("motion", "contact", "alarm", "tamper", "smoke", "leak")
+        or any(k.startswith("switch") and len(k) > 6 and k[6:].lstrip("_").isdigit() for k in keys)
+        or any(
+            w in model_lower
+            for w in (
+                "smoke",
+                "pir",
+                "motion",
+                "alarm",
+                "security",
+                "door",
+                "contact",
+                "dsc",
+                "honeywell",
+                "visonic",
+                "ajax",
+                "cavius",
+                "elro",
+                "fire",
+                "leak",
+            )
+        )
+    ):
+        return "Security"
+
+    if (
+        any(
+            k in keys
+            for k in (
                 "temperature_c",
                 "temperature_f",
                 "temp_c",
@@ -283,6 +329,34 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
                 "humidity_1",
                 "humidity_2",
                 "moisture",
+                "soil_moisture",
+                "conductivity",
+                "uv",
+                "uvi",
+                "uv_index",
+                "lux",
+                "light_lux",
+                "illuminance",
+                "solar_radiation",
+                "light_wm2",
+                "irradiance",
+                "strike_count",
+                "storm_count",
+                "lightning_counter",
+                "storm_dist",
+                "strike_distance",
+                "lightning_distance_km",
+                "depth_cm",
+                "level_cm",
+                "tank_level",
+                "co2",
+                "co2_ppm",
+                "pm2_5_ug_m3",
+                "pm25",
+                "pm10_0_ug_m3",
+                "pm10",
+                "tvoc",
+                "voc",
                 "wind_avg_km_h",
                 "wind_max_km_h",
                 "wind_avg_m_s",
@@ -299,22 +373,59 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
             )
         )
         or any(k.startswith("temperature_") or k.startswith("humidity_") for k in keys)
-        or any(w in model_lower for w in ("wgr800", "pcr800", "ft0385", "weather", "wind", "rain", "therm", "atc", "ruuvi", "bthome", "mijia", "qingping", "soil"))
+        or any(
+            w in model_lower
+            for w in (
+                "wgr800",
+                "pcr800",
+                "ft0385",
+                "weather",
+                "wind",
+                "rain",
+                "therm",
+                "atc",
+                "ruuvi",
+                "bthome",
+                "mijia",
+                "qingping",
+                "soil",
+                "wh24",
+                "wh65",
+                "wh57",
+                "wh51",
+                "wh41",
+                "wh45",
+                "vindstyrka",
+                "airthings",
+                "watchman",
+                "sonic",
+                "6045m",
+                "flora",
+                "hhccjcy",
+            )
+        )
     ):
         return "Climate"
 
-    if (
-        any(k in keys for k in ("motion", "contact_open", "smoke", "tamper", "leak"))
-        or str(payload.get("subtype") or "").strip().lower() in ("motion", "contact", "alarm", "tamper", "smoke")
-        or any(k.startswith("switch") and len(k) > 6 and k[6:].lstrip("_").isdigit() for k in keys)
-        or any(
-            w in model_lower for w in ("smoke", "pir", "motion", "alarm", "security", "door", "contact", "dsc", "honeywell", "fire")
+    if any(k in keys for k in ("state", "cmd", "command", "button", "switch", "unit", "group")) or any(
+        w in model_lower
+        for w in (
+            "switch",
+            "remote",
+            "nexa",
+            "proove",
+            "intertechno",
+            "kaku",
+            "chuango",
+            "kerui",
+            "somfy",
+            "rts",
+            "keeloq",
+            "sc2262",
+            "ev1527",
+            "plejd",
+            "relay",
         )
-    ):
-        return "Security"
-
-    if any(k in keys for k in ("state", "cmd", "button", "switch", "unit", "group")) or any(
-        w in model_lower for w in ("switch", "remote", "nexa", "proove", "intertechno", "kaku", "chuango", "kerui", "plejd", "relay")
     ):
         return "Switch"
 

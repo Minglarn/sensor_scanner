@@ -246,7 +246,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.52</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.53</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -369,16 +369,22 @@
 
             <!-- Frequency Segment Switcher -->
             <div class="inline-flex items-center h-7 lg:h-8 p-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-x-auto no-scrollbar shrink-0">
-              <button onclick="switchFrequencyMode('433')" id="modeBtn_433" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+              <button onclick="switchFrequencyMode('433')" id="modeBtn_433" title="433.92 MHz Wide (433.42 Somfy RTS + 433.92 OOK/FSK)" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
                 <i class="mdi mdi-sine-wave mr-0.5"></i>433.92
               </button>
-              <button onclick="switchFrequencyMode('868')" id="modeBtn_868" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
-                <i class="mdi mdi-sine-wave mr-0.5"></i>868.3
+              <button onclick="switchFrequencyMode('868')" id="modeBtn_868" title="868/869 MHz Wide (868.30 + 868.95 wM-Bus + 869.525 MHz Larm/Trygghet)" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+                <i class="mdi mdi-sine-wave mr-0.5"></i>868/869
               </button>
-              <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+              <button onclick="switchFrequencyMode('hop')" id="modeBtn_hop" title="Dual Hop (433.92 + 868/869 MHz Wide)" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
                 <i class="mdi mdi-swap-horizontal mr-0.5"></i>Dual Hop
               </button>
-              <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+              <button onclick="switchFrequencyMode('hop_eu')" id="modeBtn_hop_eu" title="Triple Hop EU (433.92 + 868/869 Wide + 169.44 MHz VHF wM-Bus)" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+                <i class="mdi mdi-earth mr-0.5"></i>Triple EU
+              </button>
+              <button onclick="switchFrequencyMode('hop_global')" id="modeBtn_hop_global" title="Quad Hop Global (315.00 + 433.92 + 868.60 + 915.00 MHz)" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
+                <i class="mdi mdi-access-point-network mr-0.5"></i>Quad Global
+              </button>
+              <button onclick="switchFrequencyMode('custom')" id="modeBtn_custom" title="Egna anpassade frekvenser" class="h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700">
                 <i class="mdi mdi-tune-variant mr-0.5"></i>Custom
               </button>
             </div>
@@ -1000,11 +1006,13 @@
                     <input type="text" id="set_device_index" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="0 eller 00000433" />
                   </div>
                   <div>
-                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Aktivt frekvensläge</label>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Aktivt frekvensläge / Multi-Band Profil</label>
                     <select id="set_mode" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100">
-                      <option value="433">433.92 MHz (Fast 1024k)</option>
-                      <option value="868">868.30 / 868.95 MHz (Wide 868.1–869.1)</option>
-                      <option value="hop">Dual Hop (433.92 + 868.30 / 868.95 MHz)</option>
+                      <option value="433">433.92 MHz (433.42 Somfy + 433.92 OOK/FSK)</option>
+                      <option value="868">868/869 MHz Wide (868.30 + 868.95 wM-Bus + 869.525 Larm)</option>
+                      <option value="hop">Dual Hop (433.92 + 868/869 MHz Wide)</option>
+                      <option value="hop_eu">Triple Hop EU (433.92 + 868.30/868.95 + 169.44 MHz wM-Bus)</option>
+                      <option value="hop_global">Quad Hop Global (315.00 + 433.92 + 868.60 + 915.00 MHz)</option>
                       <option value="custom">Custom (Egna frekvenser)</option>
                     </select>
                   </div>
@@ -1013,7 +1021,7 @@
                     <input type="text" id="set_hop_time_433" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="00:01:00" title="Ange tid i HH:MM:SS (t.ex. 00:01:00 för 1 min) eller sekunder" />
                   </div>
                   <div>
-                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Tid på 868 MHz Wide (-H, HH:MM:SS)</label>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Tid på 868/869 MHz Wide (-H, HH:MM:SS)</label>
                     <input type="text" id="set_hop_time_868" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="00:05:00" title="Ange tid i HH:MM:SS (t.ex. 00:05:00 för 5 min) eller sekunder" />
                   </div>
                 </div>
@@ -1021,15 +1029,19 @@
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom-frekvenser (eller freq@HH:MM:SS)</label>
-                    <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M@00:01:00,868.60M@00:05:00" title="Kommaseparerade frekvenser, t.ex. 433.92M,868.60M eller med individuell tid 433.92M@00:01:00,868.60M@00:05:00" />
+                    <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M@00:01:00,868.60M@00:05:00,869.525M@00:01:00" title="Kommaseparerade frekvenser, t.ex. 433.92M,868.60M eller med individuell tid 433.92M@00:01:00,868.60M@00:05:00" />
                   </div>
                   <div>
                     <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom Hopp-intervall (-H, HH:MM:SS)</label>
                     <input type="text" id="set_hop_interval" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="00:01:00 eller 00:01:00,00:05:00" title="Standard hopp-tid eller kommaseparerade HH:MM:SS per custom-frekvens" />
                   </div>
                   <div>
-                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom Sample Rate (-s)</label>
-                    <input type="text" id="set_custom_sample_rate" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="1024k" />
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Samplingsfrekvens / Bandbredd (-s)</label>
+                    <select id="set_custom_sample_rate" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono">
+                      <option value="1024k">1024k (1.024 MS/s • Standard / Låg CPU + wM-Bus)</option>
+                      <option value="2048k">2048k (2.048 MS/s • Fullt 867.9–869.9 MHz svep i 1 steg)</option>
+                      <option value="250k">250k (0.25 MS/s • Smalband OOK)</option>
+                    </select>
                   </div>
                 </div>
 
@@ -2289,7 +2301,7 @@
         appUptimeSeconds += 1;
         if (sdrIsRunning) {
           sdrUptimeSeconds += 1;
-          const isHopMode = sdrMode === 'hop' || (sdrMode === 'custom' && sdrActiveFreqs.length > 1);
+          const isHopMode = ['hop', 'hop_eu', 'hop_global'].includes(sdrMode) || (sdrActiveFreqs.length > 1);
           if (isHopMode) {
             sdrRemainingSec -= 1;
             if (sdrRemainingSec <= 0) {
@@ -2752,10 +2764,15 @@
         'cumulative_kwh', 'total_energy_kwh', 'total_energy_kWh', 'energy_kwh', 'energy_kWh', 'total_kWh', 'total_kwh',
         'total_heat_kwh', 'total_heat_kWh', 'heat_kwh', 'heat_kWh',
         'total_water_m3', 'water_m3', 'volume_m3', 'total_volume_m3', 'flow_m3h', 'flow_lph', 'meter_type',
-        'lux', 'illuminance', 'moisture',
+        'uv', 'uvi', 'uv_index', 'lux', 'light_lux', 'illuminance', 'solar_radiation', 'light_wm2', 'irradiance',
+        'strike_count', 'storm_count', 'lightning_counter', 'storm_dist', 'strike_distance', 'lightning_distance_km',
+        'moisture', 'soil_moisture', 'conductivity', 'depth_cm', 'level_cm', 'tank_level',
+        'co2', 'co2_ppm', 'pm2_5_ug_m3', 'pm25', 'pm10_0_ug_m3', 'pm10', 'tvoc', 'voc',
         'wind_avg_km_h', 'wind_max_km_h', 'wind_avg_m_s', 'wind_max_m_s', 'wind_speed_m_s', 'wind_dir_deg',
         'rain_mm', 'total_rain_mm', 'rain_rate_mm_h',
-        'contact_open', 'motion', 'button', 'state', 'cmd'
+        'smoke', 'fire', 'alarm', 'water_leak', 'leak', 'wet', 'pir', 'occupancy',
+        'contact', 'door', 'window', 'opened', 'contact_open', 'motion', 'tamper',
+        'button', 'state', 'cmd', 'command'
       ];
       return telemetryKeys.some((k) => p[k] !== undefined && p[k] !== null && p[k] !== '');
     }
@@ -3609,11 +3626,6 @@
         );
       }
 
-      if (p.lux !== undefined && p.lux !== null && !Number.isNaN(Number(p.lux))) {
-        consumed.add('lux');
-        addMetric('mdi-brightness-6', `${Number(p.lux).toFixed(0)} lx`, 'amber', 'Ljusstyrka', `${Number(p.lux).toFixed(0)} lx`);
-      }
-
       // 1. Energy / Heat / Cumulative Consumption (cumulative_kwh, total_energy_kwh, energy_kwh, total_heat_kwh, heat_kwh)
       let heatKwhVal = null;
       if (p.total_heat_kwh !== undefined && p.total_heat_kwh !== null) {
@@ -3991,14 +4003,50 @@
         addMetric('mdi-weather-pouring', `${rainRateMmH.toFixed(1)} mm/h`, 'blue', 'Regnintensitet', `${rainRateMmH.toFixed(1)} mm/h`);
       }
 
-      // 8. Humidity, Secondary Humidity (humidity_1, humidity_2), Moisture & Atmospheric Pressure
-      const hasSecondaryHumidityKeys = allPayloadKeys.some(k => /^humidity_.+/i.test(k) || /moisture/i.test(k));
+      // 8. Humidity, Secondary Humidity (humidity_1, humidity_2), Soil Moisture, Tank Level, Solar/UV, Lightning, Air Quality & Pressure
+      const hasSecondaryHumidityKeys = allPayloadKeys.some(k => /^humidity_.+/i.test(k));
       const humVal = p.humidity !== undefined && p.humidity !== null
         ? p.humidity
         : (!hasSecondaryHumidityKeys && sig ? sig.humidity : null);
       if (humVal !== undefined && humVal !== null && !Number.isNaN(Number(humVal))) {
         consumed.add('humidity');
         addMetric('mdi-water-percent', `${Number(humVal).toFixed(0)} %`, 'sky', 'Luftfuktighet', `${Number(humVal).toFixed(0)} %`);
+      }
+
+      // 8a. Jordfuktighet, Pool & Tanknivå (Ecowitt WH51, Watchman Sonic Oil/Water Tank, Mi Flora)
+      const soilMoistRaw = p.soil_moisture ?? p.moisture;
+      if (soilMoistRaw !== undefined && soilMoistRaw !== null && !Number.isNaN(Number(soilMoistRaw))) {
+        consumed.add('soil_moisture');
+        consumed.add('moisture');
+        const smNum = Number(soilMoistRaw);
+        let condSub = '';
+        if (p.conductivity !== undefined && p.conductivity !== null && !Number.isNaN(Number(p.conductivity))) {
+          consumed.add('conductivity');
+          condSub = `Näring: ${Number(p.conductivity).toFixed(0)} µS/cm`;
+        }
+        addMetric(
+          'mdi-sprout',
+          `Jord: ${smNum.toFixed(0)} %`,
+          'emerald',
+          'Jordfuktighet',
+          `${smNum.toFixed(0)} %`,
+          condSub
+        );
+      } else if (p.conductivity !== undefined && p.conductivity !== null && !Number.isNaN(Number(p.conductivity))) {
+        consumed.add('conductivity');
+        const condNum = Number(p.conductivity);
+        addMetric('mdi-sprout', `Näring: ${condNum.toFixed(0)} µS/cm`, 'emerald', 'Jordkonduktivitet / Näring', `${condNum.toFixed(0)} µS/cm`);
+      }
+
+      const tankDepthRaw = p.depth_cm ?? p.level_cm ?? p.tank_level ?? p.depth;
+      if (tankDepthRaw !== undefined && tankDepthRaw !== null && !Number.isNaN(Number(tankDepthRaw))) {
+        consumed.add('depth_cm');
+        consumed.add('level_cm');
+        consumed.add('tank_level');
+        consumed.add('depth');
+        const dNum = Number(tankDepthRaw);
+        const dStr = Number.isInteger(dNum) ? `${dNum}` : dNum.toFixed(1);
+        addMetric('mdi-cup-water', `Nivå: ${dStr} cm`, 'cyan', 'Tank- / Vätskenivå', `${dStr} cm`);
       }
 
       const secondaryHumKeys = allPayloadKeys
@@ -4035,10 +4083,10 @@
           );
         } else {
           addMetric(
-            'mdi-water-percent',
-            `Fukt: ${hNum.toFixed(0)} %`,
-            'blue',
-            'Fuktighet / Markfukt',
+            'mdi-sprout',
+            `Jord: ${hNum.toFixed(0)} %`,
+            'emerald',
+            'Jordfuktighet',
             `${hNum.toFixed(0)} %`
           );
         }
@@ -4047,6 +4095,102 @@
       if (p.pressure_hPa !== undefined && p.pressure_hPa !== null) {
         consumed.add('pressure_hPa');
         addMetric('mdi-gauge', `${Number(p.pressure_hPa).toFixed(1)} hPa`, 'teal', 'Lufttryck', `${Number(p.pressure_hPa).toFixed(1)} hPa`);
+      }
+
+      // 8b. Sol, Ljus & UV (Väderstationer WH24/WH65B, Bresser 5-in-1/6-in-1, BTHome)
+      const uvRaw = p.uv ?? p.uvi ?? p.uv_index;
+      if (uvRaw !== undefined && uvRaw !== null && !Number.isNaN(Number(uvRaw))) {
+        consumed.add('uv');
+        consumed.add('uvi');
+        consumed.add('uv_index');
+        const uvNum = Number(uvRaw);
+        const uvColor = uvNum >= 6.0 ? 'purple' : 'amber';
+        addMetric('mdi-sunglasses', `UV: ${uvNum.toFixed(1)}`, uvColor, 'UV-Index', `${uvNum.toFixed(1)}`);
+      }
+
+      const luxRaw = p.light_lux ?? p.lux ?? p.illuminance ?? p.light_klx;
+      if (luxRaw !== undefined && luxRaw !== null && !Number.isNaN(Number(luxRaw))) {
+        const isKlx = p.light_lux === undefined && p.lux === undefined && p.illuminance === undefined && p.light_klx !== undefined;
+        consumed.add('light_lux');
+        consumed.add('lux');
+        consumed.add('illuminance');
+        consumed.add('light_klx');
+        const luxNum = isKlx ? Number(luxRaw) * 1000.0 : Number(luxRaw);
+        const luxLabel = luxNum > 1000 ? `${(luxNum / 1000.0).toFixed(1)} klux` : `${luxNum.toFixed(0)} lux`;
+        const luxSub = luxNum > 1000 ? `${Math.round(luxNum).toLocaleString('sv-SE')} lux` : '';
+        addMetric('mdi-white-balance-sunny', luxLabel, 'amber', 'Ljusstyrka', luxLabel, luxSub);
+      }
+
+      const solarRadRaw = p.solar_radiation ?? p.light_wm2 ?? p.irradiance;
+      if (solarRadRaw !== undefined && solarRadRaw !== null && !Number.isNaN(Number(solarRadRaw))) {
+        consumed.add('solar_radiation');
+        consumed.add('light_wm2');
+        consumed.add('irradiance');
+        const solNum = Number(solarRadRaw);
+        const solStr = solNum >= 10 ? solNum.toFixed(0) : solNum.toFixed(1);
+        addMetric('mdi-solar-power', `${solStr} W/m²`, 'amber', 'Solstrålning', `${solStr} W/m²`);
+      }
+
+      // 8c. Blixtnedslag / Åskvarnare (Ecowitt WH57, Acurite 6045M, Bresser)
+      const strikeCntRaw = p.strike_count ?? p.storm_count ?? p.lightning_counter ?? p.strikes;
+      if (strikeCntRaw !== undefined && strikeCntRaw !== null && !Number.isNaN(Number(strikeCntRaw))) {
+        consumed.add('strike_count');
+        consumed.add('storm_count');
+        consumed.add('lightning_counter');
+        consumed.add('strikes');
+        const stCnt = Math.round(Number(strikeCntRaw));
+        addMetric('mdi-weather-lightning', `${stCnt} blixtar`, stCnt > 0 ? 'amber' : 'neutral', 'Blixtnedslag', `${stCnt} blixtar`);
+      }
+
+      const stormDistRaw = p.storm_dist ?? p.strike_distance ?? p.lightning_distance_km ?? p.storm_dist_km;
+      if (stormDistRaw !== undefined && stormDistRaw !== null && !Number.isNaN(Number(stormDistRaw))) {
+        consumed.add('storm_dist');
+        consumed.add('strike_distance');
+        consumed.add('lightning_distance_km');
+        consumed.add('storm_dist_km');
+        const sdNum = Number(stormDistRaw);
+        const sdStr = Number.isInteger(sdNum) ? `${sdNum}` : sdNum.toFixed(1);
+        addMetric('mdi-map-marker-distance', `Åska: ${sdStr} km`, sdNum <= 15 ? 'rose' : 'purple', 'Avstånd till åska', `${sdStr} km`);
+      }
+
+      // 8d. Luftkvalitet & Miljö (Ecowitt WH41/WH45, Ikea Vindstyrka, Airthings, BTHome)
+      const co2Raw = p.co2 ?? p.co2_ppm;
+      if (co2Raw !== undefined && co2Raw !== null && !Number.isNaN(Number(co2Raw))) {
+        consumed.add('co2');
+        consumed.add('co2_ppm');
+        const co2Num = Math.round(Number(co2Raw));
+        const co2Col = co2Num >= 1200 ? 'rose' : (co2Num >= 800 ? 'amber' : 'emerald');
+        addMetric('mdi-molecule-co2', `${co2Num} ppm CO₂`, co2Col, 'Koldioxid (CO₂)', `${co2Num} ppm`);
+      }
+
+      const pm25Raw = p.pm2_5_ug_m3 ?? p.pm25;
+      if (pm25Raw !== undefined && pm25Raw !== null && !Number.isNaN(Number(pm25Raw))) {
+        consumed.add('pm2_5_ug_m3');
+        consumed.add('pm25');
+        const pm25Num = Number(pm25Raw);
+        const pm25Str = Number.isInteger(pm25Num) ? `${pm25Num}` : pm25Num.toFixed(1);
+        const pm25Col = pm25Num > 35 ? 'rose' : (pm25Num > 12 ? 'amber' : 'teal');
+        addMetric('mdi-blur', `PM2.5: ${pm25Str} µg/m³`, pm25Col, 'Partiklar PM2.5', `${pm25Str} µg/m³`);
+      }
+
+      const pm10Raw = p.pm10_0_ug_m3 ?? p.pm10;
+      if (pm10Raw !== undefined && pm10Raw !== null && !Number.isNaN(Number(pm10Raw))) {
+        consumed.add('pm10_0_ug_m3');
+        consumed.add('pm10');
+        const pm10Num = Number(pm10Raw);
+        const pm10Str = Number.isInteger(pm10Num) ? `${pm10Num}` : pm10Num.toFixed(1);
+        const pm10Col = pm10Num > 50 ? 'amber' : 'teal';
+        addMetric('mdi-blur', `PM10: ${pm10Str} µg/m³`, pm10Col, 'Partiklar PM10', `${pm10Str} µg/m³`);
+      }
+
+      const vocRaw = p.tvoc ?? p.voc ?? p.voc_index;
+      if (vocRaw !== undefined && vocRaw !== null && !Number.isNaN(Number(vocRaw))) {
+        consumed.add('tvoc');
+        consumed.add('voc');
+        consumed.add('voc_index');
+        const vocNum = Number(vocRaw);
+        const vocStr = Number.isInteger(vocNum) ? `${vocNum}` : vocNum.toFixed(0);
+        addMetric('mdi-air-filter', `VOC: ${vocStr}`, 'teal', 'Flyktiga ämnen (VOC)', `${vocStr}`);
       }
 
       // 9. Water / Volume & Flow & Wireless M-Bus (total_water_m3, water_m3, volume_m3, flow_m3h, flow_lph, meter_type, mode)
@@ -4147,7 +4291,7 @@
         addMetric('mdi-lock-outline', 'OMS Krypterad', 'indigo', 'Kryptering', 'OMS Krypterad');
       }
 
-      // 10. Switch / Door / Motion / Subtype / Raw Hex
+      // 10. Security, Alarm, Smoke/Fire, Water Leak, Motion, Contact, Tamper & Remotes (433/868/869 MHz & BLE)
       if (p.subtype !== undefined && p.subtype !== null && String(p.subtype).trim() !== '') {
         consumed.add('subtype');
         const subRaw = String(p.subtype).trim();
@@ -4155,19 +4299,89 @@
         if (subLow === 'motion') {
           addMetric('mdi-motion-sensor', 'Rörelse (motion)', 'amber', 'TYP', 'Rörelse (motion)');
         } else if (subLow === 'contact') {
-          addMetric('mdi-door-closed-lock', 'Kontakt (contact)', 'indigo', 'TYP', 'Kontakt (contact)');
+          addMetric('mdi-door-open', 'Kontakt (contact)', 'indigo', 'TYP', 'Kontakt (contact)');
         } else if (subLow === 'smoke' || subLow === 'alarm' || subLow === 'tamper') {
-          addMetric('mdi-shield-alert-outline', `Larm (${subRaw})`, 'rose', 'TYP', `Larm (${subRaw})`);
+          addMetric('mdi-smoke-detector-variant-alert', `Larm (${subRaw})`, 'rose', 'TYP', `Larm (${subRaw})`);
         } else {
           addMetric('mdi-shield-outline', `Typ: ${subRaw}`, 'indigo', 'TYP', subRaw);
         }
       }
 
-      if (p.motion !== undefined || p.contact_open !== undefined) {
+      const smokeRaw = p.smoke ?? p.fire ?? p.alarm;
+      if (smokeRaw !== undefined && smokeRaw !== null && String(smokeRaw).trim() !== '') {
+        consumed.add('smoke');
+        consumed.add('fire');
+        consumed.add('alarm');
+        const sStr = String(smokeRaw).trim().toUpperCase();
+        const isSmokeActive = Boolean(smokeRaw) && sStr !== '0' && sStr !== 'FALSE' && sStr !== 'OFF' && sStr !== 'OK';
+        addMetric(
+          'mdi-smoke-detector-variant-alert',
+          isSmokeActive ? 'Brand/Larm!' : 'Brandvarnare: OK',
+          isSmokeActive ? 'rose' : 'emerald',
+          'Brand / Larmstatus',
+          isSmokeActive ? 'Brand/Larm!' : 'OK'
+        );
+      }
+
+      const leakRaw = p.water_leak ?? p.leak ?? p.wet;
+      if (leakRaw !== undefined && leakRaw !== null && String(leakRaw).trim() !== '') {
+        consumed.add('water_leak');
+        consumed.add('leak');
+        consumed.add('wet');
+        const lStr = String(leakRaw).trim().toUpperCase();
+        const isLeakActive = Boolean(leakRaw) && lStr !== '0' && lStr !== 'FALSE' && lStr !== 'OFF' && lStr !== 'DRY';
+        addMetric(
+          'mdi-water-alert',
+          isLeakActive ? 'Läckage/Fukt!' : 'Läckagesensor: Torr',
+          isLeakActive ? 'rose' : 'emerald',
+          'Vattenläckage',
+          isLeakActive ? 'Läckage/Fukt!' : 'Torr (OK)'
+        );
+      }
+
+      const motionRaw = p.motion ?? p.pir ?? p.occupancy;
+      if (motionRaw !== undefined && motionRaw !== null && String(motionRaw).trim() !== '') {
         consumed.add('motion');
+        consumed.add('pir');
+        consumed.add('occupancy');
+        const mStr = String(motionRaw).trim().toUpperCase();
+        const isMotActive = Boolean(motionRaw) && mStr !== '0' && mStr !== 'FALSE' && mStr !== 'OFF';
+        addMetric(
+          'mdi-motion-sensor',
+          isMotActive ? 'Rörelse' : 'Ingen rörelse',
+          isMotActive ? 'amber' : 'neutral',
+          'Rörelse / Närvaro',
+          isMotActive ? 'Rörelse detekterad' : 'Ingen rörelse'
+        );
+      }
+
+      const contactRaw = p.contact_open ?? p.opened ?? p.door ?? p.window ?? p.contact;
+      if (contactRaw !== undefined && contactRaw !== null && String(contactRaw).trim() !== '') {
         consumed.add('contact_open');
-        const label = p.motion !== undefined ? `Rörelse: ${p.motion}` : `Kontakt: ${p.contact_open ? 'ÖPPEN' : 'STÄNGD'}`;
-        addMetric('mdi-motion-sensor', label, 'indigo', 'Säkerhet / Kontakt', label);
+        consumed.add('opened');
+        consumed.add('door');
+        consumed.add('window');
+        consumed.add('contact');
+        const cStr = String(contactRaw).trim().toUpperCase();
+        const isOpenContact = cStr === '1' || cStr === 'TRUE' || cStr === 'OPEN' || cStr === 'OPENED' || cStr === 'ON';
+        addMetric(
+          'mdi-door-open',
+          isOpenContact ? 'Öppen' : 'Stängd',
+          isOpenContact ? 'amber' : 'emerald',
+          'Dörr / Fönsterkontakt',
+          isOpenContact ? 'Öppen' : 'Stängd'
+        );
+      }
+
+      if (p.tamper !== undefined && p.tamper !== null && String(p.tamper).trim() !== '') {
+        consumed.add('tamper');
+        const tStr = String(p.tamper).trim().toUpperCase();
+        const isTamperActive = Boolean(p.tamper) && tStr !== '0' && tStr !== 'FALSE' && tStr !== 'OFF';
+        if (isTamperActive) {
+          addMetric('mdi-shield-alert', 'Sabotage (Tamper)', 'rose', 'Sabotagelarm', 'Sabotage (Tamper)');
+        } else {
+          addModalOnlyKpi('mdi-shield-check-outline', 'emerald', 'Sabotageskydd', 'OK');
+        }
       }
 
       const switchKeys = Object.keys(p)
@@ -4191,12 +4405,13 @@
         );
       }
 
-      const swVal = p.state ?? p.cmd ?? p.button;
-      if (swVal !== undefined && swVal !== null) {
-        consumed.add('state');
-        consumed.add('cmd');
+      const swVal = p.button ?? p.cmd ?? p.command ?? p.state;
+      if (swVal !== undefined && swVal !== null && String(swVal).trim() !== '') {
         consumed.add('button');
-        addMetric('mdi-toggle-switch-outline', `${swVal}`, 'indigo', 'Switch / Status', String(swVal));
+        consumed.add('cmd');
+        consumed.add('command');
+        consumed.add('state');
+        addMetric('mdi-gesture-tap-button', `Knapp/Cmd: ${swVal}`, 'indigo', 'Knapp / Kommando', String(swVal));
       }
 
       if (p.raw_message !== undefined && p.raw_message !== null && String(p.raw_message).trim() !== '') {
@@ -4929,13 +5144,13 @@
         if (mqttText) mqttText.textContent = 'MQTT: Avstängd';
       }
 
-      ['433', '868', 'hop', 'custom'].forEach((m) => {
+      ['433', '868', 'hop', 'hop_eu', 'hop_global', 'custom'].forEach((m) => {
         const btn = document.getElementById(`modeBtn_${m}`);
         if (!btn) return;
         if (rtl.mode === m) {
-          btn.className = 'h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition bg-sky-600 text-white shadow-xs';
+          btn.className = 'h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition bg-sky-600 text-white shadow-xs';
         } else {
-          btn.className = 'h-7 px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700';
+          btn.className = 'h-6 lg:h-7 px-2 lg:px-2.5 rounded text-xs font-medium whitespace-nowrap transition text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700';
         }
       });
 
@@ -4953,9 +5168,11 @@
       }
       if (logModeEl) {
         const modeMap = {
-          '433': '433.92 MHz (Fast • 1024k)',
-          '868': '868.30 / 868.95 MHz (Wide 1024k)',
-          'hop': 'Dual Hop 433.92 + 868.30/868.95 MHz',
+          '433': '433.92 MHz (433.42 Somfy + 433.92 OOK/FSK)',
+          '868': '868/869 MHz Wide (868.30 + 868.95 + 869.525 MHz)',
+          'hop': 'Dual Hop (433.92 + 868/869 MHz Wide)',
+          'hop_eu': 'Triple Hop EU (433.92 + 868/869 + 169.44 MHz wM-Bus)',
+          'hop_global': 'Quad Hop Global (315 + 433.92 + 868.60 + 915 MHz)',
           'custom': 'Custom Frekvenser'
         };
         logModeEl.textContent = modeMap[rtl.mode] || (rtl.mode || 'hop').toUpperCase();
@@ -5044,20 +5261,20 @@
         return;
       }
 
-      const isHopMode = sdrMode === 'hop' || (sdrMode === 'custom' && sdrActiveFreqs.length > 1);
+      const isHopMode = ['hop', 'hop_eu', 'hop_global'].includes(sdrMode) || (sdrActiveFreqs.length > 1);
       if (!isHopMode) {
         if (progWrap) progWrap.classList.add('hidden');
-        const fixedFreq = sdrMode === '868' ? '868.30 / 868.95 MHz' : (sdrMode === '433' ? '433.92 MHz' : sdrCurrentFreq);
+        const fixedFreq = sdrCurrentFreq || (sdrMode === '868' ? '868.30–869.52 MHz' : (sdrMode === '433' ? '433.92 MHz' : sdrCurrentFreq));
         sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0';
         sdrText.innerHTML = `<span>${escapeHtml(fixedFreq)}</span>`;
         return;
       }
 
-      // Hopping mode (Dual Hop 433.92 / 868.30 MHz or multi-freq Custom)
+      // Hopping mode (Dual Hop / Triple Hop EU / Quad Hop Global / 868+869 sweep / Custom)
       const remainingSec = Math.max(1, Math.min(sdrHopInterval, Math.round(sdrRemainingSec || sdrHopInterval)));
       const pctRemaining = Math.max(4, Math.min(100, (remainingSec / sdrHopInterval) * 100));
 
-      const is868 = String(sdrCurrentFreq).includes('868');
+      const is868 = String(sdrCurrentFreq).includes('868') || String(sdrCurrentFreq).includes('869') || String(sdrCurrentFreq).includes('915');
       if (progWrap && progBar) {
         progWrap.classList.remove('hidden');
         progBar.style.width = `${pctRemaining.toFixed(1)}%`;

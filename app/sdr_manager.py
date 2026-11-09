@@ -19,11 +19,18 @@ logger = logging.getLogger("sensor_scanner.sdr")
 PROTOCOL_LINE_RE = re.compile(r"^\s*\[(\d+)\]\*?\s+(.+)$")
 TUNED_TO_RE = re.compile(r"Tuned to\s+([0-9.]+)\s*MHz", re.IGNORECASE)
 
-# Wideband 868 MHz center frequency with -s 1024k (1.024 MS/s covers 868.08 - 869.12 MHz,
-# simultaneously capturing 868.30 MHz SRD/Sparsnäs/weather AND 868.95 MHz Wireless M-Bus T1/C1)
+# Wideband 868/869 MHz center frequencies:
+# - With -s 1024k (1.024 MS/s): 868.60M covers 868.08 - 869.12 MHz (868.30 MHz + 868.95 MHz wM-Bus)
+# - With -s 2048k (2.048 MS/s): 868.90M covers 867.88 - 869.92 MHz (868.30 + 868.95 + 869.525 MHz in 1 sweep!)
+# - On 433.92M with -s 1024k/2048k: covers 433.40 - 434.44 MHz (433.42 MHz Somfy RTS + 433.92 MHz OOK/FSK)
 WIDEBAND_868_RTL_FREQ = "868.60M"
 WIDEBAND_868_DISPLAY = "868.30 / 868.95 MHz"
+WIDEBAND_868_2048K_RTL_FREQ = "868.90M"
+WIDEBAND_868_2048K_DISPLAY = "868.30–869.52 MHz"
+VHF_WMBUS_169_RTL_FREQ = "169.4375M"
+VHF_WMBUS_169_DISPLAY = "169.44 MHz"
 DEFAULT_SAMPLE_RATE = "1024k"
+VALID_SDR_MODES = ("433", "868", "hop", "hop_eu", "hop_global", "custom")
 
 WMBUS_AND_METER_PROTOCOLS = {
     36,
@@ -559,7 +566,7 @@ def enrich_wmbus_and_meter_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
                 payload["meter_type"] = str(val).strip()
                 break
 
-    # Normalize wM-Bus mode (T1, C1, S1) if protocol is Wireless M-Bus
+    # Normalize wM-Bus mode (T1, C1, S1, N1/N2) if protocol is Wireless M-Bus
     if not payload.get("mode"):
         proto_raw = payload.get("protocol")
         try:
@@ -576,6 +583,84 @@ def enrich_wmbus_and_meter_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
             payload["mode"] = "F"
         elif pid == 238:
             payload["mode"] = "T1"
+
+    return payload
+
+
+def normalize_sdr_sensor_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalizes all remaining rtl_433 sensor telemetry fields so no measurement is ever lost:
+    - Solar, Light & UV: uv / uvi / uv_index, light_lux / lux / illuminance, solar_radiation / light_wm2 / irradiance
+    - Lightning (WH57, Acurite 6045M, Bresser): strike_count / storm_count / lightning_counter, storm_dist / strike_distance / lightning_distance_km
+    - Soil Moisture & Tank/Pool Level (WH51, Watchman Sonic, TS-FT002): moisture / soil_moisture, depth_cm / level_cm / tank_level
+    - Air Quality (WH41/WH45, etc.): co2 / co2_ppm, pm2_5_ug_m3 / pm25, pm10_0_ug_m3 / pm10, tvoc / voc
+    - Security, Smoke, Water Leak & Remotes: smoke / fire / alarm, water_leak / leak / wet, motion / pir / occupancy,
+      contact / door / window / opened, tamper, button / cmd / command / state
+    """
+    if not isinstance(payload, dict):
+        return payload
+
+    # 1. Solar / UV / Illuminance
+    if payload.get("uv") is None:
+        for k in ("uvi", "uv_index", "uv_idx"):
+            if payload.get(k) is not None:
+                payload["uv"] = payload[k]
+                break
+
+    if payload.get("lux") is None:
+        for k in ("light_lux", "illuminance", "light_klx"):
+            if payload.get(k) is not None:
+                try:
+                    val = float(payload[k])
+                    if k == "light_klx":
+                        val = val * 1000.0
+                    payload["lux"] = round(val, 1)
+                except (ValueError, TypeError):
+                    payload["lux"] = payload[k]
+                break
+
+    if payload.get("solar_radiation") is None:
+        for k in ("light_wm2", "irradiance", "solar_wm2", "uv_wm2"):
+            if payload.get(k) is not None:
+                payload["solar_radiation"] = payload[k]
+                break
+
+    # 2. Lightning / Storm detectors
+    if payload.get("strike_count") is None:
+        for k in ("storm_count", "lightning_counter", "strikes", "strike_cnt"):
+            if payload.get(k) is not None:
+                payload["strike_count"] = payload[k]
+                break
+
+    if payload.get("storm_dist") is None:
+        for k in ("strike_distance", "lightning_distance_km", "storm_dist_km", "distance_km"):
+            if payload.get(k) is not None:
+                payload["storm_dist"] = payload[k]
+                break
+
+    # 3. Soil Moisture & Liquid/Tank Level
+    if payload.get("moisture") is None and payload.get("soil_moisture") is not None:
+        payload["moisture"] = payload["soil_moisture"]
+
+    if payload.get("depth_cm") is None:
+        for k in ("level_cm", "tank_level", "water_depth_cm", "liquid_level_cm"):
+            if payload.get(k) is not None:
+                payload["depth_cm"] = payload[k]
+                break
+        if payload.get("depth_cm") is None and payload.get("depth_m") is not None:
+            try:
+                payload["depth_cm"] = round(float(payload["depth_m"]) * 100.0, 1)
+            except (ValueError, TypeError):
+                pass
+
+    # 4. Air Quality (CO2, PM2.5, PM10, VOC)
+    if payload.get("co2") is None and payload.get("co2_ppm") is not None:
+        payload["co2"] = payload["co2_ppm"]
+
+    if payload.get("pm2_5_ug_m3") is None and payload.get("pm25") is not None:
+        payload["pm2_5_ug_m3"] = payload["pm25"]
+    if payload.get("pm10_0_ug_m3") is None and payload.get("pm10") is not None:
+        payload["pm10_0_ug_m3"] = payload["pm10"]
 
     return payload
 
@@ -691,23 +776,57 @@ class RTLManager:
     def evict_device(self, model: str, device_id: str) -> None:
         self._debounce_cache.pop(f"{model}:{device_id}", None)
 
+    def _resolve_sample_rate(self, settings: Dict[str, str]) -> str:
+        raw_sr = str(settings.get("custom_sample_rate", DEFAULT_SAMPLE_RATE)).strip()
+        if not raw_sr:
+            return DEFAULT_SAMPLE_RATE
+        sr_low = raw_sr.lower()
+        if sr_low in ("2048k", "2.048m", "2048000", "2m"):
+            return "2048k"
+        if sr_low in ("1024k", "1.024m", "1024000", "1m"):
+            return "1024k"
+        return raw_sr
+
+    def _resolve_868_band(self, settings: Dict[str, str]) -> Tuple[str, str]:
+        sr = self._resolve_sample_rate(settings)
+        if sr == "2048k":
+            return WIDEBAND_868_2048K_RTL_FREQ, WIDEBAND_868_2048K_DISPLAY
+        return WIDEBAND_868_RTL_FREQ, WIDEBAND_868_DISPLAY
+
     def _resolve_hop_schedule(self, settings: Dict[str, str]) -> Tuple[List[str], List[str], List[int]]:
         """
         Resolves (raw_rtl_freqs, display_freqs, hop_intervals_seconds) from settings.
-        In '868' and 'hop' modes, 868 MHz is centered on 868.60M with -s 1024k so
-        the receiver simultaneously covers 868.08 MHz - 869.12 MHz (868.30 + 868.95 MHz).
+        - With -s 2048k: 868 band is centered on 868.90M (covers 867.88 - 869.92 MHz: 868.30 + 868.95 + 869.525 MHz in 1 sweep).
+        - With -s 1024k: 868 band is centered on 868.60M (868.08 - 869.12 MHz), and in '868' mode sweeps 868.60M + 869.525M.
+        - Supports '433', '868', 'hop' (Dual Hop), 'hop_eu' (Triple Hop EU + 169.44 MHz wM-Bus), 'hop_global' (Quad Hop Global 315/433/868/915), and 'custom'.
         """
         mode = str(settings.get("mode", "hop")).strip().lower()
         base_default_sec = parse_duration_to_seconds(settings.get("hop_interval", "60"), 60)
         sec_433 = parse_duration_to_seconds(settings.get("hop_time_433") or base_default_sec, base_default_sec)
         sec_868 = parse_duration_to_seconds(settings.get("hop_time_868") or base_default_sec, base_default_sec)
+        sr = self._resolve_sample_rate(settings)
+        freq_868, disp_868 = self._resolve_868_band(settings)
 
         if mode == "433":
             return ["433.92M"], ["433.92 MHz"], [sec_433]
         if mode == "868":
-            return [WIDEBAND_868_RTL_FREQ], [WIDEBAND_868_DISPLAY], [sec_868]
+            if sr == "2048k":
+                return [WIDEBAND_868_2048K_RTL_FREQ], [WIDEBAND_868_2048K_DISPLAY], [sec_868]
+            return [WIDEBAND_868_RTL_FREQ, "869.525M"], [WIDEBAND_868_DISPLAY, "869.52 MHz"], [sec_868, max(15, sec_868 // 2)]
+        if mode in ("hop_eu", "triple_eu"):
+            return (
+                ["433.92M", freq_868, VHF_WMBUS_169_RTL_FREQ],
+                ["433.92 MHz", disp_868, VHF_WMBUS_169_DISPLAY],
+                [sec_433, sec_868, base_default_sec],
+            )
+        if mode in ("hop_global", "quad_global"):
+            return (
+                ["315.00M", "433.92M", freq_868, "915.00M"],
+                ["315.00 MHz", "433.92 MHz", disp_868, "915.00 MHz"],
+                [base_default_sec, sec_433, sec_868, base_default_sec],
+            )
         if mode == "custom":
-            raw_freqs = str(settings.get("custom_freqs", f"433.92M,{WIDEBAND_868_RTL_FREQ}"))
+            raw_freqs = str(settings.get("custom_freqs", f"433.92M,{freq_868}"))
             raw_items = [f.strip() for f in raw_freqs.replace(";", ",").split(",") if f.strip()]
             if not raw_items:
                 raw_items = ["433.92M"]
@@ -739,8 +858,12 @@ class RTLManager:
                         val = float(m.group(1))
                         if val > 1_000_000:
                             val = val / 1_000_000.0
-                        if abs(val - 868.60) < 0.05 or abs(val - 868.50) < 0.05:
+                        if abs(val - 868.90) < 0.05:
+                            disp_f = WIDEBAND_868_2048K_DISPLAY
+                        elif abs(val - 868.60) < 0.05 or abs(val - 868.50) < 0.05:
                             disp_f = WIDEBAND_868_DISPLAY
+                        elif abs(val - 169.4375) < 0.05 or abs(val - 169.44) < 0.05:
+                            disp_f = VHF_WMBUS_169_DISPLAY
                         else:
                             disp_f = f"{val:.2f} MHz"
                     except ValueError:
@@ -760,8 +883,8 @@ class RTLManager:
 
             return rtl_freqs, disp_freqs, intervals
 
-        # Default: Dual Hop (433.92 MHz + Wideband 868.60 MHz covering 868.30 & 868.95 MHz)
-        return ["433.92M", WIDEBAND_868_RTL_FREQ], ["433.92 MHz", WIDEBAND_868_DISPLAY], [sec_433, sec_868]
+        # Default: Dual Hop (433.92 MHz + Wideband 868/869 MHz)
+        return ["433.92M", freq_868], ["433.92 MHz", disp_868], [sec_433, sec_868]
 
     def _resolve_active_freqs(self, settings: Dict[str, str]) -> List[str]:
         _, disp_freqs, _ = self._resolve_hop_schedule(settings)
@@ -830,15 +953,39 @@ class RTLManager:
             matched_idx: Optional[int] = None
             if new_freq in self.hop_freqs:
                 matched_idx = self.hop_freqs.index(new_freq)
+            elif 869.3 <= freq_val <= 870.5 and any("869.52" in hf for hf in self.hop_freqs):
+                for i, hf in enumerate(self.hop_freqs):
+                    if "869.52" in hf and "868.30" not in hf:
+                        matched_idx = i
+                        new_freq = hf
+                        break
             elif 860.0 <= freq_val <= 875.0:
                 for i, hf in enumerate(self.hop_freqs):
-                    if "868" in hf:
+                    if "868" in hf or "869" in hf:
                         matched_idx = i
                         new_freq = hf
                         break
             elif 430.0 <= freq_val <= 440.0:
                 for i, hf in enumerate(self.hop_freqs):
                     if "433" in hf:
+                        matched_idx = i
+                        new_freq = hf
+                        break
+            elif 168.0 <= freq_val <= 171.0:
+                for i, hf in enumerate(self.hop_freqs):
+                    if "169" in hf:
+                        matched_idx = i
+                        new_freq = hf
+                        break
+            elif 310.0 <= freq_val <= 320.0:
+                for i, hf in enumerate(self.hop_freqs):
+                    if "315" in hf:
+                        matched_idx = i
+                        new_freq = hf
+                        break
+            elif 902.0 <= freq_val <= 928.0:
+                for i, hf in enumerate(self.hop_freqs):
+                    if "915" in hf:
                         matched_idx = i
                         new_freq = hf
                         break
@@ -858,11 +1005,11 @@ class RTLManager:
     def build_command(self, settings: Dict[str, str]) -> List[str]:
         binary = shutil.which("rtl_433") or "/usr/local/bin/rtl_433"
         device_index = str(settings.get("device_index", "0")).strip() or "0"
-        mode = str(settings.get("mode", "hop")).strip().lower()
         raw_gain = str(settings.get("gain", "auto")).strip().replace(",", ".")
         gain = re.sub(r"\s*db$", "", raw_gain, flags=re.IGNORECASE).strip() or "auto"
         ppm = str(settings.get("ppm", "0")).strip().replace(",", ".")
         rtl_freqs, _, intervals = self._resolve_hop_schedule(settings)
+        sample_rate = self._resolve_sample_rate(settings)
 
         cmd: List[str] = [
             binary,
@@ -886,30 +1033,17 @@ class RTLManager:
         if _rtl433_g_args and not self._disable_g_flag:
             cmd.extend(_rtl433_g_args)
 
-        if mode == "433":
-            cmd.extend(["-f", "433.92M", "-s", DEFAULT_SAMPLE_RATE])
-        elif mode == "868":
-            cmd.extend(["-f", WIDEBAND_868_RTL_FREQ, "-s", DEFAULT_SAMPLE_RATE])
-        elif mode == "hop":
-            cmd.extend(["-f", "433.92M", "-f", WIDEBAND_868_RTL_FREQ])
-            if len(intervals) >= 2 and intervals[0] != intervals[1]:
-                cmd.extend(["-H", str(intervals[0]), "-H", str(intervals[1])])
+        for f in rtl_freqs:
+            cmd.extend(["-f", f])
+
+        if len(rtl_freqs) > 1:
+            if len(set(intervals)) == 1:
+                cmd.extend(["-H", str(intervals[0])])
             else:
-                cmd.extend(["-H", str(intervals[0] if intervals else 60)])
-            cmd.extend(["-s", DEFAULT_SAMPLE_RATE])
-        elif mode == "custom":
-            for f in rtl_freqs:
-                cmd.extend(["-f", f])
-            if len(rtl_freqs) > 1:
-                if len(set(intervals)) == 1:
-                    cmd.extend(["-H", str(intervals[0])])
-                else:
-                    for iv in intervals:
-                        cmd.extend(["-H", str(iv)])
-            sample_rate = str(settings.get("custom_sample_rate", DEFAULT_SAMPLE_RATE)).strip() or DEFAULT_SAMPLE_RATE
-            cmd.extend(["-s", sample_rate])
-        else:
-            cmd.extend(["-f", "433.92M", "-f", WIDEBAND_868_RTL_FREQ, "-H", "60", "-s", DEFAULT_SAMPLE_RATE])
+                for iv in intervals:
+                    cmd.extend(["-H", str(iv)])
+
+        cmd.extend(["-s", sample_rate])
 
         if gain and gain.lower() != "auto":
             cmd.extend(["-g", gain])
@@ -1072,6 +1206,7 @@ class RTLManager:
 
             # Enrich Wireless M-Bus (#104/#105/#238) and utility meters with normalized fields & Energy category
             enrich_wmbus_and_meter_payload(payload)
+            normalize_sdr_sensor_payload(payload)
 
             # Only infer frequency from packet in fixed single-frequency mode
             if len(self.hop_freqs) <= 1:
@@ -1279,7 +1414,12 @@ __all__ = [
     "RTL433_PROTOCOLS_FULL",
     "RTLManager",
     "SDRManager",
+    "VALID_SDR_MODES",
+    "VHF_WMBUS_169_DISPLAY",
+    "VHF_WMBUS_169_RTL_FREQ",
     "VOLATILE_KEYS",
+    "WIDEBAND_868_2048K_DISPLAY",
+    "WIDEBAND_868_2048K_RTL_FREQ",
     "WIDEBAND_868_DISPLAY",
     "WIDEBAND_868_RTL_FREQ",
     "WMBUS_AND_METER_MODEL_KEYWORDS",
@@ -1292,6 +1432,7 @@ __all__ = [
     "get_rtl433_protocol_name",
     "is_wireless_mbus_or_meter",
     "load_rtl433_protocols_from_binary",
+    "normalize_sdr_sensor_payload",
     "parse_duration_to_seconds",
     "shorten_rtl433_protocol_name",
 ]

@@ -19,7 +19,7 @@ from app import __app_name__, __version__
 from app.ble_manager import BLEManager
 from app.database import Database, extract_device_id, sanitize_key
 from app.mqtt_client import MQTTManager
-from app.sdr_manager import RTLManager
+from app.sdr_manager import RTLManager, VALID_SDR_MODES
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -387,6 +387,53 @@ def _log_signal_stdout(signal_rec: Dict[str, Any], device_rec: Dict[str, Any]) -
     if press is not None:
         unit = "hPa" if payload.get("pressure_hPa") is not None else "kPa"
         metrics.append(f"{press} {unit}")
+    uv_val = payload.get("uv") if payload.get("uv") is not None else (payload.get("uvi") if payload.get("uvi") is not None else payload.get("uv_index"))
+    if uv_val is not None:
+        metrics.append(f"UV: {uv_val}")
+    lux_val = payload.get("light_lux") if payload.get("light_lux") is not None else (payload.get("lux") if payload.get("lux") is not None else payload.get("illuminance"))
+    if lux_val is not None:
+        try:
+            lx_f = float(lux_val)
+            metrics.append(f"{lx_f / 1000.0:.1f} klux" if lx_f >= 1000.0 else f"{int(round(lx_f))} lux")
+        except (ValueError, TypeError):
+            metrics.append(f"{lux_val} lux")
+    sol_val = payload.get("solar_radiation") if payload.get("solar_radiation") is not None else (payload.get("light_wm2") if payload.get("light_wm2") is not None else payload.get("irradiance"))
+    if sol_val is not None:
+        metrics.append(f"{sol_val} W/m²")
+    strikes = payload.get("strike_count") if payload.get("strike_count") is not None else (payload.get("storm_count") if payload.get("storm_count") is not None else payload.get("lightning_counter"))
+    if strikes is not None:
+        metrics.append(f"{strikes} blixtar")
+    storm_d = payload.get("storm_dist") if payload.get("storm_dist") is not None else (payload.get("strike_distance") if payload.get("strike_distance") is not None else payload.get("lightning_distance_km"))
+    if storm_d is not None:
+        metrics.append(f"Åska: {storm_d} km")
+    soil_m = payload.get("soil_moisture") if payload.get("soil_moisture") is not None else payload.get("moisture")
+    if soil_m is not None:
+        metrics.append(f"Jord: {soil_m}%")
+    depth_v = payload.get("depth_cm") if payload.get("depth_cm") is not None else (payload.get("level_cm") if payload.get("level_cm") is not None else payload.get("tank_level"))
+    if depth_v is not None:
+        metrics.append(f"Nivå: {depth_v} cm")
+    co2_v = payload.get("co2") if payload.get("co2") is not None else payload.get("co2_ppm")
+    if co2_v is not None:
+        metrics.append(f"{co2_v} ppm CO2")
+    pm25_v = payload.get("pm2_5_ug_m3") if payload.get("pm2_5_ug_m3") is not None else payload.get("pm25")
+    if pm25_v is not None:
+        metrics.append(f"PM2.5: {pm25_v} µg/m³")
+    pm10_v = payload.get("pm10_0_ug_m3") if payload.get("pm10_0_ug_m3") is not None else payload.get("pm10")
+    if pm10_v is not None:
+        metrics.append(f"PM10: {pm10_v} µg/m³")
+    voc_v = payload.get("tvoc") if payload.get("tvoc") is not None else payload.get("voc")
+    if voc_v is not None:
+        metrics.append(f"VOC: {voc_v}")
+    if payload.get("smoke") or payload.get("fire") or payload.get("alarm"):
+        metrics.append("Brand/Larm!")
+    if payload.get("water_leak") or payload.get("leak") or payload.get("wet"):
+        metrics.append("Läckage/Fukt!")
+    if payload.get("motion") or payload.get("pir") or payload.get("occupancy"):
+        metrics.append("Rörelse")
+    if payload.get("contact_open") is not None:
+        metrics.append("Öppen" if payload.get("contact_open") else "Stängd")
+    if payload.get("tamper"):
+        metrics.append("Sabotage")
     bat_pct = payload.get("battery_pct")
     if bat_pct is not None:
         metrics.append(f"Batt: {int(round(float(bat_pct)))}%")
@@ -406,9 +453,9 @@ def _log_signal_stdout(signal_rec: Dict[str, Any], device_rec: Dict[str, Any]) -
             wmbus_parts = [str(x).strip() for x in (m_type, m_mode) if x is not None and str(x).strip()]
             metrics.append(f"wM-Bus: {' / '.join(wmbus_parts)}")
         else:
-            state_val = payload.get("state") or payload.get("cmd") or payload.get("button")
+            state_val = payload.get("button") if payload.get("button") is not None else (payload.get("cmd") if payload.get("cmd") is not None else (payload.get("command") if payload.get("command") is not None else payload.get("state")))
             if state_val is not None:
-                metrics.append(f"State: {state_val}")
+                metrics.append(f"Knapp/Cmd: {state_val}")
 
     if not is_brand_new and not metrics and is_ble and not alias:
         return
@@ -952,8 +999,11 @@ async def api_control(req: ControlRequest):
     sdr_touched = False
     ble_touched = False
     if req.mode is not None:
-        if req.mode not in ("433", "868", "hop", "custom"):
-            raise HTTPException(status_code=400, detail="Ogiltigt frekvensläge. Tillåtna: 433, 868, hop, custom.")
+        if req.mode not in VALID_SDR_MODES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ogiltigt frekvensläge. Tillåtna: {', '.join(VALID_SDR_MODES)}.",
+            )
         updates["mode"] = req.mode
         sdr_touched = True
     if req.device_index is not None:

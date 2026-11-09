@@ -57,6 +57,7 @@ BLE_COMPANY_IDS: Dict[int, str] = {
     0x02E5: "Espressif",
     0x02FF: "Silicon Labs",
     0x0310: "Sensi / Emerson",
+    0x0334: "Airthings",
     0x0377: "Plejd",
     0x038F: "Xiaomi",
     0x0499: "Ruuvi Innovations",
@@ -68,6 +69,7 @@ BLE_COMPANY_IDS: Dict[int, str] = {
     0x0822: "Shelly / Allterco",
     0x0953: "IKEA of Sweden",
     0x09A3: "Plejd",
+    0x88EC: "Govee",
     0xEC88: "Govee",
 }
 
@@ -86,6 +88,7 @@ BLE_SERVICE_UUIDS: Dict[str, str] = {
     "FD44": "Apple FindMy Network",
     "FD5A": "Samsung SmartThings Find",
     "FD6F": "Exposure Notification",
+    "FDCD": "Qingping Sensor Service",
     "FDFD": "Zeekr/Geely Digital Key",
     "FE78": "Garmin BLE Service",
     "FE95": "Xiaomi MiBeacon",
@@ -259,11 +262,13 @@ FIXED_MAC_SENSOR_MODELS = {
     "Govee-BLE",
     "Plejd-Mesh",
     "Enhauto-S3XY",
+    "BTHome-BLE",
     "BTHome-v2",
     "BTHome-v1",
     "Xiaomi-MiBeacon",
     "Qingping-BLE",
     "RuuviTag-BLE",
+    "Airthings-BLE",
     "Inkbird-BLE",
     "SwitchBot-BLE",
     "ThermoPro-BLE",
@@ -534,9 +539,25 @@ def is_mac_like_name(name: Optional[str]) -> bool:
     return bool(MAC_LIKE_NAME_RE.match(cleaned))
 
 
+BTHOME_BUTTON_EVENTS: Dict[int, str] = {
+    1: "press",
+    2: "double_press",
+    3: "triple_press",
+    4: "long_press",
+    5: "long_double_press",
+    6: "long_triple_press",
+    128: "hold_press",
+}
+
+
 def parse_bthome_v2(data: bytes) -> Dict[str, Any]:
     """
     Parses unencrypted BTHome v2 service data (UUID 0xFCD2).
+    Supports Temperature, Humidity, Battery, Pressure (0x04), Illuminance/Lux (0x05),
+    Energy/Power (0x0A/0x0B/0x4D), Voltage (0x0C/0x4A), PM2.5 (0x0D), PM10 (0x0E),
+    CO2 (0x12), TVOC (0x13), Moisture (0x14/0x2F), Door/Window (0x1A/0x2D),
+    Water Leak (0x20), Motion (0x21), Occupancy (0x22), Smoke (0x29), Tamper (0x2B),
+    Button (0x3A), UV Index (0x46), Water/Flow (0x49/0x4E/0x4F).
     """
     out: Dict[str, Any] = {}
     if len(data) < 2:
@@ -589,6 +610,33 @@ def parse_bthome_v2(data: bytes) -> Dict[str, Any]:
             val = int.from_bytes(data[idx : idx + 3], "little", signed=False)
             out["lux"] = round(val * 0.01, 1)
             idx += 3
+        elif obj_id in (0x06, 0x07):  # mass kg/lb (uint16, 0.01)
+            if idx + 2 > n:
+                break
+            idx += 2
+        elif obj_id == 0x08:  # dewpoint (sint16, 0.01 °C)
+            if idx + 2 > n:
+                break
+            val = struct.unpack_from("<h", data, idx)[0]
+            out["dew_point_C"] = round(val * 0.01, 2)
+            idx += 2
+        elif obj_id == 0x09:  # count (uint8)
+            if idx + 1 > n:
+                break
+            out["pulse_count"] = int(data[idx])
+            idx += 1
+        elif obj_id == 0x0A:  # energy (uint24, 0.001 kWh)
+            if idx + 3 > n:
+                break
+            val = int.from_bytes(data[idx : idx + 3], "little", signed=False)
+            out["energy_kWh"] = round(val * 0.001, 3)
+            idx += 3
+        elif obj_id == 0x0B:  # power (uint24, 0.01 W)
+            if idx + 3 > n:
+                break
+            val = int.from_bytes(data[idx : idx + 3], "little", signed=False)
+            out["power_W"] = round(val * 0.01, 1)
+            idx += 3
         elif obj_id == 0x0C:  # voltage (uint16, 0.001 V)
             if idx + 2 > n:
                 break
@@ -596,27 +644,65 @@ def parse_bthome_v2(data: bytes) -> Dict[str, Any]:
             out["voltage_V"] = round(val * 0.001, 3)
             out["battery_mV"] = val
             idx += 2
-        elif obj_id in (0x10, 0x11, 0x15, 0x2D):  # power/opening/battery_low/window-door (uint8)
-            if idx + 1 > n:
+        elif obj_id == 0x0D:  # pm2.5 (uint16, 1 ug/m3)
+            if idx + 2 > n:
                 break
-            bval = data[idx]
-            if obj_id == 0x15:
-                out["battery_ok"] = 0 if bval else 1
-            elif obj_id == 0x2D:
-                out["contact_open"] = 1 if bval else 0
-            else:
-                out["state"] = "ON" if bval else "OFF"
-            idx += 1
+            val = struct.unpack_from("<H", data, idx)[0]
+            out["pm2_5_ug_m3"] = int(val)
+            out["pm25"] = int(val)
+            idx += 2
+        elif obj_id == 0x0E:  # pm10 (uint16, 1 ug/m3)
+            if idx + 2 > n:
+                break
+            val = struct.unpack_from("<H", data, idx)[0]
+            out["pm10_0_ug_m3"] = int(val)
+            out["pm10"] = int(val)
+            idx += 2
+        elif obj_id == 0x12:  # CO2 (uint16, 1 ppm)
+            if idx + 2 > n:
+                break
+            val = struct.unpack_from("<H", data, idx)[0]
+            out["co2"] = int(val)
+            idx += 2
+        elif obj_id == 0x13:  # TVOC (uint16, 1 ug/m3)
+            if idx + 2 > n:
+                break
+            val = struct.unpack_from("<H", data, idx)[0]
+            out["tvoc"] = int(val)
+            idx += 2
         elif obj_id == 0x14:  # moisture (uint16, 0.01 %)
             if idx + 2 > n:
                 break
             val = struct.unpack_from("<H", data, idx)[0]
             out["moisture"] = round(val * 0.01, 1)
             idx += 2
-        elif obj_id == 0x21:  # motion (uint8)
+        elif obj_id in (0x0F, 0x10, 0x11, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D):
             if idx + 1 > n:
                 break
-            out["motion"] = int(data[idx])
+            bval = int(data[idx])
+            if obj_id == 0x15:  # battery low
+                out["battery_ok"] = 0 if bval else 1
+                out["battery_low"] = 1 if bval else 0
+            elif obj_id in (0x11, 0x1A, 0x1B, 0x2D):  # opening / door / garage_door / window
+                out["contact_open"] = 1 if bval else 0
+                if obj_id == 0x1A:
+                    out["door"] = 1 if bval else 0
+                elif obj_id == 0x2D:
+                    out["window"] = 1 if bval else 0
+            elif obj_id == 0x20:  # moisture / water leak binary
+                out["water_leak"] = 1 if bval else 0
+            elif obj_id == 0x21:  # motion
+                out["motion"] = 1 if bval else 0
+            elif obj_id == 0x22:  # occupancy
+                out["occupancy"] = 1 if bval else 0
+                if "motion" not in out:
+                    out["motion"] = 1 if bval else 0
+            elif obj_id in (0x1C, 0x1D, 0x29):  # gas / heat / smoke
+                out["smoke"] = 1 if bval else 0
+            elif obj_id == 0x2B:  # tamper
+                out["tamper"] = 1 if bval else 0
+            else:
+                out["state"] = "ON" if bval else "OFF"
             idx += 1
         elif obj_id == 0x2E:  # humidity (uint8, 1 %)
             if idx + 1 > n:
@@ -628,17 +714,123 @@ def parse_bthome_v2(data: bytes) -> Dict[str, Any]:
                 break
             out["moisture"] = int(data[idx])
             idx += 1
-        elif obj_id == 0x3A:  # button (uint8)
+        elif obj_id == 0x3A:  # button event (uint8)
             if idx + 1 > n:
                 break
-            out["button"] = int(data[idx])
+            btn_code = int(data[idx])
+            if btn_code > 0:
+                out["button"] = BTHOME_BUTTON_EVENTS.get(btn_code, str(btn_code))
             idx += 1
+        elif obj_id == 0x3C:  # dimmer event (uint8 event + uint8 steps)
+            if idx + 2 > n:
+                break
+            dim_evt = int(data[idx])
+            dim_steps = int(data[idx + 1])
+            if dim_evt > 0:
+                out["button"] = f"dim_{dim_evt}:{dim_steps}"
+            idx += 2
+        elif obj_id == 0x3D:  # count (uint16)
+            if idx + 2 > n:
+                break
+            out["pulse_count"] = struct.unpack_from("<H", data, idx)[0]
+            idx += 2
+        elif obj_id == 0x3E:  # count (uint32)
+            if idx + 4 > n:
+                break
+            out["pulse_count"] = struct.unpack_from("<I", data, idx)[0]
+            idx += 4
+        elif obj_id == 0x3F:  # rotation (sint16, 0.1 deg)
+            if idx + 2 > n:
+                break
+            idx += 2
+        elif obj_id == 0x40:  # distance mm (uint16)
+            if idx + 2 > n:
+                break
+            mm = struct.unpack_from("<H", data, idx)[0]
+            out["depth_cm"] = round(mm / 10.0, 1)
+            idx += 2
+        elif obj_id == 0x41:  # distance m (uint16, 0.1 m)
+            if idx + 2 > n:
+                break
+            dm = struct.unpack_from("<H", data, idx)[0]
+            out["depth_cm"] = round(dm * 10.0, 1)
+            idx += 2
+        elif obj_id == 0x42:  # duration (uint24, 0.001 s)
+            if idx + 3 > n:
+                break
+            idx += 3
+        elif obj_id == 0x43:  # current (uint16, 0.001 A)
+            if idx + 2 > n:
+                break
+            val = struct.unpack_from("<H", data, idx)[0]
+            out["current_A"] = round(val * 0.001, 2)
+            idx += 2
+        elif obj_id == 0x44:  # speed (uint16, 0.01 m/s)
+            if idx + 2 > n:
+                break
+            val = struct.unpack_from("<H", data, idx)[0]
+            out["wind_speed_m_s"] = round(val * 0.01, 2)
+            idx += 2
         elif obj_id == 0x45:  # temperature (sint16, 0.1 °C)
             if idx + 2 > n:
                 break
             val = struct.unpack_from("<h", data, idx)[0]
             out["temperature_C"] = round(val * 0.1, 1)
             idx += 2
+        elif obj_id == 0x46:  # UV index (uint8, 0.1)
+            if idx + 1 > n:
+                break
+            out["uv"] = round(data[idx] * 0.1, 1)
+            idx += 1
+        elif obj_id == 0x47:  # volume (uint16, 0.1 L)
+            if idx + 2 > n:
+                break
+            val = struct.unpack_from("<H", data, idx)[0]
+            out["volume_m3"] = round((val * 0.1) / 1000.0, 4)
+            idx += 2
+        elif obj_id == 0x48:  # volume (uint16, 1 mL)
+            if idx + 2 > n:
+                break
+            idx += 2
+        elif obj_id == 0x49:  # Volume Flow Rate (uint16, 0.001 m3/hr -> l/h)
+            if idx + 2 > n:
+                break
+            val = struct.unpack_from("<H", data, idx)[0]
+            out["flow_m3h"] = round(val * 0.001, 3)
+            out["flow_lph"] = int(val)
+            idx += 2
+        elif obj_id == 0x4A:  # voltage (uint16, 0.1 V)
+            if idx + 2 > n:
+                break
+            val = struct.unpack_from("<H", data, idx)[0]
+            out["voltage_V"] = round(val * 0.1, 1)
+            idx += 2
+        elif obj_id == 0x4B:  # gas (uint24, 0.001 m3)
+            if idx + 3 > n:
+                break
+            val = int.from_bytes(data[idx : idx + 3], "little", signed=False)
+            out["volume_m3"] = round(val * 0.001, 3)
+            idx += 3
+        elif obj_id == 0x4C:  # gas (uint32, 0.001 m3)
+            if idx + 4 > n:
+                break
+            val = struct.unpack_from("<I", data, idx)[0]
+            out["volume_m3"] = round(val * 0.001, 3)
+            idx += 4
+        elif obj_id == 0x4D:  # energy (uint32, 0.001 kWh)
+            if idx + 4 > n:
+                break
+            val = struct.unpack_from("<I", data, idx)[0]
+            out["energy_kWh"] = round(val * 0.001, 3)
+            idx += 4
+        elif obj_id in (0x4E, 0x4F):  # volume / water (uint32, 0.001 L -> m3)
+            if idx + 4 > n:
+                break
+            val = struct.unpack_from("<I", data, idx)[0]
+            m3_val = round((val * 0.001) / 1000.0, 3)
+            out["total_water_m3"] = m3_val
+            out["volume_m3"] = m3_val
+            idx += 4
         else:
             break
     return out
@@ -804,21 +996,106 @@ def parse_xiaomi_fe95(data: bytes) -> Dict[str, Any]:
         elif obj_type == 0x1007 and len(obj_bytes) >= 3:
             lux = int.from_bytes(obj_bytes[:3], "little")
             out["lux"] = lux
+            out["light_lux"] = lux
         elif obj_type == 0x1008 and len(obj_bytes) >= 1:
-            out["moisture"] = int(obj_bytes[0])
+            moi = int(obj_bytes[0])
+            out["moisture"] = moi
+            out["soil_moisture"] = moi
+        elif obj_type == 0x1009 and len(obj_bytes) >= 2:
+            cond = struct.unpack_from("<H", obj_bytes, 0)[0]
+            out["conductivity"] = int(cond)
+        elif obj_type in (0x100E, 0x100F, 0x1019) and len(obj_bytes) >= 1:
+            # Xiaomi door/window/lock contact state (0 = closed/locked, 1/2 = open)
+            out["contact_open"] = 1 if obj_bytes[0] in (0, 2) and obj_type == 0x1019 else (1 if obj_bytes[0] else 0)
+        elif obj_type in (0x1012, 0x1014) and len(obj_bytes) >= 1:
+            out["water_leak"] = 1 if obj_bytes[0] else 0
+        elif obj_type in (0x1013, 0x1015) and len(obj_bytes) >= 1:
+            out["smoke"] = 1 if obj_bytes[0] else 0
+        elif obj_type == 0x0003 and len(obj_bytes) >= 1:
+            out["motion"] = 1 if obj_bytes[0] else 0
+        elif obj_type == 0x000F and len(obj_bytes) >= 3:
+            lux = int.from_bytes(obj_bytes[:3], "little")
+            out["motion"] = 1
+            out["lux"] = lux
+            out["light_lux"] = lux
+        elif obj_type == 0x1001 and len(obj_bytes) >= 1:
+            out["button"] = int(obj_bytes[0])
+    return out
+
+
+def parse_qingping_fdcd(data: bytes) -> Dict[str, Any]:
+    """
+    Parses Qingping service data (UUID 0xFDCD) for CGD1, CGG1, CGPR1, CGDN1, CGS1.
+    Header is 8 bytes (frame control + 6-byte MAC), followed by TLV objects (type: u8, len: u8, val: bytes).
+    """
+    out: Dict[str, Any] = {}
+    if len(data) < 10:
+        return out
+    offset = 8
+    while offset + 2 <= len(data):
+        obj_type = data[offset]
+        obj_len = data[offset + 1]
+        obj_start = offset + 2
+        if obj_start + obj_len > len(data):
+            break
+        obj_bytes = data[obj_start : obj_start + obj_len]
+        offset = obj_start + obj_len
+
+        if obj_type == 0x01 and len(obj_bytes) >= 4:
+            t = struct.unpack_from("<h", obj_bytes, 0)[0] / 10.0
+            h = struct.unpack_from("<H", obj_bytes, 2)[0] / 10.0
+            if -45.0 <= t <= 85.0:
+                out["temperature_C"] = round(t, 1)
+            if 0.0 <= h <= 100.0:
+                out["humidity"] = round(h, 1)
+        elif obj_type == 0x02 and len(obj_bytes) >= 1:
+            bat = int(obj_bytes[0])
+            if 0 <= bat <= 100:
+                out["battery_pct"] = bat
+                out["battery_ok"] = 1 if bat > 15 else 0
+        elif obj_type == 0x07 and len(obj_bytes) >= 2:
+            pres = struct.unpack_from("<H", obj_bytes, 0)[0] / 10.0
+            if 300.0 <= pres <= 1250.0:
+                out["pressure_hPa"] = round(pres, 1)
+        elif obj_type == 0x08 and len(obj_bytes) >= 4:
+            out["motion"] = 1 if obj_bytes[0] else 0
+            lux = int.from_bytes(obj_bytes[1:4], "little")
+            out["lux"] = lux
+            out["light_lux"] = lux
+        elif obj_type == 0x09 and len(obj_bytes) >= 4:
+            lux = struct.unpack_from("<I", obj_bytes, 0)[0]
+            out["lux"] = lux
+            out["light_lux"] = lux
+        elif obj_type == 0x0F and len(obj_bytes) >= 1:
+            out["contact_open"] = 1 if obj_bytes[0] else 0
+        elif obj_type == 0x12 and len(obj_bytes) >= 4:
+            pm25 = struct.unpack_from("<H", obj_bytes, 0)[0]
+            pm10 = struct.unpack_from("<H", obj_bytes, 2)[0]
+            out["pm2_5_ug_m3"] = int(pm25)
+            out["pm25"] = int(pm25)
+            out["pm10_0_ug_m3"] = int(pm10)
+            out["pm10"] = int(pm10)
+        elif obj_type == 0x13 and len(obj_bytes) >= 2:
+            co2 = struct.unpack_from("<H", obj_bytes, 0)[0]
+            out["co2"] = int(co2)
+            out["co2_ppm"] = int(co2)
     return out
 
 
 def parse_ruuvi_0499(data: bytes) -> Dict[str, Any]:
     """
-    Parses RuuviTag Manufacturer Data (Company ID 0x0499, Data Format 5 / RAWv2).
+    Parses RuuviTag Manufacturer Data (Company ID 0x0499, Data Format 5 / RAWv2 & Data Format 3 / RAWv1).
     """
     out: Dict[str, Any] = {}
     if len(data) >= 24 and data[0] == 0x05:
         temp_raw = struct.unpack_from(">h", data, 1)[0]
         hum_raw = struct.unpack_from(">H", data, 3)[0]
         pres_raw = struct.unpack_from(">H", data, 5)[0]
+        acc_x = struct.unpack_from(">h", data, 7)[0]
+        acc_y = struct.unpack_from(">h", data, 9)[0]
+        acc_z = struct.unpack_from(">h", data, 11)[0]
         power_info = struct.unpack_from(">H", data, 13)[0]
+        move_cnt = data[15]
         seq = struct.unpack_from(">H", data, 16)[0]
 
         if temp_raw != -32768:
@@ -828,19 +1105,47 @@ def parse_ruuvi_0499(data: bytes) -> Dict[str, Any]:
         if pres_raw != 65535:
             out["pressure_hPa"] = round((pres_raw + 50000) / 100.0, 1)
 
+        if acc_x != -32768 and acc_y != -32768 and acc_z != -32768:
+            out["accel_mg"] = int(round((acc_x ** 2 + acc_y ** 2 + acc_z ** 2) ** 0.5))
+
         bat_mv = (power_info >> 5) + 1600
         if 1600 <= bat_mv <= 3646:
             out["battery_mV"] = int(bat_mv)
             out["voltage_V"] = round(bat_mv / 1000.0, 3)
             out["battery_ok"] = 1 if bat_mv >= 2400 else 0
+        if move_cnt != 255:
+            out["movement_counter"] = int(move_cnt)
         if seq != 65535:
             out["sequence"] = int(seq)
+    elif len(data) >= 14 and data[0] == 0x03:
+        hum = data[1] * 0.5
+        temp_sign = -1.0 if (data[2] & 0x80) else 1.0
+        temp_val = temp_sign * ((data[2] & 0x7F) + data[3] / 100.0)
+        pres_raw = struct.unpack_from(">H", data, 4)[0]
+        acc_x = struct.unpack_from(">h", data, 6)[0]
+        acc_y = struct.unpack_from(">h", data, 8)[0]
+        acc_z = struct.unpack_from(">h", data, 10)[0]
+        bat_mv = struct.unpack_from(">H", data, 12)[0]
+
+        if -45.0 <= temp_val <= 85.0:
+            out["temperature_C"] = round(temp_val, 2)
+        if 0.0 <= hum <= 100.0:
+            out["humidity"] = round(hum, 1)
+        if 30000 <= pres_raw <= 65534:
+            out["pressure_hPa"] = round((pres_raw + 50000) / 100.0, 1)
+        if acc_x != -32768 and acc_y != -32768 and acc_z != -32768:
+            out["accel_mg"] = int(round((acc_x ** 2 + acc_y ** 2 + acc_z ** 2) ** 0.5))
+        if 1600 <= bat_mv <= 3650:
+            out["battery_mV"] = int(bat_mv)
+            out["voltage_V"] = round(bat_mv / 1000.0, 3)
+            out["battery_ok"] = 1 if bat_mv >= 2400 else 0
     return out
 
 
 def parse_govee_mfg(data: bytes) -> Dict[str, Any]:
     """
-    Parses Govee thermo-hygrometer manufacturer data (0xEC88).
+    Parses Govee thermo-hygrometer & leak sensor manufacturer data (0xEC88 / 0x88EC).
+    Supports H5072/H5075/H5101/H5102 (6-byte packed), H5074 (7-byte), H5179 (9-byte), and H5054 leak sensor.
     """
     out: Dict[str, Any] = {}
     if len(data) == 6 and data[0] == 0x00:
@@ -856,10 +1161,37 @@ def parse_govee_mfg(data: bytes) -> Dict[str, Any]:
             if 0 <= bat <= 100:
                 out["battery_pct"] = int(bat)
                 out["battery_ok"] = 1 if bat > 15 else 0
+    elif len(data) == 6 and data[0] == 0x01:
+        # Govee H5101/H5102/H5177 6-byte frame with 0x01 prefix
+        raw = int.from_bytes(data[2:5], "big")
+        is_neg = bool(raw & 0x800000)
+        raw = raw & 0x7FFFFF
+        temp_c = (raw / 10000.0) * (-1.0 if is_neg else 1.0)
+        hum = (raw % 1000) / 10.0
+        bat = data[5] & 0x7F
+        if -40.0 <= temp_c <= 85.0 and 0.0 <= hum <= 100.0:
+            out["temperature_C"] = round(temp_c, 1)
+            out["humidity"] = round(hum, 1)
+            if 0 <= bat <= 100:
+                out["battery_pct"] = int(bat)
+                out["battery_ok"] = 1 if bat > 15 else 0
     elif len(data) >= 7 and data[0] == 0x00:
         temp_raw = struct.unpack_from("<h", data, 1)[0]
         hum_raw = struct.unpack_from("<H", data, 3)[0]
         bat = data[5]
+        temp_c = temp_raw / 100.0
+        hum = hum_raw / 100.0
+        if -40.0 <= temp_c <= 85.0 and 0.0 <= hum <= 100.0:
+            out["temperature_C"] = round(temp_c, 1)
+            out["humidity"] = round(hum, 1)
+            if 0 <= bat <= 100:
+                out["battery_pct"] = int(bat)
+                out["battery_ok"] = 1 if bat > 15 else 0
+    elif len(data) >= 9 and data[0] == 0x01:
+        # Govee H5179 9-byte frame
+        temp_raw = struct.unpack_from("<h", data, 4)[0]
+        hum_raw = struct.unpack_from("<H", data, 6)[0]
+        bat = data[8] & 0x7F
         temp_c = temp_raw / 100.0
         hum = hum_raw / 100.0
         if -40.0 <= temp_c <= 85.0 and 0.0 <= hum <= 100.0:
@@ -1636,9 +1968,31 @@ class BLEManager:
                             has_decoded_sensor = True
                         if "lux" in t_out:
                             payload["lux"] = round(float(t_out["lux"]), 1)
+                            payload["light_lux"] = payload["lux"]
                             has_decoded_sensor = True
                         if "moi" in t_out:
                             payload["moisture"] = round(float(t_out["moi"]), 1)
+                            payload["soil_moisture"] = payload["moisture"]
+                            has_decoded_sensor = True
+                        if "co2" in t_out:
+                            payload["co2"] = int(round(float(t_out["co2"])))
+                            payload["co2_ppm"] = payload["co2"]
+                            has_decoded_sensor = True
+                        if "pm25" in t_out:
+                            payload["pm2_5_ug_m3"] = round(float(t_out["pm25"]), 1)
+                            payload["pm25"] = payload["pm2_5_ug_m3"]
+                            has_decoded_sensor = True
+                        if "pm10" in t_out:
+                            payload["pm10_0_ug_m3"] = round(float(t_out["pm10"]), 1)
+                            payload["pm10"] = payload["pm10_0_ug_m3"]
+                            has_decoded_sensor = True
+                        if "tvoc" in t_out or "voc" in t_out:
+                            voc_v = float(t_out.get("tvoc", t_out.get("voc")))
+                            payload["tvoc"] = round(voc_v, 1)
+                            has_decoded_sensor = True
+                        if "uvi" in t_out or "uv" in t_out:
+                            uv_v = float(t_out.get("uvi", t_out.get("uv")))
+                            payload["uv"] = round(uv_v, 1)
                             has_decoded_sensor = True
                         if "open" in t_out:
                             payload["contact_open"] = 1 if t_out["open"] else 0
@@ -1646,12 +2000,27 @@ class BLEManager:
                         if "motion" in t_out:
                             payload["motion"] = 1 if t_out["motion"] else 0
                             has_decoded_sensor = True
+                        if "occupancy" in t_out:
+                            payload["occupancy"] = 1 if t_out["occupancy"] else 0
+                            has_decoded_sensor = True
+                        if "leak" in t_out or "water_leak" in t_out:
+                            payload["water_leak"] = 1 if t_out.get("leak", t_out.get("water_leak")) else 0
+                            has_decoded_sensor = True
+                        if "smoke" in t_out:
+                            payload["smoke"] = 1 if t_out["smoke"] else 0
+                            has_decoded_sensor = True
+                        if "tamper" in t_out:
+                            payload["tamper"] = 1 if t_out["tamper"] else 0
+                            has_decoded_sensor = True
+                        if "button" in t_out:
+                            payload["button"] = t_out["button"]
+                            has_decoded_sensor = True
                         if t_out.get("model_id"):
                             theengs_model = str(t_out["model_id"]).strip()
             except Exception:
                 pass
 
-        # Built-in binary parsers for BTHome v2, BTHome v1, ATC/PVVX 0x181A, Xiaomi 0xFE95, Ruuvi 0x0499, Govee 0xEC88
+        # Built-in binary parsers for BTHome v2, BTHome v1, ATC/PVVX 0x181A, Xiaomi 0xFE95, Qingping 0xFDCD, Ruuvi 0x0499, Govee 0xEC88
         for suuid, sbytes in srv_data.items():
             u_low = suuid.lower()
             raw_b = bytes(sbytes)
@@ -1683,6 +2052,13 @@ class BLEManager:
                     has_decoded_sensor = True
                     if not theengs_model:
                         theengs_model = "Xiaomi-MiBeacon"
+            elif "fdcd" in u_low:
+                parsed = parse_qingping_fdcd(raw_b)
+                if parsed:
+                    payload.update({k: v for k, v in parsed.items() if k not in payload})
+                    has_decoded_sensor = True
+                    if not theengs_model:
+                        theengs_model = "Qingping-BLE"
 
         if 0x0499 in mfg_data:
             parsed = parse_ruuvi_0499(bytes(mfg_data[0x0499]))
@@ -1691,8 +2067,9 @@ class BLEManager:
                 has_decoded_sensor = True
                 theengs_model = "RuuviTag-BLE"
 
-        if 0xEC88 in mfg_data:
-            parsed = parse_govee_mfg(bytes(mfg_data[0xEC88]))
+        if 0xEC88 in mfg_data or 0x88EC in mfg_data:
+            govee_bytes = bytes(mfg_data.get(0xEC88) or mfg_data.get(0x88EC) or b"")
+            parsed = parse_govee_mfg(govee_bytes)
             if parsed:
                 payload.update({k: v for k, v in parsed.items() if k not in payload})
                 has_decoded_sensor = True
@@ -1715,7 +2092,20 @@ class BLEManager:
             "battery_mV",
             "voltage_V",
             "lux",
+            "light_lux",
+            "uv",
             "moisture",
+            "soil_moisture",
+            "conductivity",
+            "co2",
+            "co2_ppm",
+            "pm2_5_ug_m3",
+            "pm25",
+            "pm10_0_ug_m3",
+            "pm10",
+            "tvoc",
+            "water_m3",
+            "water_l",
             "sequence",
             "manufacturer_name",
             "manufacturer_id",
@@ -1740,7 +2130,19 @@ class BLEManager:
                 cached_state[sk] = payload[sk]
             elif sk in cached_state and cached_state[sk] is not None:
                 payload[sk] = cached_state[sk]
-                if sk in ("temperature_C", "humidity", "pressure_hPa", "battery_pct", "lux", "moisture"):
+                if sk in (
+                    "temperature_C",
+                    "humidity",
+                    "pressure_hPa",
+                    "battery_pct",
+                    "lux",
+                    "uv",
+                    "moisture",
+                    "co2",
+                    "pm2_5_ug_m3",
+                    "pm10_0_ug_m3",
+                    "tvoc",
+                ):
                     has_decoded_sensor = True
 
         oui_vendor = self.get_cached_oui_vendor(mac)
@@ -1828,16 +2230,22 @@ class BLEManager:
             model = "ATC-Thermometer"
             payload["category"] = "Climate"
 
-        # F. Govee Devices (ihoment_*, Govee_*, GVH*, B5178*, H5074*, H5075* or Manufacturer 0xEC88)
+        # F. Govee Devices (ihoment_*, Govee_*, GVH*, B5178*, H5074*, H5075* or Manufacturer 0xEC88 / 0x88EC)
         elif (
             any(name_upper.startswith(p) for p in ("IHOMENT_", "GOVEE_", "GVH", "H507", "H510", "H517", "B517"))
             or 0xEC88 in mfg_data
+            or 0x88EC in mfg_data
         ):
             model = "Govee-BLE"
             if "temperature_C" in payload or "humidity" in payload or name_upper.startswith("GVH"):
                 payload["category"] = "Climate"
             else:
                 payload["category"] = "Switch"
+
+        # F2. Airthings Indoor Air Quality / Radon Sensors (Company ID 0x0334 or local_name Airthings*)
+        elif 0x0334 in mfg_data or name_upper.startswith("AIRTHINGS"):
+            model = "Airthings-BLE"
+            payload["category"] = "Climate"
 
         # G. Plejd / Bluetooth Mesh (Company ID 0x0377 / 0x09A3, local_name == "P mesh", or UUID 31ba0001-...)
         elif (
@@ -1916,14 +2324,14 @@ class BLEManager:
             payload["id"] = device_id
             has_decoded_sensor = True
 
-        # H. Xiaomi / Aqara / BTHome / Qingping / RuuviTag
+        # H. Xiaomi / Aqara / BTHome / Qingping / RuuviTag / Mi Flora
         elif theengs_model:
             model = theengs_model
             if model in ("iBeacon-BLE", "Apple-AirTag"):
                 payload["category"] = "Tracker"
         elif any(
             name_upper.startswith(p)
-            for p in ("MIJIA", "QINGPING", "CGD1", "CGG1", "RUUVI", "BTHOME")
+            for p in ("MIJIA", "QINGPING", "CGD1", "CGG1", "CGDN1", "CGS1", "RUUVI", "BTHOME", "FLOWER", "HHCCJCY")
         ):
             clean_p = re.sub(r"[^A-Za-z0-9]+", "-", local_name).strip("-").split("-")[0]
             model = f"{clean_p}-BLE"
@@ -1955,8 +2363,25 @@ class BLEManager:
             "energy_kWh",
             "current_A",
             "lux",
+            "light_lux",
             "illuminance",
+            "uv",
             "moisture",
+            "soil_moisture",
+            "conductivity",
+            "co2",
+            "co2_ppm",
+            "pm2_5_ug_m3",
+            "pm25",
+            "pm10_0_ug_m3",
+            "pm10",
+            "tvoc",
+            "water_m3",
+            "water_l",
+            "water_leak",
+            "smoke",
+            "tamper",
+            "occupancy",
             "contact_open",
             "motion",
             "button",
@@ -2100,35 +2525,36 @@ class BLEManager:
         # -------------------------------------------------------------------
         now_mono = time.monotonic()
         dev_cache_key = f"{model}:{device_id}"
+        common_sig_keys = (
+            "temperature_C",
+            "humidity",
+            "pressure_hPa",
+            "battery_pct",
+            "voltage_V",
+            "lux",
+            "uv",
+            "moisture",
+            "co2",
+            "pm2_5_ug_m3",
+            "pm10_0_ug_m3",
+            "tvoc",
+            "water_m3",
+            "water_l",
+            "water_leak",
+            "smoke",
+            "tamper",
+            "occupancy",
+            "state",
+            "contact_open",
+            "motion",
+            "button",
+            "vehicle_status",
+            "plejd_node_count",
+        )
         metric_keys_for_sig = (
-            "temperature_C",
-            "humidity",
-            "pressure_hPa",
-            "battery_pct",
-            "voltage_V",
-            "lux",
-            "moisture",
-            "state",
-            "contact_open",
-            "motion",
-            "button",
-            "vehicle_status",
-            "plejd_node_count",
-        ) if (model == "Plejd-Mesh" and device_id == "CLUSTER") else (
-            "temperature_C",
-            "humidity",
-            "pressure_hPa",
-            "battery_pct",
-            "voltage_V",
-            "lux",
-            "moisture",
-            "state",
-            "contact_open",
-            "motion",
-            "button",
-            "vehicle_status",
-            "plejd_node_count",
-            "plejd_model",
+            common_sig_keys
+            if (model == "Plejd-Mesh" and device_id == "CLUSTER")
+            else common_sig_keys + ("plejd_model",)
         )
         metric_sig_parts = [
             f"{k}={payload.get(k)}"
