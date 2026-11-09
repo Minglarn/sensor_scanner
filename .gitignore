@@ -39,3 +39,15 @@ Thumbs.db
 .idea/
 .vscode/
 
+# AI / Agent instructions & internal workspace files (NEVER commit to public repo)
+GEMINI.md
+CLAUDE.md
+AGENTS.md
+walkthrough.md
+.agent/
+.agents/
+.gemini/
+.cursor/
+.windsurf/
+
+
