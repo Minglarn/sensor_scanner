@@ -19,7 +19,7 @@ from app import __app_name__, __version__
 from app.ble_manager import BLEManager
 from app.database import Database, extract_device_id, sanitize_key
 from app.mqtt_client import MQTTManager
-from app.rtl_manager import RTLManager
+from app.sdr_manager import RTLManager
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -337,13 +337,50 @@ def _log_signal_stdout(signal_rec: Dict[str, Any], device_rec: Dict[str, Any]) -
     temp_c = signal_rec.get("temperature_c")
     if temp_c is not None:
         metrics.append(f"{float(temp_c):.1f}°C")
+    else:
+        flow_t = payload.get("flow_temp_c") or payload.get("flow_temp_C")
+        ret_t = payload.get("return_temp_c") or payload.get("return_temp_C")
+        wat_t = payload.get("water_temp_c") or payload.get("water_temp_C")
+        if flow_t is not None and ret_t is not None:
+            metrics.append(f"{flow_t}/{ret_t}°C")
+        elif wat_t is not None:
+            metrics.append(f"{wat_t}°C")
     hum = signal_rec.get("humidity")
     if hum is not None:
         metrics.append(f"{int(round(float(hum)))}%")
+    water_m3 = (
+        payload.get("total_water_m3")
+        if payload.get("total_water_m3") is not None
+        else (payload.get("water_m3") if payload.get("water_m3") is not None else payload.get("volume_m3"))
+    )
+    if water_m3 is not None:
+        try:
+            metrics.append(f"{float(water_m3):.2f} m³")
+        except (ValueError, TypeError):
+            metrics.append(f"{water_m3} m³")
+    flow_lph = payload.get("flow_lph")
+    flow_m3h = payload.get("flow_m3h")
+    if flow_lph is not None:
+        metrics.append(f"{flow_lph} l/h")
+    elif flow_m3h is not None:
+        try:
+            metrics.append(f"{int(round(float(flow_m3h) * 1000))} l/h")
+        except (ValueError, TypeError):
+            metrics.append(f"{flow_m3h} m³/h")
     power_w = payload.get("power_W") or payload.get("calculated_power_W")
     if power_w is not None:
         metrics.append(f"{power_w} W")
-    kwh = payload.get("cumulative_kwh") or payload.get("energy_kWh")
+    kwh = (
+        payload.get("cumulative_kwh")
+        or payload.get("total_energy_kwh")
+        or payload.get("total_energy_kWh")
+        or payload.get("energy_kwh")
+        or payload.get("energy_kWh")
+        or payload.get("total_heat_kwh")
+        or payload.get("total_heat_kWh")
+        or payload.get("heat_kwh")
+        or payload.get("heat_kWh")
+    )
     if kwh is not None:
         metrics.append(f"{kwh} kWh")
     press = payload.get("pressure_hPa") or payload.get("pressure_kPa")
@@ -363,9 +400,15 @@ def _log_signal_stdout(signal_rec: Dict[str, Any], device_rec: Dict[str, Any]) -
         p_mod = str(payload.get("plejd_model") or "").strip()
         metrics.append(f"BLE Mesh ({p_mod})" if p_mod else "BLE Mesh")
     if not metrics and not is_ble:
-        state_val = payload.get("state") or payload.get("cmd") or payload.get("button")
-        if state_val is not None:
-            metrics.append(f"State: {state_val}")
+        m_type = payload.get("meter_type")
+        m_mode = payload.get("mode")
+        if m_type or m_mode:
+            wmbus_parts = [str(x).strip() for x in (m_type, m_mode) if x is not None and str(x).strip()]
+            metrics.append(f"wM-Bus: {' / '.join(wmbus_parts)}")
+        else:
+            state_val = payload.get("state") or payload.get("cmd") or payload.get("button")
+            if state_val is not None:
+                metrics.append(f"State: {state_val}")
 
     if not is_brand_new and not metrics and is_ble and not alias:
         return

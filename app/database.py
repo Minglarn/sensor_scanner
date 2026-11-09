@@ -81,7 +81,7 @@ def get_default_settings() -> Dict[str, str]:
     return {
         "device_index": os.environ.get("DEVICE_INDEX", "0"),
         "mode": os.environ.get("DEFAULT_MODE", "hop"),
-        "custom_freqs": os.environ.get("CUSTOM_FREQS", "433.92M,868.3M"),
+        "custom_freqs": os.environ.get("CUSTOM_FREQS", "433.92M,868.60M"),
         "custom_sample_rate": os.environ.get("CUSTOM_SAMPLE_RATE", "1024k"),
         "hop_interval": os.environ.get("HOP_INTERVAL", "00:01:00"),
         "hop_time_433": os.environ.get("HOP_TIME_433", "00:01:00"),
@@ -148,7 +148,7 @@ def normalize_category(cat: Optional[str], model: str = "") -> str:
         return "Tracker"
     if c in ("Weather", "Soil/Moisture", "Soil", "Climate"):
         return "Climate"
-    if c in ("Meter", "Power", "Energy"):
+    if c in ("Meter", "Power", "Water", "Heat", "Vatten & Värme", "Energi & Mätare", "Energy"):
         return "Energy"
     if c in ("Smoke/Fire", "Smoke", "Alarm", "Security"):
         return "Security"
@@ -169,6 +169,13 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
     model_lower = (model or "").lower()
     keys = {k.lower() for k in payload.keys()}
     ptype = str(payload.get("type") or "").strip().upper()
+    proto_raw = payload.get("protocol")
+    proto_id: Optional[int] = None
+    if proto_raw is not None:
+        try:
+            proto_id = int(str(proto_raw).strip().lstrip("#"))
+        except (ValueError, TypeError):
+            proto_id = None
 
     if (
         "vehicle_status" in keys
@@ -184,27 +191,80 @@ def infer_category(model: str, payload: Dict[str, Any]) -> str:
     ):
         return "TPMS"
 
-    if any(
-        k in keys
-        for k in (
-            "cumulative_kwh",
-            "energy_kwh",
-            "total_kwh",
-            "energy_mwh",
-            "power_w",
-            "power_kw",
-            "calculated_power_w",
-            "effect",
-            "pulses",
-            "pulse_count",
-            "volume_m3",
-            "water",
-            "consumption",
-            "current_a",
+    if (
+        proto_id in (36, 43, 44, 45, 63, 81, 83, 104, 105, 106, 107, 117, 130, 136, 149, 154, 168, 176, 188, 223, 224, 228, 234, 235, 237, 238, 239, 255)
+        or any(
+            k in keys
+            for k in (
+                "cumulative_kwh",
+                "total_energy_kwh",
+                "energy_kwh",
+                "total_heat_kwh",
+                "heat_kwh",
+                "total_kwh",
+                "energy_mwh",
+                "power_w",
+                "power_kw",
+                "calculated_power_w",
+                "effect",
+                "pulses",
+                "pulse_count",
+                "total_water_m3",
+                "water_m3",
+                "volume_m3",
+                "total_volume_m3",
+                "flow_m3h",
+                "flow_lph",
+                "max_flow_m3h",
+                "water_temp_c",
+                "flow_temp_c",
+                "return_temp_c",
+                "meter_type",
+                "water",
+                "consumption",
+                "current_a",
+            )
         )
-    ) or (
-        any(w in model_lower for w in ("sparsnas", "efergy", "owl", "cm180", "wmbus", "meter", "energy", "water", "emon", "gas"))
-        and not any(c_word in model_lower for c_word in ("thermometer", "hygrometer", "barometer", "anemometer", "weather", "atc"))
+        or (
+            any(
+                w in model_lower
+                for w in (
+                    "wireless-mbus",
+                    "wmbus",
+                    "kamstrup",
+                    "sensus",
+                    "itron",
+                    "diehl",
+                    "mueller",
+                    "beters",
+                    "bmeters",
+                    "apator",
+                    "zenner",
+                    "qundis",
+                    "techem",
+                    "landis",
+                    "aidon",
+                    "sharky",
+                    "multical",
+                    "flowiq",
+                    "hydrus",
+                    "iperl",
+                    "badger",
+                    "neptune",
+                    "flowis",
+                    "sparsnas",
+                    "efergy",
+                    "owl",
+                    "cm180",
+                    "meter",
+                    "energy",
+                    "water",
+                    "emon",
+                    "gas",
+                )
+            )
+            and not any(c_word in model_lower for c_word in ("thermometer", "hygrometer", "barometer", "anemometer", "weather", "atc"))
+        )
     ):
         return "Energy"
 

@@ -246,7 +246,7 @@
       <div id="sidebarStatusBox" class="sidebar-label rounded-xl bg-slate-50 dark:bg-slate-950/90 border border-slate-200/80 dark:border-slate-800 p-2.5 space-y-1.5 text-[11px]">
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 font-medium">Version</span>
-          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.51</span>
+          <span id="appVersionBadge" class="font-mono px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px]">v2026.11.07.52</span>
         </div>
         <div class="flex items-center justify-between">
           <span class="text-slate-500 dark:text-slate-400 flex items-center gap-1">
@@ -985,7 +985,7 @@
                     <i class="mdi mdi-antenna text-sky-500 text-base"></i>
                     <span>Radio &amp; SDR (rtl_433) – Frekvensstyrning &amp; Tuner</span>
                   </h3>
-                  <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Konfigurera RTL-SDR Blog V4, frekvenshopp (433.92 / 868.3 MHz), förstärkning (Gain) och brusfiltrering</p>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Konfigurera RTL-SDR Blog V4, wideband frekvenshopp (433.92 + 868.30/868.95 MHz @ 1024k), förstärkning (Gain) och brusfiltrering</p>
                 </div>
                 <button type="button" onclick="restartSdrProcess()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold transition">
                   <i class="mdi mdi-restart"></i>
@@ -1002,9 +1002,9 @@
                   <div>
                     <label class="block text-slate-500 dark:text-slate-400 mb-1">Aktivt frekvensläge</label>
                     <select id="set_mode" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100">
-                      <option value="433">433.92 MHz (Fast)</option>
-                      <option value="868">868.3 MHz (Fast)</option>
-                      <option value="hop">Dual Hop (433.92 + 868.3 MHz)</option>
+                      <option value="433">433.92 MHz (Fast 1024k)</option>
+                      <option value="868">868.30 / 868.95 MHz (Wide 868.1–869.1)</option>
+                      <option value="hop">Dual Hop (433.92 + 868.30 / 868.95 MHz)</option>
                       <option value="custom">Custom (Egna frekvenser)</option>
                     </select>
                   </div>
@@ -1013,7 +1013,7 @@
                     <input type="text" id="set_hop_time_433" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="00:01:00" title="Ange tid i HH:MM:SS (t.ex. 00:01:00 för 1 min) eller sekunder" />
                   </div>
                   <div>
-                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Tid på 868.30 MHz (-H, HH:MM:SS)</label>
+                    <label class="block text-slate-500 dark:text-slate-400 mb-1">Tid på 868 MHz Wide (-H, HH:MM:SS)</label>
                     <input type="text" id="set_hop_time_868" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="00:05:00" title="Ange tid i HH:MM:SS (t.ex. 00:05:00 för 5 min) eller sekunder" />
                   </div>
                 </div>
@@ -1021,7 +1021,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom-frekvenser (eller freq@HH:MM:SS)</label>
-                    <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M@00:01:00,868.3M@00:05:00" title="Kommaseparerade frekvenser, t.ex. 433.92M,868.3M eller med individuell tid 433.92M@00:01:00,868.3M@00:05:00" />
+                    <input type="text" id="set_custom_freqs" class="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 font-mono" placeholder="433.92M@00:01:00,868.60M@00:05:00" title="Kommaseparerade frekvenser, t.ex. 433.92M,868.60M eller med individuell tid 433.92M@00:01:00,868.60M@00:05:00" />
                   </div>
                   <div>
                     <label class="block text-slate-500 dark:text-slate-400 mb-1">Custom Hopp-intervall (-H, HH:MM:SS)</label>
@@ -1979,7 +1979,7 @@
     let sdrHopInterval = 60;
     let sdrHopIntervals = [60, 60];
     let sdrRemainingSec = 60;
-    let sdrActiveFreqs = ['433.92 MHz', '868.30 MHz'];
+    let sdrActiveFreqs = ['433.92 MHz', '868.30 / 868.95 MHz'];
 
     function parseDurationToSeconds(val, defaultSec = 60) {
       if (val === null || val === undefined) return defaultSec;
@@ -2060,7 +2060,7 @@
           badgeClass: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30'
         };
       }
-      if (c === 'energy' || c === 'meter' || c === 'power' || c === 'water') {
+      if (c === 'energy' || c === 'meter' || c === 'power' || c === 'water' || c === 'heat' || c.includes('vatten') || c.includes('mätare')) {
         return {
           id: 'Energy',
           label: 'Energi & Mätare',
@@ -2189,7 +2189,8 @@
       'time', 'protocol', 'protocol_name', 'protocol_full_name', 'model', 'type', 'id', 'device', 'sensor_id', 'node_id',
       'address', 'house_code', 'code', 'channel', 'mic', 'mod', 'freq', 'freq1',
       'freq2', 'rssi', 'snr', 'noise', 'alias', 'group_name', 'device_key',
-      'mode', 'pulses_per_kwh', 'pulses_per_kWh', 'calculated_power_W', 'mac', 'mac_type', 'local_name',
+      'mode', 'meter_type', 'type_string', 'device_type', 'utility', 'medium', 'encrypted',
+      'pulses_per_kwh', 'pulses_per_kWh', 'calculated_power_W', 'mac', 'mac_type', 'local_name',
       'manufacturer_data', 'manufacturer_id', 'manufacturer_name', 'service_data',
       'service_uuids', 'ble_service_name', 'apple_type', 'tx_power', 'distance_m',
       'beacon_hash', 'tesla_node', 'is_own_vehicle', 'vehicle_status',
@@ -2303,7 +2304,7 @@
               } else {
                 const was868 = String(sdrCurrentFreq).includes('868');
                 nextIdx = was868 ? 0 : 1;
-                sdrCurrentFreq = was868 ? '433.92 MHz' : '868.30 MHz';
+                sdrCurrentFreq = was868 ? '433.92 MHz' : '868.30 / 868.95 MHz';
               }
               if (Array.isArray(sdrHopIntervals) && sdrHopIntervals.length > nextIdx) {
                 sdrHopInterval = Math.max(5, Number(sdrHopIntervals[nextIdx]) || 60);
@@ -2743,10 +2744,14 @@
 
       const telemetryKeys = [
         'temperature_C', 'temp_C', 'temperature_F', 'temp_F', 'temperature_1_C', 'temperature_2_C',
+        'water_temp_c', 'water_temp_C', 'flow_temp_c', 'flow_temp_C', 'return_temp_c', 'return_temp_C',
         'humidity', 'humidity_1', 'humidity_2',
         'pressure_hPa', 'pressure_kPa', 'pressure_bar', 'pressure_PSI',
         'battery_pct', 'battery_ok', 'battery_low', 'battery_mV', 'voltage_V',
-        'power_W', 'power_kW', 'calculated_power_W', 'effect', 'cumulative_kwh', 'energy_kWh', 'total_kWh',
+        'power_W', 'power_kW', 'calculated_power_W', 'effect',
+        'cumulative_kwh', 'total_energy_kwh', 'total_energy_kWh', 'energy_kwh', 'energy_kWh', 'total_kWh', 'total_kwh',
+        'total_heat_kwh', 'total_heat_kWh', 'heat_kwh', 'heat_kWh',
+        'total_water_m3', 'water_m3', 'volume_m3', 'total_volume_m3', 'flow_m3h', 'flow_lph', 'meter_type',
         'lux', 'illuminance', 'moisture',
         'wind_avg_km_h', 'wind_max_km_h', 'wind_avg_m_s', 'wind_max_m_s', 'wind_speed_m_s', 'wind_dir_deg',
         'rain_mm', 'total_rain_mm', 'rain_rate_mm_h',
@@ -3609,25 +3614,59 @@
         addMetric('mdi-brightness-6', `${Number(p.lux).toFixed(0)} lx`, 'amber', 'Ljusstyrka', `${Number(p.lux).toFixed(0)} lx`);
       }
 
-      // 1. Energy / Cumulative Consumption (cumulative_kwh, energy_kWh, total_kWh, energy_mWh)
+      // 1. Energy / Heat / Cumulative Consumption (cumulative_kwh, total_energy_kwh, energy_kwh, total_heat_kwh, heat_kwh)
+      let heatKwhVal = null;
+      if (p.total_heat_kwh !== undefined && p.total_heat_kwh !== null) {
+        consumed.add('total_heat_kwh');
+        consumed.add('heat_kwh');
+        heatKwhVal = Number(p.total_heat_kwh);
+      } else if (p.heat_kwh !== undefined && p.heat_kwh !== null) {
+        consumed.add('heat_kwh');
+        heatKwhVal = Number(p.heat_kwh);
+      }
+      if (heatKwhVal !== null && !Number.isNaN(heatKwhVal)) {
+        if (p.total_energy_kwh !== undefined && Number(p.total_energy_kwh) === heatKwhVal) consumed.add('total_energy_kwh');
+        if (p.energy_kwh !== undefined && Number(p.energy_kwh) === heatKwhVal) consumed.add('energy_kwh');
+        addMetric(
+          'mdi-fire',
+          `${heatKwhVal.toFixed(2)} kWh`,
+          'amber',
+          'Värmeenergi',
+          `${heatKwhVal.toFixed(3)} kWh`
+        );
+      }
+
       let kwhVal = null;
       if (p.cumulative_kwh !== undefined && p.cumulative_kwh !== null) {
+        consumed.add('cumulative_kwh');
         kwhVal = Number(p.cumulative_kwh);
       } else if (p.cumulative_kWh !== undefined && p.cumulative_kWh !== null) {
+        consumed.add('cumulative_kWh');
         kwhVal = Number(p.cumulative_kWh);
+      } else if (!consumed.has('total_energy_kwh') && p.total_energy_kwh !== undefined && p.total_energy_kwh !== null) {
+        consumed.add('total_energy_kwh');
+        consumed.add('energy_kwh');
+        kwhVal = Number(p.total_energy_kwh);
+      } else if (!consumed.has('energy_kwh') && p.energy_kwh !== undefined && p.energy_kwh !== null) {
+        consumed.add('energy_kwh');
+        kwhVal = Number(p.energy_kwh);
       } else if (p.energy_kWh !== undefined && p.energy_kWh !== null) {
+        consumed.add('energy_kWh');
         kwhVal = Number(p.energy_kWh);
       } else if (p.total_kWh !== undefined && p.total_kWh !== null) {
+        consumed.add('total_kWh');
         kwhVal = Number(p.total_kWh);
       } else if (p.energy_mWh !== undefined && p.energy_mWh !== null) {
+        consumed.add('energy_mWh');
         kwhVal = Number(p.energy_mWh) / 1000000.0;
       }
       if (kwhVal !== null && !Number.isNaN(kwhVal)) {
+        const isHeatMeter = /heat|fjärrvärme|varme|calor/i.test(String(p.meter_type || p.utility_type || ''));
         addMetric(
-          'mdi-lightning-bolt',
+          isHeatMeter ? 'mdi-fire' : 'mdi-lightning-bolt',
           `${kwhVal.toFixed(2)} kWh`,
-          'emerald',
-          'Total Energi',
+          isHeatMeter ? 'amber' : 'emerald',
+          isHeatMeter ? 'Värmeenergi' : 'Total Energi',
           `${kwhVal.toFixed(3)} kWh`
         );
       }
@@ -3762,6 +3801,39 @@
       if (tempC !== null && !Number.isNaN(tempC)) {
         const subF = rawF !== null ? `${rawF.toFixed(1)} °F` : '';
         addMetric('mdi-thermometer', `${tempC.toFixed(1)} °C`, 'amber', 'Temperatur', `${tempC.toFixed(1)} °C`, subF);
+      }
+
+      // 5a. Water & District Heating Temperatures (flow_temp_c, return_temp_c, water_temp_c)
+      const flowTempRaw = p.flow_temp_c ?? p.flow_temperature_C ?? p.flow_temp_C ?? p.t1_C;
+      const returnTempRaw = p.return_temp_c ?? p.return_temperature_C ?? p.return_temp_C ?? p.t2_C;
+      const waterTempRaw = p.water_temp_c ?? p.water_temperature_C ?? p.water_temp_C;
+      ['flow_temp_c', 'flow_temperature_C', 'flow_temp_C', 't1_C', 'return_temp_c', 'return_temperature_C', 'return_temp_C', 't2_C', 'water_temp_c', 'water_temperature_C', 'water_temp_C'].forEach((tk) => {
+        if (p[tk] !== undefined) consumed.add(tk);
+      });
+      if (flowTempRaw !== undefined && flowTempRaw !== null && returnTempRaw !== undefined && returnTempRaw !== null) {
+        const ft = Number(flowTempRaw);
+        const rt = Number(returnTempRaw);
+        if (!Number.isNaN(ft) && !Number.isNaN(rt)) {
+          const dt = (ft - rt).toFixed(1);
+          addMetric(
+            'mdi-thermometer-lines',
+            `Fram/Retur ${ft.toFixed(1)}/${rt.toFixed(1)} °C`,
+            'amber',
+            'Fram / Returtemperatur',
+            `${ft.toFixed(1)} / ${rt.toFixed(1)} °C`,
+            `ΔT: ${dt} °C`
+          );
+        }
+      } else if (flowTempRaw !== undefined && flowTempRaw !== null && !Number.isNaN(Number(flowTempRaw))) {
+        const ft = Number(flowTempRaw);
+        addMetric('mdi-thermometer-lines', `Fram ${ft.toFixed(1)} °C`, 'amber', 'Framledningstemperatur', `${ft.toFixed(1)} °C`);
+      } else if (returnTempRaw !== undefined && returnTempRaw !== null && !Number.isNaN(Number(returnTempRaw))) {
+        const rt = Number(returnTempRaw);
+        addMetric('mdi-thermometer-lines', `Retur ${rt.toFixed(1)} °C`, 'amber', 'Returtemperatur', `${rt.toFixed(1)} °C`);
+      }
+      if (waterTempRaw !== undefined && waterTempRaw !== null && !Number.isNaN(Number(waterTempRaw))) {
+        const wt = Number(waterTempRaw);
+        addMetric('mdi-thermometer-lines', `Vatten ${wt.toFixed(1)} °C`, 'sky', 'Vattentemperatur', `${wt.toFixed(1)} °C`);
       }
 
       // Dynamic secondary/indexed temperatures (e.g. temperature_1_C, temperature_2_F, temperature_2_C, soil_temp_F, water_temp_F)
@@ -3977,14 +4049,102 @@
         addMetric('mdi-gauge', `${Number(p.pressure_hPa).toFixed(1)} hPa`, 'teal', 'Lufttryck', `${Number(p.pressure_hPa).toFixed(1)} hPa`);
       }
 
-      // 9. Water / Volume
-      const waterVal = p.volume_m3 ?? p.consumption ?? p.water;
-      if (waterVal !== undefined && waterVal !== null) {
+      // 9. Water / Volume & Flow & Wireless M-Bus (total_water_m3, water_m3, volume_m3, flow_m3h, flow_lph, meter_type, mode)
+      const waterM3Raw = p.total_water_m3 ?? p.water_m3 ?? p.volume_m3 ?? p.total_volume_m3;
+      if (waterM3Raw !== undefined && waterM3Raw !== null && !Number.isNaN(Number(waterM3Raw))) {
+        consumed.add('total_water_m3');
+        consumed.add('water_m3');
         consumed.add('volume_m3');
+        consumed.add('total_volume_m3');
         consumed.add('consumption');
         consumed.add('water');
-        const unit = p.volume_m3 !== undefined ? ' m³' : '';
-        addMetric('mdi-water-pump', `${waterVal}${unit}`, 'blue', 'Förbrukning / Vatten', `${waterVal}${unit}`);
+        const m3Num = Number(waterM3Raw);
+        const m3Formatted = m3Num.toFixed(2);
+        addMetric(
+          'mdi-water',
+          `${m3Formatted} m³`,
+          'blue',
+          'Vattenvolym',
+          `${m3Num.toFixed(3)} m³`,
+          `${Math.round(m3Num * 1000).toLocaleString('sv-SE')} liter`
+        );
+      } else {
+        const waterFallback = p.consumption ?? p.water;
+        if (waterFallback !== undefined && waterFallback !== null) {
+          consumed.add('consumption');
+          consumed.add('water');
+          const wNum = Number(waterFallback);
+          const wStr = !Number.isNaN(wNum) ? `${wNum.toFixed(2)} m³` : String(waterFallback);
+          addMetric('mdi-water', wStr, 'blue', 'Förbrukning / Vatten', wStr);
+        }
+      }
+
+      let flowLphVal = null;
+      let flowM3hVal = null;
+      if (p.flow_lph !== undefined && p.flow_lph !== null && !Number.isNaN(Number(p.flow_lph))) {
+        consumed.add('flow_lph');
+        consumed.add('flow_m3h');
+        consumed.add('max_flow_m3_h');
+        flowLphVal = Number(p.flow_lph);
+        flowM3hVal = p.flow_m3h !== undefined && !Number.isNaN(Number(p.flow_m3h)) ? Number(p.flow_m3h) : (flowLphVal / 1000.0);
+      } else if (p.flow_m3h !== undefined && p.flow_m3h !== null && !Number.isNaN(Number(p.flow_m3h))) {
+        consumed.add('flow_m3h');
+        consumed.add('max_flow_m3_h');
+        flowM3hVal = Number(p.flow_m3h);
+        flowLphVal = flowM3hVal * 1000.0;
+      } else if (p.max_flow_m3_h !== undefined && p.max_flow_m3_h !== null && !Number.isNaN(Number(p.max_flow_m3_h))) {
+        consumed.add('max_flow_m3_h');
+        flowM3hVal = Number(p.max_flow_m3_h);
+        flowLphVal = flowM3hVal * 1000.0;
+      }
+      if (flowLphVal !== null && !Number.isNaN(flowLphVal)) {
+        const lphRounded = flowLphVal >= 10 ? Math.round(flowLphVal) : Number(flowLphVal.toFixed(1));
+        const m3hSub = flowM3hVal !== null && !Number.isNaN(flowM3hVal) ? `${flowM3hVal.toFixed(3)} m³/h` : '';
+        addMetric(
+          'mdi-water-pump',
+          `${lphRounded} l/h`,
+          'blue',
+          'Flöde',
+          `${lphRounded} l/h`,
+          m3hSub
+        );
+      }
+
+      // Wireless M-Bus / Smart Meter Mode & Type pill (also shown when OMS telegram is encrypted)
+      const wmbusModeRaw = p.wmbus_mode ?? p.mode;
+      const meterTypeRaw = p.meter_type ?? p.utility_type ?? p.medium;
+      if ((wmbusModeRaw !== undefined && wmbusModeRaw !== null && String(wmbusModeRaw).trim() !== '') ||
+          (meterTypeRaw !== undefined && meterTypeRaw !== null && String(meterTypeRaw).trim() !== '')) {
+        consumed.add('wmbus_mode');
+        consumed.add('mode');
+        consumed.add('meter_type');
+        consumed.add('utility_type');
+        consumed.add('medium');
+        const modeClean = wmbusModeRaw ? String(wmbusModeRaw).trim() : '';
+        const typeClean = meterTypeRaw ? String(meterTypeRaw).trim() : '';
+        let pillLabel = '';
+        if (typeClean && modeClean && !typeClean.toUpperCase().includes(modeClean.toUpperCase())) {
+          pillLabel = `${typeClean} (${modeClean})`;
+        } else {
+          pillLabel = typeClean || `wM-Bus ${modeClean}`;
+        }
+        const mfgCode = p.manufacturer ? String(p.manufacturer).trim() : '';
+        if (mfgCode) consumed.add('manufacturer');
+        const isEnc = Boolean(p.encrypted) || (Boolean(p.data) && waterM3Raw === undefined && kwhVal === null && heatKwhVal === null);
+        if (p.encrypted !== undefined) consumed.add('encrypted');
+        const encSuffix = isEnc ? ' • OMS Krypterad' : '';
+        const subInfo = [mfgCode ? `Tillverkare: ${mfgCode}` : '', isEnc ? 'Krypterad OMS-payload' : ''].filter(Boolean).join(' • ');
+        addMetric(
+          isEnc ? 'mdi-lock-outline' : 'mdi-counter',
+          `${pillLabel}${encSuffix}`,
+          isEnc ? 'indigo' : 'emerald',
+          'Mätartyp / wM-Bus',
+          pillLabel,
+          subInfo
+        );
+      } else if (p.encrypted !== undefined && Boolean(p.encrypted)) {
+        consumed.add('encrypted');
+        addMetric('mdi-lock-outline', 'OMS Krypterad', 'indigo', 'Kryptering', 'OMS Krypterad');
       }
 
       // 10. Switch / Door / Motion / Subtype / Raw Hex
@@ -4160,6 +4320,10 @@
       };
     }
 
+    function formatMeasurementsHtml(payload, sig = null) {
+      return extractAndFormatMetrics(payload, sig).badgesHtml;
+    }
+
     const RTL433_PROTOCOL_NAMES = {
       1: 'Silvercrest Remote Control',
       2: 'Rubicson / TFA 30.3197 Temp Sensor',
@@ -4258,10 +4422,10 @@
       101: 'Dish Remote 6.3',
       102: 'SimpliSafe Home Security',
       103: 'Sensible Living Mini-Plant Moisture',
-      104: 'Wireless M-Bus Mode C&T',
-      105: 'Wireless M-Bus Mode S',
-      106: 'Wireless M-Bus Mode R',
-      107: 'Wireless M-Bus Mode F',
+      104: 'Wireless M-Bus (EN 13757-4 Vatten/Värme/El)',
+      105: 'Wireless M-Bus Mode S (EN 13757-4)',
+      106: 'Wireless M-Bus Mode R (EN 13757-4)',
+      107: 'Wireless M-Bus Mode F (EN 13757-4)',
       108: 'Hyundai WS SENZOR77 Temp/Hygro',
       109: 'WT0124 Pool Thermometer',
       110: 'PMV-107J (Toyota) TPMS',
@@ -4392,7 +4556,7 @@
       235: 'Oil Ultrasonic SMART FSK',
       236: 'Gasmate BA1008 Meat Thermometer',
       237: 'Flowis Flow Meter',
-      238: 'Wireless M-Bus Mode T',
+      238: 'Wireless M-Bus Mode T (EN 13757-4)',
       239: 'Revolt NC-5462 Energy Meter',
       240: 'LaCrosse TX31U-IT / TFA 30.3159',
       241: 'Emax W6 Weather Station',
@@ -4789,9 +4953,9 @@
       }
       if (logModeEl) {
         const modeMap = {
-          '433': '433.92 MHz (Fast)',
-          '868': '868.3 MHz (Fast)',
-          'hop': 'Dual Hop 433.92 / 868.3 MHz',
+          '433': '433.92 MHz (Fast • 1024k)',
+          '868': '868.30 / 868.95 MHz (Wide 1024k)',
+          'hop': 'Dual Hop 433.92 + 868.30/868.95 MHz',
           'custom': 'Custom Frekvenser'
         };
         logModeEl.textContent = modeMap[rtl.mode] || (rtl.mode || 'hop').toUpperCase();
@@ -4883,7 +5047,7 @@
       const isHopMode = sdrMode === 'hop' || (sdrMode === 'custom' && sdrActiveFreqs.length > 1);
       if (!isHopMode) {
         if (progWrap) progWrap.classList.add('hidden');
-        const fixedFreq = sdrMode === '868' ? '868.30 MHz' : (sdrMode === '433' ? '433.92 MHz' : sdrCurrentFreq);
+        const fixedFreq = sdrMode === '868' ? '868.30 / 868.95 MHz' : (sdrMode === '433' ? '433.92 MHz' : sdrCurrentFreq);
         sdrDot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0';
         sdrText.innerHTML = `<span>${escapeHtml(fixedFreq)}</span>`;
         return;
